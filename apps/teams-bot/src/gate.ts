@@ -8,11 +8,13 @@
  * whenever its situation changes (lobby / in meeting / neither).
  * The window stays open until you press Ctrl+C in the terminal.
  */
+import 'dotenv/config';
 import { chromium } from 'playwright';
 import { randomUUID } from 'crypto';
 import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
+import { Nudger } from './lib/Nudger';
 
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
@@ -38,6 +40,17 @@ const main = async () => {
     const page = await context.newPage();
 
     const join = new JoinProcedure({ botId, page });
+    const chat = new ChatProcedure({ botId, page });
+
+    // Milestone 5: the nudge brain. Without an API key the bot still runs,
+    // it just prints captions without ever posting nudges.
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const nudger = apiKey ? new Nudger({ botId, apiKey }) : null;
+    if (!nudger) {
+        console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
+    }
+    // Process nudges one at a time, in caption order.
+    let nudgeQueue: Promise<void> = Promise.resolve();
 
     console.log('\n=== GATE bot: opening the meeting link... ===\n');
     await join.startMeetingLauncherFlow({ meetingUrl });
@@ -74,7 +87,6 @@ const main = async () => {
             chatMessagePosted = true; // only try once, even if it fails
             await page.waitForTimeout(3000); // let the meeting UI settle first
             try {
-                const chat = new ChatProcedure({ botId, page });
                 await chat.sendMessage('hello from GATE bot');
                 console.log('\n>>> STATUS: Posted test message to the meeting chat. <<<\n');
             } catch (error) {
@@ -86,7 +98,27 @@ const main = async () => {
         if (state === 'in-meeting' && chatMessagePosted && !captionsStarted) {
             captionsStarted = true; // only try once, even if it fails
             try {
-                const captions = new CaptionsProcedure({ botId, page });
+                const captions = new CaptionsProcedure({
+                    botId,
+                    page,
+                    // Milestone 5: every finished caption line goes to the nudge brain.
+                    onFinishedLine: (line) => {
+                        if (!nudger) {
+                            return;
+                        }
+                        nudgeQueue = nudgeQueue
+                            .then(async () => {
+                                const nudge = await nudger.decide(line);
+                                if (nudge) {
+                                    console.log(`NUDGE >>> ${nudge}`);
+                                    await chat.sendMessage(nudge);
+                                }
+                            })
+                            .catch((error) => {
+                                console.error('Nudge pipeline error:', error);
+                            });
+                    },
+                });
                 await captions.enableCaptionsFlow();
                 await captions.subscribeToCaptions();
                 console.log('\n>>> STATUS: Live captions are ON. Speak — finished lines print below as CAPTION >>> lines. <<<\n');

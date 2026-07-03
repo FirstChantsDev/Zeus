@@ -45,6 +45,40 @@ export class ChatProcedure {
             }
         }
 
+        // Fallback 1: Teams sometimes puts Chat inside the calling "More" menu.
+        if (!clicked) {
+            const moreButton = this.page.locator('button[id="callingButtons-showMoreBtn"]').first();
+            if (await moreButton.count() > 0 && await moreButton.isVisible().catch(() => false)) {
+                await moreButton.click();
+                const chatMenuItem = this.page.locator('[role="menuitem"]').filter({ hasText: /chat/i }).first();
+                if (await chatMenuItem.isVisible().catch(() => false)) {
+                    await chatMenuItem.click();
+                    this.logger.info({ message: 'Opened chat via the More menu.' });
+                    clicked = true;
+                } else {
+                    await this.page.keyboard.press('Escape'); // close the menu again
+                }
+            }
+        }
+
+        // Fallback 2: a stray side panel may be displacing the toolbar — close it and retry once.
+        if (!clicked) {
+            const closePane = this.page.locator('[data-tid="rail-header-close-button"]').first();
+            if (await closePane.count() > 0 && await closePane.isVisible().catch(() => false)) {
+                await closePane.click();
+                this.logger.info({ message: 'Closed a side panel; retrying chat button.' });
+                for (const selector of candidates) {
+                    const button = this.page.locator(selector).first();
+                    if (await button.count() > 0 && await button.isVisible().catch(() => false)) {
+                        await button.click();
+                        this.logger.info({ message: `Clicked chat button after closing panel (${selector}).` });
+                        clicked = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         if (!clicked) {
             // Self-diagnosis: list every visible button so the log tells us
             // what this Teams version actually calls the chat button.

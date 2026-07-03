@@ -6,6 +6,7 @@ type SourceType =
     | 'join-procedure'
     | 'captions-procedure'
     | 'chat-procedure'
+    | 'nudger'
     | 'notifier'
     | 'bot-runner'
     | 'file-streamer';
