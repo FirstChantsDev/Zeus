@@ -38,8 +38,9 @@ From the repo root (needs `ANTHROPIC_API_KEY` in `.env`):
 npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>
 ```
 
-Then open **http://localhost:4300** in a browser. Admit "GATE bot" from the
-meeting lobby. Don't close the Chrome window the bot opens — that window IS
+Then open **http://localhost:4300** in a browser. Admit "Zeus bot" from the
+meeting lobby (the UI was rebranded from GATE to Zeus; chat messages are
+marked [ZEUS]). Don't close the Chrome window the bot opens — that window IS
 the bot. Ctrl+C in the terminal shuts it down; do this as soon as the meeting
 ends, because the bot makes a paid API call per spoken sentence.
 
