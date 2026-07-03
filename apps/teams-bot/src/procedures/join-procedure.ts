@@ -207,7 +207,9 @@ export class JoinProcedure {
         }
 
         try {
-            await expect(this.page.getByText('Someone will let you in shortly')).toBeVisible({ timeout: waitForSeconds * 1000 });
+            // Corporate Teams says "Someone will let you in shortly"; personal
+            // Teams words it differently, so match the common part loosely.
+            await expect(this.page.getByText(/let you in/i).first()).toBeVisible({ timeout: waitForSeconds * 1000 });
             this.logger.info({ message: 'Bot is in meeting lobby, waiting for host to let the bot in.' });
 
             // Only add the status change if the bot is not already in the waiting room

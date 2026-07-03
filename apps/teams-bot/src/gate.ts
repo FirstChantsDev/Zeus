@@ -11,6 +11,7 @@
 import { chromium } from 'playwright';
 import { randomUUID } from 'crypto';
 import { JoinProcedure } from './procedures/join-procedure';
+import { ChatProcedure } from './procedures/chat-procedure';
 
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
@@ -45,6 +46,7 @@ const main = async () => {
 
     let lastState = '';
     let inMeetingSince: number | null = null;
+    let chatMessagePosted = false;
     while (true) {
         let state = 'unknown';
         if (await join.isInMeeting({})) {
@@ -63,6 +65,19 @@ const main = async () => {
                 console.log('\n>>> STATUS: Not in lobby or meeting (page may still be loading, or the call ended). <<<\n');
             }
             lastState = state;
+        }
+
+        // Milestone 3: once admitted, post one hard-coded test message to chat.
+        if (state === 'in-meeting' && !chatMessagePosted) {
+            chatMessagePosted = true; // only try once, even if it fails
+            await page.waitForTimeout(3000); // let the meeting UI settle first
+            try {
+                const chat = new ChatProcedure({ botId, page });
+                await chat.sendMessage('hello from GATE bot');
+                console.log('\n>>> STATUS: Posted test message to the meeting chat. <<<\n');
+            } catch (error) {
+                console.error('\n>>> PROBLEM: Could not post to the meeting chat. <<<\n', error);
+            }
         }
 
         // Milestone 2 evidence: report a stable minute in the meeting.

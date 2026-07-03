@@ -5,6 +5,7 @@ type SourceType =
     | 'orchestrator'
     | 'join-procedure'
     | 'captions-procedure'
+    | 'chat-procedure'
     | 'notifier'
     | 'bot-runner'
     | 'file-streamer';
