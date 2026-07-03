@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GATE — Command Centre</title>
+<title>Zeus — Command Centre</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -143,7 +143,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 
 <!-- ══ COCKPIT (live) ══ -->
 <header>
-  <div class="wordmark">GATE<em>.</em></div>
+  <div class="wordmark">ZEUS<em>.</em></div>
   <div class="meeting">
     <span class="meeting-name" id="hdrMeet">Live Teams meeting</span>
     <span class="live" id="liveBadge"><span class="live-dot"></span><span id="liveText">CONNECTING…</span></span>
@@ -232,7 +232,7 @@ function renderNudges(nudges){
   }
   // Server already sends newest first.
   feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
-    <div class="nudge-head"><span class="nudge-tag">[GATE]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
+    <div class="nudge-head"><span class="nudge-tag">[ZEUS]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
     <div class="nudge-text">${esc(n.text)}</div>
     ${n.steered ? '<div class="steer-note">↳ shaped by your steer</div>' : ''}
   </div>`).join('');

@@ -3,7 +3,7 @@
  *
  * Usage:  npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>
  *
- * Opens a VISIBLE Chrome window, joins the meeting as "GATE bot" with camera
+ * Opens a VISIBLE Chrome window, joins the meeting as "Zeus bot" with camera
  * and mic off, and then sits there printing a plain-English status line
  * whenever its situation changes (lobby / in meeting / neither).
  * The window stays open until you press Ctrl+C in the terminal.
@@ -134,7 +134,7 @@ const main = async () => {
             chatMessagePosted = true; // only try once, even if it fails
             await page.waitForTimeout(3000); // let the meeting UI settle first
             try {
-                await chat.sendMessage('hello from GATE bot');
+                await chat.sendMessage('hello from Zeus bot');
                 console.log('\n>>> STATUS: Posted test message to the meeting chat. <<<\n');
             } catch (error) {
                 console.error('\n>>> PROBLEM: Could not post to the meeting chat. <<<\n', error);

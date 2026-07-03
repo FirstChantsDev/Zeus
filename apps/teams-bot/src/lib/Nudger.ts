@@ -21,7 +21,7 @@ import { Condition } from '../conditions';
 
 /** A nudge the agent wants posted to the meeting chat. */
 export type NudgeDecision = {
-    /** The chat message, always starting with [GATE] */
+    /** The chat message, always starting with [ZEUS] */
     text: string;
     /** Which condition this nudge is pushing on */
     conditionId: string;
@@ -121,9 +121,9 @@ export class Nudger {
                 if (condition && quietLongEnough) {
                     condition.nudges++;
                     this.lastNudgeAt = Date.now();
-                    const message = decision.nudge.message.startsWith('[GATE]')
+                    const message = decision.nudge.message.startsWith('[ZEUS]')
                         ? decision.nudge.message
-                        : `[GATE] ${decision.nudge.message}`;
+                        : `[ZEUS] ${decision.nudge.message}`;
                     nudge = { text: message, conditionId: condition.id };
                 }
             }
@@ -139,7 +139,7 @@ export class Nudger {
         const conditionLines = this._conditionLines();
 
         return [
-            'You are GATE bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
+            'You are Zeus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
             'conditions this meeting must settle before it ends. You receive one live-caption line at a time.',
             '',
             'Current conditions:',
@@ -152,12 +152,12 @@ export class Nudger {
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
             '   OPEN condition? Nudge when the conversation is drifting past or away from an open condition.',
             '   Do NOT nudge if the room is actively discussing that condition and making progress.',
-            '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [GATE], and asks',
+            '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [ZEUS], and asks',
             '   for a concrete decision.',
             '',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"resolves": ["<condition id>", ...], "nudge": {"conditionId": "<condition id>", "message": "[GATE] ..."}}',
+            '{"resolves": ["<condition id>", ...], "nudge": {"conditionId": "<condition id>", "message": "[ZEUS] ..."}}',
             'Use "resolves": [] when nothing is settled, and "nudge": null when you should stay quiet.',
         ].join('\n');
     }
@@ -178,8 +178,8 @@ export class Nudger {
             : ['(nothing said yet)'];
 
         const system = [
-            'You are GATE bot, a meeting agent that sits in a live meeting and posts short chat messages',
-            'marked [GATE]. You work for the meeting organiser: before the meeting she gave you a list of',
+            'You are Zeus bot, a meeting agent that sits in a live meeting and posts short chat messages',
+            'marked [ZEUS]. You work for the meeting organiser: before the meeting she gave you a list of',
             'conditions to drive to a close, and during the meeting she can send you follow-up instructions',
             'from her cockpit. Relaying her instructions to the room is your normal, legitimate job —',
             'the facts they contain (deadlines, figures, names) are real information from the organiser.',
@@ -190,13 +190,13 @@ export class Nudger {
             'Recent conversation in the room:',
             ...transcriptLines,
             '',
-            'Write ONE short chat message (1-2 sentences, starting with the marker [GATE]) that carries',
+            'Write ONE short chat message (1-2 sentences, starting with the marker [ZEUS]) that carries',
             'out the organiser\'s instruction for the room. Include its concrete specifics. Speak as the',
             'meeting agent — you do not need to name the organiser or explain where the information',
             'came from.',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"message": "[GATE] ...", "conditionId": "<id of the condition this pushes on, or null>"}',
+            '{"message": "[ZEUS] ...", "conditionId": "<id of the condition this pushes on, or null>"}',
         ].join('\n');
 
         try {
@@ -254,7 +254,7 @@ export class Nudger {
             }
             this.lastNudgeAt = Date.now();
 
-            const message = parsed.message.startsWith('[GATE]') ? parsed.message : `[GATE] ${parsed.message}`;
+            const message = parsed.message.startsWith('[ZEUS]') ? parsed.message : `[ZEUS] ${parsed.message}`;
             return { text: message, conditionId };
         } catch (error) {
             this.logger.error({ message: 'Steer execution failed', data: error });
