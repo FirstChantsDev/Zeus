@@ -23,7 +23,8 @@ export class Logger {
         this.botId = args.botId;
         this.logFile = new FileStreamer({
             streamId: `${this.botId}-logs`,
-            filePath: path.join('output', 'logs', `${new Date().toISOString()}-${this.botId}.log`)
+            // Colons from toISOString() are illegal in Windows filenames
+            filePath: path.join('output', 'logs', `${new Date().toISOString().replace(/:/g, '-')}-${this.botId}.log`)
         });
     }
 

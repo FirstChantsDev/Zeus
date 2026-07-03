@@ -131,6 +131,47 @@ export class JoinProcedure {
         }
     }
 
+    /**
+     * Best-effort: make sure camera and mic are OFF on the pre-join screen,
+     * and dismiss any device-related prompts.
+     * Teams' internal element names vary between versions, so we try each
+     * known candidate and skip quietly if it isn't on the page.
+     */
+    private async _ensureCameraAndMicOff() {
+        // If Teams offers to continue without devices, take that offer — it means no cam/mic at all.
+        const continueWithoutDevices = this.page.locator('button:has-text("Continue without audio or video")').first();
+        if (await continueWithoutDevices.count() > 0) {
+            await continueWithoutDevices.click();
+            this.logger.info({ message: 'Clicked "Continue without audio or video".' });
+            return;
+        }
+
+        const toggles = [
+            { label: 'camera', selectors: ['[data-tid="toggle-video"]', '[data-tid="prejoin-video-button"]', 'input[type="checkbox"][title*="amera"]'] },
+            { label: 'microphone', selectors: ['[data-tid="toggle-mute"]', '[data-tid="prejoin-audio-button"]', 'input[type="checkbox"][title*="ic"]'] },
+        ];
+        for (const toggle of toggles) {
+            for (const selector of toggle.selectors) {
+                const el = this.page.locator(selector).first();
+                if (await el.count() === 0) {
+                    continue;
+                }
+                try {
+                    const state = (await el.getAttribute('aria-checked')) ?? (await el.getAttribute('aria-pressed')) ?? (await el.isChecked().catch(() => null))?.toString();
+                    if (state === 'true') {
+                        await el.click();
+                        this.logger.info({ message: `Turned ${toggle.label} off.` });
+                    } else {
+                        this.logger.info({ message: `${toggle.label} appears to be off already (state=${state}).` });
+                    }
+                } catch (error) {
+                    this.logger.warn({ message: `Could not check/toggle ${toggle.label}, continuing anyway.`, data: error });
+                }
+                break;
+            }
+        }
+    }
+
     /** Bot attempts to join the meeting or enter the waiting room */
     public async joinMeetingLobbyFlow() {
         try {
@@ -138,8 +179,10 @@ export class JoinProcedure {
 
             const nameInputSelector = 'input[placeholder="Type your name"]';
             await this.page.waitForSelector(nameInputSelector, { timeout: 15000 });
-            await this.page.fill(nameInputSelector, 'RecallBot');
+            await this.page.fill(nameInputSelector, 'GATE bot');
             this.logger.info({ message: 'Entered bot name.' });
+
+            await this._ensureCameraAndMicOff();
 
             const joinNowButtonSelector = 'button:has-text("Join now")';
             await this.page.waitForSelector(joinNowButtonSelector);

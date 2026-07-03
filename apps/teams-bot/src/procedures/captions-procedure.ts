@@ -72,7 +72,8 @@ export class CaptionsProcedure {
         this.logger = new Logger({ source: 'captions-procedure', botId: args.botId });
         this.transcriptFileStreamer = new FileStreamer({
             streamId: `${args.botId}-transcript`,
-            filePath: path.join('output', 'transcripts', `${new Date().toISOString()}-${args.botId}.jsonl`)
+            // Colons from toISOString() are illegal in Windows filenames
+            filePath: path.join('output', 'transcripts', `${new Date().toISOString().replace(/:/g, '-')}-${args.botId}.jsonl`)
         });
 
         if (args.notifierUrls && args.notifierUrls.length > 0) {
