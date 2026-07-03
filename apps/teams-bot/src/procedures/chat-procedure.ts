@@ -29,15 +29,37 @@ export class ChatProcedure {
         const candidates = [
             'button[id="chat-button"]',
             'button[data-tid="chat-button"]',
+            'button[data-tid="call-chat-button"]',
             'button[aria-label*="chat" i]',
+            'button[title*="chat" i]',
+            '[role="toolbar"] button:has-text("Chat")',
         ];
+        let clicked = false;
         for (const selector of candidates) {
             const button = this.page.locator(selector).first();
-            if (await button.count() > 0) {
+            if (await button.count() > 0 && await button.isVisible().catch(() => false)) {
                 await button.click();
                 this.logger.info({ message: `Clicked chat button (${selector}).` });
+                clicked = true;
                 break;
             }
+        }
+
+        if (!clicked) {
+            // Self-diagnosis: list every visible button so the log tells us
+            // what this Teams version actually calls the chat button.
+            const buttons = await this.page.locator('button').evaluateAll((els) =>
+                els
+                    .filter((el) => (el as HTMLElement).offsetParent !== null)
+                    .map((el) => ({
+                        id: el.id || undefined,
+                        ariaLabel: el.getAttribute('aria-label') || undefined,
+                        dataTid: el.getAttribute('data-tid') || undefined,
+                        title: el.getAttribute('title') || undefined,
+                        text: (el.textContent || '').trim().slice(0, 40) || undefined,
+                    }))
+            );
+            this.logger.warn({ message: 'Chat button not found. Visible buttons on the page:', data: buttons });
         }
 
         await this._composeBox().waitFor({ state: 'visible', timeout: 15000 });
