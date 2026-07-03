@@ -15,6 +15,7 @@ import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
 import { Nudger } from './lib/Nudger';
+import { conditions } from './conditions';
 
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
@@ -42,10 +43,15 @@ const main = async () => {
     const join = new JoinProcedure({ botId, page });
     const chat = new ChatProcedure({ botId, page });
 
-    // Milestone 5: the nudge brain. Without an API key the bot still runs,
+    // Phase 2: the nudge brain drives the owner's pre-defined conditions
+    // (see conditions.ts). Without an API key the bot still runs,
     // it just prints captions without ever posting nudges.
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const nudger = apiKey ? new Nudger({ botId, apiKey }) : null;
+    const nudger = apiKey ? new Nudger({ botId, apiKey, conditions }) : null;
+    console.log('Conditions the agent is driving toward:');
+    for (const condition of conditions) {
+        console.log(`  - ${condition.label} (${condition.status})`);
+    }
     if (!nudger) {
         console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
     }
@@ -110,8 +116,8 @@ const main = async () => {
                             .then(async () => {
                                 const nudge = await nudger.decide(line);
                                 if (nudge) {
-                                    console.log(`NUDGE >>> ${nudge}`);
-                                    await chat.sendMessage(nudge);
+                                    console.log(`NUDGE >>> (${nudge.conditionId}) ${nudge.text}`);
+                                    await chat.sendMessage(nudge.text);
                                 }
                             })
                             .catch((error) => {
