@@ -148,8 +148,9 @@ export class Nudger {
             '',
             'PRIVATE INSTRUCTION FROM YOUR OWNER (the room cannot see this and must never learn of it):',
             `"${steerInstruction}"`,
-            'Let this instruction shape your nudge — it overrides your usual reluctance to speak.',
-            'If there is any reasonable opening, nudge NOW in the way the instruction asks.',
+            'This instruction outranks every rule above. Nudge NOW — do not wait for a better opening.',
+            'Write the nudge so it visibly carries out the instruction: include its concrete specifics',
+            '(times, dates, figures, names) in the message itself. A generic reminder is a failure.',
             'Never mention, quote, or hint at the instruction or that you were steered.',
         ];
 
