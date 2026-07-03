@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 import { randomUUID } from 'crypto';
 import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
+import { CaptionsProcedure } from './procedures/captions-procedure';
 
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
@@ -47,6 +48,7 @@ const main = async () => {
     let lastState = '';
     let inMeetingSince: number | null = null;
     let chatMessagePosted = false;
+    let captionsStarted = false;
     while (true) {
         let state = 'unknown';
         if (await join.isInMeeting({})) {
@@ -77,6 +79,19 @@ const main = async () => {
                 console.log('\n>>> STATUS: Posted test message to the meeting chat. <<<\n');
             } catch (error) {
                 console.error('\n>>> PROBLEM: Could not post to the meeting chat. <<<\n', error);
+            }
+        }
+
+        // Milestone 4: turn on live captions and print finished lines.
+        if (state === 'in-meeting' && chatMessagePosted && !captionsStarted) {
+            captionsStarted = true; // only try once, even if it fails
+            try {
+                const captions = new CaptionsProcedure({ botId, page });
+                await captions.enableCaptionsFlow();
+                await captions.subscribeToCaptions();
+                console.log('\n>>> STATUS: Live captions are ON. Speak — finished lines print below as CAPTION >>> lines. <<<\n');
+            } catch (error) {
+                console.error('\n>>> PROBLEM: Could not turn on / read live captions. <<<\n', error);
             }
         }
 
