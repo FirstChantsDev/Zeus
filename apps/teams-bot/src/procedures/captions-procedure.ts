@@ -59,6 +59,14 @@ export class CaptionsProcedure {
     private lines = new Map<string, { speaker: string; text: string; lastChanged: number; emitted: boolean }>();
     private sweepTimer: NodeJS.Timeout | null = null;
 
+    /** Last line actually printed per speaker, to suppress stale re-prints */
+    private lastEmittedBySpeaker = new Map<string, { norm: string; at: number }>();
+
+    /** Normalize text for comparisons: lowercase, no punctuation, single spaces */
+    private static _normalize(text: string) {
+        return text.toLowerCase().replace(/[.,!?'"~-]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
     constructor(args: { botId: string, page: Page, onFinishedLine?: (line: FinishedCaptionLine) => void }) {
         this.page = args.page;
         this.onFinishedLine = args.onFinishedLine;
@@ -265,6 +273,7 @@ export class CaptionsProcedure {
             return; // no actual change
         }
 
+        const isNewRow = !existing;
         this.lines.set(update.id, {
             speaker: update.speaker,
             text: update.text,
@@ -272,10 +281,22 @@ export class CaptionsProcedure {
             emitted: false,
         });
 
-        // A newer row means every older row is done talking — finish them now.
-        for (const [id, line] of this.lines) {
-            if (Number(id) < Number(update.id) && !line.emitted) {
-                this._emit(id, line);
+        // A brand-new row means older rows are done talking. But Teams sometimes
+        // REPLACES a row mid-sentence: the new row carries the same sentence,
+        // just longer. In that case the old row is a stale stub of this one —
+        // absorb it silently instead of printing a fragment.
+        if (isNewRow) {
+            const newNorm = CaptionsProcedure._normalize(update.text);
+            for (const [id, line] of this.lines) {
+                if (id === update.id || line.emitted || Number(id) >= Number(update.id)) {
+                    continue;
+                }
+                const oldNorm = CaptionsProcedure._normalize(line.text);
+                if (line.speaker === update.speaker && oldNorm && newNorm.startsWith(oldNorm)) {
+                    line.emitted = true; // absorbed into the newer, fuller row
+                } else {
+                    this._emit(id, line);
+                }
             }
         }
     }
@@ -291,6 +312,16 @@ export class CaptionsProcedure {
 
     private _emit(id: string, line: { speaker: string; text: string; lastChanged: number; emitted: boolean }) {
         line.emitted = true;
+
+        // Skip stale snapshots: if this speaker's last printed line already
+        // contains this text (same or shorter), printing it again adds nothing.
+        const norm = CaptionsProcedure._normalize(line.text);
+        const last = this.lastEmittedBySpeaker.get(line.speaker);
+        if (last && Date.now() - last.at < 30000 && (last.norm === norm || last.norm.startsWith(norm))) {
+            return;
+        }
+        this.lastEmittedBySpeaker.set(line.speaker, { norm, at: Date.now() });
+
         const finished: FinishedCaptionLine = {
             speaker: line.speaker,
             text: line.text,
