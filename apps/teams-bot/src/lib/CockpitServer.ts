@@ -33,9 +33,10 @@ export type TranscriptRecord = {
 /** One nudge the agent posted to the meeting chat */
 export type NudgeRecord = {
     text: string;
-    conditionId: string;
+    /** The condition it pushes on — null for a pure owner directive */
+    conditionId: string | null;
     at: string;
-    /** true if the owner's private steer shaped this nudge */
+    /** true if the owner's private steer produced this message */
     steered: boolean;
 };
 
@@ -47,17 +48,17 @@ export class CockpitServer {
     private readonly port: number;
     private readonly logger: Logger;
     private readonly startedAt = new Date().toISOString();
+    /** Called with the owner's instruction the moment POST /command receives one */
+    private readonly onCommand: (instruction: string) => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
 
-    /** The owner's private instruction, waiting to shape the agent's next nudge */
-    private steerInstruction: string | null = null;
-
-    constructor(args: { botId: string, conditions: Condition[], port: number }) {
+    constructor(args: { botId: string, conditions: Condition[], port: number, onCommand: (instruction: string) => void }) {
         this.conditions = args.conditions;
         this.port = args.port;
+        this.onCommand = args.onCommand;
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
     }
 
@@ -78,7 +79,7 @@ export class CockpitServer {
     }
 
     /** Records a nudge the agent fired */
-    public addNudge(nudge: { text: string, conditionId: string, steered?: boolean }) {
+    public addNudge(nudge: { text: string, conditionId: string | null, steered?: boolean }) {
         this.nudges.push({
             text: nudge.text,
             conditionId: nudge.conditionId,
@@ -87,14 +88,9 @@ export class CockpitServer {
         });
     }
 
-    /** The pending steer instruction, if the owner has typed one */
-    public peekSteer(): string | null {
-        return this.steerInstruction;
-    }
-
-    /** Called once a steer has shaped a nudge — it applies only once */
-    public consumeSteer() {
-        this.steerInstruction = null;
+    /** The last few transcript lines — context for steer execution */
+    public recentTranscript(count: number): TranscriptRecord[] {
+        return this.transcript.slice(-count);
     }
 
     /** Lets the cockpit header show where the agent is (lobby / in meeting) */
@@ -147,8 +143,8 @@ export class CockpitServer {
                     res.end(JSON.stringify({ ok: false, error: 'instruction required' }));
                     return;
                 }
-                this.steerInstruction = instruction;
                 console.log(`STEER >>> ${instruction}`);
+                this.onCommand(instruction); // acted on immediately; the feed shows the result
                 res.writeHead(200, { 'content-type': 'application/json' });
                 res.end(JSON.stringify({ ok: true }));
             } catch {
@@ -182,13 +178,18 @@ export class CockpitServer {
     /** Assembles the JSON snapshot the cockpit page polls */
     private _buildState() {
         // Work out each nudge's fate from current condition state:
+        //   sent    — a pure owner directive, not tied to any condition
         //   landed  — the condition it pushed on is now closed
         //   ignored — still open AND the agent has since nudged it again
         //   waiting — still open, this is the latest nudge about it
         const nudgesWithStatus = this.nudges.map((nudge, index) => {
-            const condition = this.conditions.find((c) => c.id === nudge.conditionId);
-            let status: 'landed' | 'ignored' | 'waiting';
-            if (condition?.status === 'closed') {
+            const condition = nudge.conditionId === null
+                ? undefined
+                : this.conditions.find((c) => c.id === nudge.conditionId);
+            let status: 'sent' | 'landed' | 'ignored' | 'waiting';
+            if (nudge.conditionId === null) {
+                status = 'sent';
+            } else if (condition?.status === 'closed') {
                 status = 'landed';
             } else if (this.nudges.some((other, otherIndex) => otherIndex > index && other.conditionId === nudge.conditionId)) {
                 status = 'ignored';
@@ -197,7 +198,7 @@ export class CockpitServer {
             }
             return {
                 ...nudge,
-                conditionLabel: condition?.label ?? nudge.conditionId,
+                conditionLabel: condition?.label ?? 'your steer',
                 status,
             };
         }).reverse(); // newest first, ready for the feed
@@ -208,7 +209,6 @@ export class CockpitServer {
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,
-            steerPending: this.steerInstruction !== null,
         };
     }
 }

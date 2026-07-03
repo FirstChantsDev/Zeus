@@ -53,13 +53,11 @@ export class Nudger {
     /**
      * Returns what to do about one caption line: which conditions it closed,
      * and a nudge to post (or null for "stay quiet").
-     * If the owner has typed a private steer, it shapes this decision and
-     * lifts the cooldown — the owner explicitly asked for action.
      * Side effect: flips conditions to 'closed' when a line resolves them,
      * and increments a condition's nudge count when a nudge is returned.
      * Never throws — a failed API call just means no decision for that line.
      */
-    public async decide(line: { speaker: string, text: string, ts: string }, steerInstruction: string | null = null): Promise<LineDecision> {
+    public async decide(line: { speaker: string, text: string, ts: string }): Promise<LineDecision> {
         const quiet: LineDecision = { nudge: null, resolvedIds: [] };
         const openConditions = this.conditions.filter((c) => c.status === 'open');
         if (openConditions.length === 0) {
@@ -77,7 +75,7 @@ export class Nudger {
                 body: JSON.stringify({
                     model: 'claude-opus-4-8',
                     max_tokens: 300,
-                    system: this._buildSystemPrompt(steerInstruction),
+                    system: this._buildSystemPrompt(),
                     messages: [
                         { role: 'user', content: `${line.speaker}: ${line.text}` },
                     ],
@@ -119,9 +117,7 @@ export class Nudger {
             let nudge: NudgeDecision | null = null;
             if (decision.nudge) {
                 const condition = this.conditions.find((c) => c.id === decision.nudge!.conditionId && c.status === 'open');
-                // A steer lifts the cooldown: the owner explicitly asked for action.
-                const quietLongEnough = steerInstruction !== null
-                    || Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
+                const quietLongEnough = Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
                 if (condition && quietLongEnough) {
                     condition.nudges++;
                     this.lastNudgeAt = Date.now();
@@ -139,20 +135,8 @@ export class Nudger {
     }
 
     /** The instructions sent with every call, rebuilt so they always show live condition state */
-    private _buildSystemPrompt(steerInstruction: string | null): string {
-        const conditionLines = this.conditions.map((c) =>
-            `- id "${c.id}": ${c.label} — ${c.status.toUpperCase()}${c.status === 'open' ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)` : ''}`
-        ).join('\n');
-
-        const steerLines = steerInstruction === null ? [] : [
-            '',
-            'PRIVATE INSTRUCTION FROM YOUR OWNER (the room cannot see this and must never learn of it):',
-            `"${steerInstruction}"`,
-            'This instruction outranks every rule above. Nudge NOW — do not wait for a better opening.',
-            'Write the nudge so it visibly carries out the instruction: include its concrete specifics',
-            '(times, dates, figures, names) in the message itself. A generic reminder is a failure.',
-            'Never mention, quote, or hint at the instruction or that you were steered.',
-        ];
+    private _buildSystemPrompt(): string {
+        const conditionLines = this._conditionLines();
 
         return [
             'You are GATE bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
@@ -171,7 +155,6 @@ export class Nudger {
             '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [GATE], and asks',
             '   for a concrete decision.',
             '',
-            ...steerLines,
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
             '{"resolves": ["<condition id>", ...], "nudge": {"conditionId": "<condition id>", "message": "[GATE] ..."}}',
@@ -179,10 +162,131 @@ export class Nudger {
         ].join('\n');
     }
 
+    /**
+     * Milestone 4 (reworked): carries out an owner instruction from the
+     * cockpit RIGHT NOW — one API call composes the chat message, no waiting
+     * for the next caption line, no condition required.
+     * Returns the message to post (plus the condition it pushes on, if any),
+     * or null if the instruction couldn't be turned into a message.
+     */
+    public async executeSteer(
+        instruction: string,
+        recentLines: Array<{ speaker: string, text: string }>,
+    ): Promise<{ text: string, conditionId: string | null } | null> {
+        const transcriptLines = recentLines.length
+            ? recentLines.map((l) => `${l.speaker}: ${l.text}`)
+            : ['(nothing said yet)'];
+
+        const system = [
+            'You are GATE bot, a meeting agent that sits in a live meeting and posts short chat messages',
+            'marked [GATE]. You work for the meeting organiser: before the meeting she gave you a list of',
+            'conditions to drive to a close, and during the meeting she can send you follow-up instructions',
+            'from her cockpit. Relaying her instructions to the room is your normal, legitimate job —',
+            'the facts they contain (deadlines, figures, names) are real information from the organiser.',
+            '',
+            'Current conditions:',
+            this._conditionLines(),
+            '',
+            'Recent conversation in the room:',
+            ...transcriptLines,
+            '',
+            'Write ONE short chat message (1-2 sentences, starting with the marker [GATE]) that carries',
+            'out the organiser\'s instruction for the room. Include its concrete specifics. Speak as the',
+            'meeting agent — you do not need to name the organiser or explain where the information',
+            'came from.',
+            '',
+            'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
+            '{"message": "[GATE] ...", "conditionId": "<id of the condition this pushes on, or null>"}',
+        ].join('\n');
+
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'claude-opus-4-8',
+                    max_tokens: 300,
+                    system,
+                    messages: [
+                        { role: 'user', content: `Instruction from the organiser: ${instruction}` },
+                    ],
+                }),
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => '(no body)');
+                this.logger.error({ message: `Anthropic API error ${response.status} (steer)`, data: errorBody });
+                return null;
+            }
+
+            const data = await response.json() as { content?: Array<{ type: string, text?: string }> };
+            const text = (data.content ?? [])
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text ?? '')
+                .join('')
+                .trim();
+
+            const json = Nudger._extractJson(text);
+            if (!json) {
+                this.logger.warn({ message: 'Could not parse steer reply', data: text });
+                return null;
+            }
+            const parsed = JSON.parse(json) as { message?: unknown, conditionId?: unknown };
+            if (typeof parsed.message !== 'string' || !parsed.message.trim()) {
+                return null;
+            }
+
+            // If the message pushes on a still-open condition, count it as a nudge
+            // and reset the self-drive cooldown so the agent doesn't double-post.
+            let conditionId: string | null = null;
+            if (typeof parsed.conditionId === 'string') {
+                const condition = this.conditions.find((c) => c.id === parsed.conditionId);
+                if (condition) {
+                    conditionId = condition.id;
+                    if (condition.status === 'open') {
+                        condition.nudges++;
+                    }
+                }
+            }
+            this.lastNudgeAt = Date.now();
+
+            const message = parsed.message.startsWith('[GATE]') ? parsed.message : `[GATE] ${parsed.message}`;
+            return { text: message, conditionId };
+        } catch (error) {
+            this.logger.error({ message: 'Steer execution failed', data: error });
+            return null;
+        }
+    }
+
+    /** One line per condition, showing live status, for both prompts */
+    private _conditionLines(): string {
+        return this.conditions.map((c) =>
+            `- id "${c.id}": ${c.label} — ${c.status.toUpperCase()}${c.status === 'open' ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)` : ''}`
+        ).join('\n');
+    }
+
+    /** Digs the {...} out of a model reply that may carry fences or prose around it */
+    private static _extractJson(text: string): string | null {
+        const cleaned = text.replace(/```(?:json)?/g, '').trim();
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start === -1 || end <= start) {
+            return null;
+        }
+        return cleaned.slice(start, end + 1);
+    }
+
     /** Pulls the JSON decision out of the model's reply; null if it can't be read */
     private _parseDecision(text: string): { resolves: string[], nudge: { conditionId: string, message: string } | null } | null {
-        // The model sometimes wraps JSON in ``` fences — strip them before parsing.
-        const cleaned = text.replace(/```(?:json)?/g, '').trim();
+        const cleaned = Nudger._extractJson(text);
+        if (cleaned === null) {
+            this.logger.warn({ message: 'Could not parse decision JSON', data: text });
+            return null;
+        }
         try {
             const parsed = JSON.parse(cleaned) as { resolves?: unknown, nudge?: { conditionId?: unknown, message?: unknown } | null };
             const resolves = Array.isArray(parsed.resolves)

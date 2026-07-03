@@ -56,16 +56,45 @@ const main = async () => {
     for (const condition of conditions) {
         console.log(`  - ${condition.label} (${condition.status})`);
     }
-
-    // Milestone 2: the owner's private cockpit — a tiny web server inside
-    // this same process, serving the live board at http://localhost:4300.
-    const cockpit = new CockpitServer({ botId, conditions, port: COCKPIT_PORT });
-    cockpit.start();
     if (!nudger) {
         console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
     }
-    // Process nudges one at a time, in caption order.
+
+    // Everything the agent says — self-driven nudges and owner steers alike —
+    // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
+
+    // Milestone 2: the owner's private cockpit — a tiny web server inside
+    // this same process, serving the live board at http://localhost:4300.
+    // Milestone 4: a steer typed there is carried out immediately — the agent
+    // composes the message and posts it, no waiting for the next caption.
+    const cockpit: CockpitServer = new CockpitServer({
+        botId,
+        conditions,
+        port: COCKPIT_PORT,
+        onCommand: (instruction) => {
+            if (!nudger) {
+                console.log('STEER ignored — no ANTHROPIC_API_KEY, the agent cannot compose messages.');
+                return;
+            }
+            // Share the nudge queue so a steer never talks over a nudge in flight.
+            nudgeQueue = nudgeQueue
+                .then(async () => {
+                    const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10));
+                    if (!directive) {
+                        console.log('STEER >>> could not be turned into a message (see log above).');
+                        return;
+                    }
+                    console.log(`STEERED MESSAGE >>> ${directive.text}`);
+                    cockpit.addNudge({ text: directive.text, conditionId: directive.conditionId, steered: true });
+                    await chat.sendMessage(directive.text);
+                })
+                .catch((error) => {
+                    console.error('Steer pipeline error:', error);
+                });
+        },
+    });
+    cockpit.start();
 
     console.log('\n=== GATE bot: opening the meeting link... ===\n');
     await join.startMeetingLauncherFlow({ meetingUrl });
@@ -128,23 +157,13 @@ const main = async () => {
                         }
                         nudgeQueue = nudgeQueue
                             .then(async () => {
-                                // Milestone 4: a private steer from the cockpit shapes
-                                // this decision, then is spent once a nudge fires.
-                                const steerInstruction = cockpit.peekSteer();
-                                const decision = await nudger.decide(line, steerInstruction);
+                                const decision = await nudger.decide(line);
                                 if (decision.resolvedIds.length > 0) {
                                     transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
                                 }
                                 if (decision.nudge) {
                                     console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
-                                    cockpit.addNudge({
-                                        text: decision.nudge.text,
-                                        conditionId: decision.nudge.conditionId,
-                                        steered: steerInstruction !== null,
-                                    });
-                                    if (steerInstruction !== null) {
-                                        cockpit.consumeSteer();
-                                    }
+                                    cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
                                     await chat.sendMessage(decision.nudge.text);
                                 }
                             })
