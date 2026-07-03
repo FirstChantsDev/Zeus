@@ -43,11 +43,18 @@ export class Nudger {
     private readonly logger: Logger;
     private readonly conditions: Condition[];
     private lastNudgeAt = 0;
+    /** Optional background from the briefing screen, e.g. "Maya holds the budget" */
+    private context: string | null = null;
 
     constructor(args: { botId: string, apiKey: string, conditions: Condition[] }) {
         this.apiKey = args.apiKey;
         this.conditions = args.conditions;
         this.logger = new Logger({ source: 'nudger', botId: args.botId });
+    }
+
+    /** Extra guidance from the briefing screen, folded into every decision */
+    public setContext(context: string | null) {
+        this.context = context && context.trim() ? context.trim() : null;
     }
 
     /**
@@ -144,6 +151,7 @@ export class Nudger {
             '',
             'Current conditions:',
             conditionLines,
+            ...(this.context ? ['', `Background from your owner: ${this.context}`] : []),
             '',
             'Answer TWO questions about the new line:',
             '1. RESOLVE: does this line clearly settle any OPEN condition? Only count a clear decision made',
@@ -186,6 +194,7 @@ export class Nudger {
             '',
             'Current conditions:',
             this._conditionLines(),
+            ...(this.context ? ['', `Background from your owner: ${this.context}`] : []),
             '',
             'Recent conversation in the room:',
             ...transcriptLines,

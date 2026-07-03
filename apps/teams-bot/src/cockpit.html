@@ -37,6 +37,44 @@ button,input,textarea{font-family:inherit;}
 html,body{height:100%;background:var(--ink);color:var(--t1);font-family:var(--body);font-size:14px;}
 body{display:flex;flex-direction:column;overflow:hidden;}
 
+/* ══ BRIEFING SCREEN ══ */
+#briefing{
+  position:fixed;inset:0;z-index:100;background:var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity .6s, visibility .6s;
+}
+#briefing.gone{opacity:0;visibility:hidden;}
+.brief-card{width:min(560px,92vw);max-height:92vh;overflow-y:auto;padding:8px 4px;}
+.brief-mark{font-family:var(--head);font-weight:700;font-size:20px;letter-spacing:-.4px;margin-bottom:22px;}
+.brief-mark em{font-style:normal;color:var(--jade);}
+.brief-title{font-family:var(--head);font-weight:600;font-size:26px;letter-spacing:-.6px;line-height:1.2;margin-bottom:6px;}
+.brief-sub{font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:26px;}
+.f-label{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--t3);margin:18px 0 8px;text-transform:uppercase;}
+.f-input{
+  width:100%;background:var(--s2);border:1px solid var(--line2);border-radius:10px;
+  padding:11px 13px;color:var(--t1);font-size:13.5px;outline:none;
+}
+.f-input:focus{border-color:var(--jade-bd);}
+.f-input::placeholder{color:var(--t3);}
+.cond-inputs{display:flex;flex-direction:column;gap:8px;}
+.cond-input-row{display:flex;gap:8px;align-items:center;}
+.cond-input-row .num{font-family:var(--mono);font-size:11px;color:var(--jade);width:18px;flex:0 0 auto;}
+.cond-input-row .f-input{flex:1;}
+.cond-remove{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:8px;width:32px;height:32px;color:var(--t3);cursor:pointer;font-size:15px;line-height:1;}
+.cond-remove:hover{color:var(--red);border-color:var(--red-bd);}
+.cond-add{
+  margin-top:8px;background:none;border:1px dashed var(--line2);border-radius:10px;
+  padding:9px;width:100%;color:var(--t2);font-size:12.5px;cursor:pointer;
+}
+.cond-add:hover{border-color:var(--jade-bd);color:var(--jade);}
+.brief-go{
+  margin-top:26px;width:100%;background:var(--jade);border:none;border-radius:11px;
+  padding:13px;font-family:var(--head);font-weight:600;font-size:15px;color:#08110d;
+  cursor:pointer;letter-spacing:-.2px;
+}
+.brief-go:hover{filter:brightness(1.07);}
+.brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
+
 /* ══ HEADER ══ */
 header{
   flex:0 0 56px;display:flex;align-items:center;gap:14px;
@@ -141,6 +179,32 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 </head>
 <body>
 
+<!-- ══ BRIEFING (pre-meeting) ══ -->
+<div id="briefing">
+  <div class="brief-card">
+    <div class="brief-mark">ZEUS<em>.</em></div>
+    <div class="brief-title">Brief your agent</div>
+    <div class="brief-sub">Tell it what this meeting must produce. It will join the meeting, drive the room toward these outcomes, and only pull you in when one won't close.</div>
+
+    <div class="f-label">Meeting</div>
+    <input class="f-input" id="meetName" placeholder="e.g. Spring launch — campaign kickoff">
+
+    <div class="f-label">Conditions to close — what must be decided before this meeting ends (up to 3)</div>
+    <div class="cond-inputs" id="condInputs">
+      <div class="cond-input-row"><span class="num">1</span><input class="f-input" placeholder="e.g. Budget confirmed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">2</span><input class="f-input" placeholder="e.g. Launch date locked"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">3</span><input class="f-input" placeholder="e.g. Success metric agreed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+    </div>
+    <button class="cond-add" id="condAdd" onclick="addCond()" style="display:none">+ Add condition</button>
+
+    <div class="f-label">Context for the agent — optional</div>
+    <input class="f-input" id="meetCtx" placeholder='e.g. "Maya holds the budget. Don&#39;t let creative dominate."'>
+
+    <button class="brief-go" onclick="submitBrief()">Send agent into the meeting →</button>
+    <div class="brief-note">The agent joins as a participant once you submit. Your cockpit — and every steer you make — stays private to you.</div>
+  </div>
+</div>
+
 <!-- ══ COCKPIT (live) ══ -->
 <header>
   <div class="wordmark">ZEUS<em>.</em></div>
@@ -184,6 +248,57 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 </main>
 
 <script>
+// ══ BRIEFING ═══════════════════════════════════════════
+// The owner types 1-3 free-text conditions; POST /setup hands them to the
+// agent, which only then joins the meeting. The agent drives whatever is
+// typed here — nothing is hard-coded.
+const MAX_CONDITIONS = 3;
+function addCond(){
+  const box = document.getElementById('condInputs');
+  if(box.children.length >= MAX_CONDITIONS) return;
+  const row = document.createElement('div');
+  row.className = 'cond-input-row';
+  row.innerHTML = `<span class="num">${box.children.length+1}</span><input class="f-input" placeholder="e.g. Owner assigned for follow-ups"><button class="cond-remove" onclick="rmCond(this)">×</button>`;
+  box.appendChild(row);
+  refreshCondRows();
+}
+function rmCond(btn){
+  const box = document.getElementById('condInputs');
+  if(box.children.length <= 1) return;
+  btn.parentElement.remove();
+  refreshCondRows();
+}
+function refreshCondRows(){
+  const box = document.getElementById('condInputs');
+  [...box.children].forEach((row, i) => row.querySelector('.num').textContent = i + 1);
+  document.getElementById('condAdd').style.display = box.children.length >= MAX_CONDITIONS ? 'none' : '';
+}
+async function submitBrief(){
+  const labels = [...document.querySelectorAll('#condInputs .f-input')]
+    .map((input) => input.value.trim()).filter(Boolean);
+  if(!labels.length){ alert('Give the agent at least one condition to drive.'); return; }
+  const body = {
+    meetingName: document.getElementById('meetName').value.trim(),
+    conditions: labels,
+    context: document.getElementById('meetCtx').value.trim(),
+  };
+  try{
+    const response = await fetch('/setup', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if(response.ok){
+      document.getElementById('briefing').classList.add('gone');
+      poll(); // flip to the live board straight away
+    } else {
+      alert('The agent could not accept the briefing — is the bot running?');
+    }
+  }catch(e){
+    alert('Could not reach the agent — is the bot running?');
+  }
+}
+
 // ══ LIVE STATE ═══════════════════════════════════════════
 // The scripted demo is gone. This page now polls the bot's /state
 // endpoint every 1.5s and re-renders the three panels from real data.
@@ -197,15 +312,21 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
 
 // ══ RENDERERS (same visual output as the mock) ═══════════
 function renderHeader(state){
+  if(state.meetingName) document.getElementById('hdrMeet').textContent = state.meetingName;
   const badge = document.getElementById('liveBadge');
   const text = document.getElementById('liveText');
-  if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
+  if(!state.briefed){ badge.className='live warn'; text.textContent='AWAITING BRIEFING'; }
+  else if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
   else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
-  else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
+  else { badge.className='live warn'; text.textContent='AGENT JOINING…'; }
 }
 
 function renderConditions(conditions){
   const row = document.getElementById('condRow');
+  if(!conditions.length){
+    row.innerHTML = '<div class="feed-empty">No conditions yet — brief your agent first.</div>';
+    return;
+  }
   row.innerHTML = conditions.map((c) => {
     // Milestone 3: 2+ nudges while still open = exception. The agent has
     // pushed twice and the room keeps moving past it — Liz's cue to step in.
@@ -283,6 +404,8 @@ async function poll(){
     const response = await fetch('/state');
     const state = await response.json();
     if(!startedAt) startedAt = new Date(state.startedAt);
+    // Already briefed (e.g. the page was refreshed mid-meeting) — skip the form.
+    if(state.briefed) document.getElementById('briefing').classList.add('gone');
     renderHeader(state);
     renderConditions(state.conditions);
     renderNudges(state.nudges);

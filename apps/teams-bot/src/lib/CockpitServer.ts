@@ -50,15 +50,27 @@ export class CockpitServer {
     private readonly startedAt = new Date().toISOString();
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
+    /** Called with the owner's briefing the moment POST /setup receives one */
+    private readonly onSetup: (setup: { meetingName: string | null, conditionLabels: string[], context: string }) => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
+    /** false until the owner submits the briefing screen */
+    private briefed = false;
+    private meetingName: string | null = null;
 
-    constructor(args: { botId: string, conditions: Condition[], port: number, onCommand: (instruction: string) => void }) {
+    constructor(args: {
+        botId: string,
+        conditions: Condition[],
+        port: number,
+        onCommand: (instruction: string) => void,
+        onSetup: (setup: { meetingName: string | null, conditionLabels: string[], context: string }) => void,
+    }) {
         this.conditions = args.conditions;
         this.port = args.port;
         this.onCommand = args.onCommand;
+        this.onSetup = args.onSetup;
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
     }
 
@@ -114,6 +126,8 @@ export class CockpitServer {
                 res.end(JSON.stringify(this._buildState()));
             } else if (url === '/command' && req.method === 'POST') {
                 this._handleCommand(req, res);
+            } else if (url === '/setup' && req.method === 'POST') {
+                this._handleSetup(req, res);
             } else {
                 res.writeHead(404, { 'content-type': 'text/plain' });
                 res.end('Not found');
@@ -127,6 +141,38 @@ export class CockpitServer {
 
         server.listen(this.port, () => {
             console.log(`\n>>> COCKPIT: open http://localhost:${this.port} in your browser <<<\n`);
+        });
+    }
+
+    /** Receives the briefing: POST /setup with {"meetingName": "...", "conditions": ["...", ...], "context": "..."} */
+    private _handleSetup(req: http.IncomingMessage, res: http.ServerResponse) {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown };
+                const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
+                    .filter((label): label is string => typeof label === 'string')
+                    .map((label) => label.trim())
+                    .filter(Boolean)
+                    .slice(0, 3); // the board is built for at most three
+                if (labels.length === 0) {
+                    res.writeHead(400, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'at least one condition required' }));
+                    return;
+                }
+                this.meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim()) ? parsed.meetingName.trim() : null;
+                const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
+                this.nudges.length = 0; // a new brief starts a fresh activity feed
+                this.briefed = true;
+                console.log(`BRIEFING >>> ${labels.join(' | ')}${context ? ` (context: ${context})` : ''}`);
+                this.onSetup({ meetingName: this.meetingName, conditionLabels: labels, context });
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch {
+                res.writeHead(400, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'body must be JSON' }));
+            }
         });
     }
 
@@ -205,6 +251,8 @@ export class CockpitServer {
 
         return {
             startedAt: this.startedAt,
+            briefed: this.briefed,
+            meetingName: this.meetingName,
             meetingStatus: this.meetingStatus,
             conditions: this.conditions,
             nudges: nudgesWithStatus,

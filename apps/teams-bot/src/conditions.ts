@@ -1,29 +1,21 @@
 /**
  * ═══════════════════════════════════════════════════════════════════
- *  EDIT ME — this is the agent's meeting brief.
+ *  The agent's meeting brief — set from the briefing screen.
  *
- *  These are the outcomes the agent drives the meeting toward. It will
- *  listen for each one being settled, and nudge the room when one is
- *  being ignored. To change the brief, edit the lines below:
- *
- *    - label:  the goal in plain English, as it appears on the cockpit.
- *    - id:     a short one-word nickname (lowercase, no spaces).
- *
- *  You can add or remove lines. Always leave status: 'open' and
- *  nudges: 0 — the bot updates those itself while the meeting runs.
+ *  Phase 3: conditions are no longer hard-coded here. When the bot
+ *  starts, this list is empty; it gets filled in when the owner types
+ *  their conditions into the "Brief your agent" screen at
+ *  http://localhost:4300 and clicks "Send agent into the meeting".
+ *  The agent only joins the meeting after that happens.
  * ═══════════════════════════════════════════════════════════════════
  */
-export const conditions: Condition[] = [
-    { id: 'budget', label: 'Budget confirmed',      status: 'open', nudges: 0 },
-    { id: 'date',   label: 'Launch date locked',    status: 'open', nudges: 0 },
-    { id: 'metric', label: 'Success metric agreed', status: 'open', nudges: 0 },
-];
+export const conditions: Condition[] = [];
 
 /** One meeting outcome the agent is responsible for closing. */
 export type Condition = {
-    /** Short one-word nickname used in logs and API calls */
+    /** Short nickname used in logs and API calls (c0, c1, c2) */
     id: string;
-    /** The goal in plain English */
+    /** The goal in plain English, exactly as the owner typed it */
     label: string;
     /** 'open' until the room clearly settles it, then 'closed' */
     status: 'open' | 'closed';

@@ -52,10 +52,6 @@ const main = async () => {
     // it just prints captions without ever posting nudges.
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const nudger = apiKey ? new Nudger({ botId, apiKey, conditions }) : null;
-    console.log('Conditions the agent is driving toward:');
-    for (const condition of conditions) {
-        console.log(`  - ${condition.label} (${condition.status})`);
-    }
     if (!nudger) {
         console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
     }
@@ -63,6 +59,11 @@ const main = async () => {
     // Everything the agent says — self-driven nudges and owner steers alike —
     // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
+
+    // Phase 3: the agent joins the meeting only after the owner submits the
+    // briefing screen. This promise is the doorway it waits behind.
+    let briefingDone!: () => void;
+    const briefingReceived = new Promise<void>((resolve) => { briefingDone = resolve; });
 
     // Milestone 2: the owner's private cockpit — a tiny web server inside
     // this same process, serving the live board at http://localhost:4300.
@@ -93,8 +94,25 @@ const main = async () => {
                     console.error('Steer pipeline error:', error);
                 });
         },
+        onSetup: ({ conditionLabels, context }) => {
+            // Rebuild the shared conditions array in place — the Nudger and the
+            // cockpit both hold references to this same array.
+            conditions.length = 0;
+            conditionLabels.forEach((label, index) => {
+                conditions.push({ id: `c${index}`, label, status: 'open', nudges: 0 });
+            });
+            nudger?.setContext(context || null);
+            console.log('Conditions the agent is driving toward:');
+            for (const condition of conditions) {
+                console.log(`  - ${condition.label}`);
+            }
+            briefingDone(); // opens the doorway below
+        },
     });
     cockpit.start();
+
+    console.log('\n=== Zeus bot: waiting for your briefing at http://localhost:4300 — it joins the meeting once you submit it. ===\n');
+    await briefingReceived;
 
     console.log('\n=== GATE bot: opening the meeting link... ===\n');
     await join.startMeetingLauncherFlow({ meetingUrl });
