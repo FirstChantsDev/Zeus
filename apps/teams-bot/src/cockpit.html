@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GATE — Command Centre</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+button,input,textarea{font-family:inherit;}
+
+:root{
+  --ink:#0d1210;
+  --s1:#131a17;
+  --s2:#1a231f;
+  --s3:#223029;
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(255,255,255,.13);
+  --t1:#eef4f0;
+  --t2:#8fa39a;
+  --t3:#57685f;
+  --jade:#43c293;
+  --jade-bg:rgba(67,194,147,.10);
+  --jade-bd:rgba(67,194,147,.32);
+  --amber:#e8a24a;
+  --amber-bg:rgba(232,162,74,.10);
+  --amber-bd:rgba(232,162,74,.32);
+  --red:#e86a5e;
+  --red-bg:rgba(232,106,94,.10);
+  --red-bd:rgba(232,106,94,.38);
+  --head:'Bricolage Grotesque',sans-serif;
+  --body:'Inter',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  --r:12px;
+}
+
+html,body{height:100%;background:var(--ink);color:var(--t1);font-family:var(--body);font-size:14px;}
+body{display:flex;flex-direction:column;overflow:hidden;}
+
+/* ══ HEADER ══ */
+header{
+  flex:0 0 56px;display:flex;align-items:center;gap:14px;
+  padding:0 22px;border-bottom:1px solid var(--line);
+}
+.wordmark{font-family:var(--head);font-weight:700;font-size:17px;letter-spacing:-.4px;}
+.wordmark em{font-style:normal;color:var(--jade);}
+.meeting{display:flex;align-items:center;gap:9px;margin-left:8px;padding-left:16px;border-left:1px solid var(--line2);}
+.meeting-name{font-size:13px;font-weight:500;color:var(--t2);}
+.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--jade);letter-spacing:.5px;}
+.live.warn{color:var(--amber);}
+.live.bad{color:var(--red);}
+.live-dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pulse 1.6s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.45;transform:scale(.8);}}
+.clock{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--t3);}
+.owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
+.owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
+
+/* ══ LAYOUT ══ */
+main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:auto 1fr;gap:14px;padding:16px 22px 18px;min-height:0;}
+.panel{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;}
+.panel-head{flex:0 0 auto;display:flex;align-items:baseline;gap:10px;padding:13px 16px 10px;}
+.panel-title{font-family:var(--head);font-weight:600;font-size:14px;letter-spacing:-.2px;}
+.panel-sub{font-size:11.5px;color:var(--t3);}
+
+/* ══ CONDITIONS ══ */
+#conditions{grid-column:1 / -1;}
+.cond-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:4px 16px 16px;}
+.cond{
+  border-radius:var(--r);border:1px solid var(--line2);background:var(--s2);
+  padding:14px 15px 13px;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .5s, background .5s;
+}
+.cond-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cond-label{font-family:var(--head);font-weight:600;font-size:14.5px;letter-spacing:-.2px;}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;}
+.cond-meta{font-size:12px;color:var(--t2);line-height:1.45;min-height:34px;}
+.cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t3);}
+.cond.open{border-color:var(--amber-bd);background:linear-gradient(180deg,var(--amber-bg),var(--s2) 70%);}
+.cond.open .badge{color:var(--amber);border-color:var(--amber-bd);}
+.cond.closed{border-color:var(--jade-bd);background:linear-gradient(180deg,var(--jade-bg),var(--s2) 70%);}
+.cond.closed .badge{color:var(--jade);border-color:var(--jade-bd);}
+.cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
+.cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(232,106,94,0);}50%{box-shadow:0 0 0 5px rgba(232,106,94,.08);}}
+
+/* ══ NUDGE FEED ══ */
+.feed{flex:1;overflow-y:auto;padding:2px 16px 14px;display:flex;flex-direction:column;gap:9px;}
+.nudge{border:1px solid var(--line);background:var(--s2);border-radius:10px;padding:10px 12px;}
+.nudge-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.nudge-tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--jade);}
+.nudge-cond{font-size:11px;color:var(--t3);}
+.nudge-status{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.5px;}
+.nudge-status.landed{color:var(--jade);}
+.nudge-status.waiting{color:var(--amber);}
+.nudge-status.ignored{color:var(--red);}
+.nudge-text{font-size:12.5px;line-height:1.5;color:var(--t1);}
+.nudge.steered{border-color:var(--jade-bd);}
+.steer-note{font-family:var(--mono);font-size:10px;color:var(--jade);margin-top:6px;}
+.feed-empty{font-size:12px;color:var(--t3);padding:8px 2px;}
+
+/* ══ TRANSCRIPT ══ */
+.transcript{flex:1;overflow-y:auto;padding:2px 16px 12px;display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:12px;line-height:1.55;}
+.tline{color:var(--t2);}
+.tline .spk{color:var(--t1);font-weight:500;}
+.tline.hit{color:var(--jade);}
+.tline.hit .spk{color:var(--jade);}
+
+/* ══ STEERING ══ */
+#nudges{grid-row:2;}
+.right-col{grid-row:2;display:flex;flex-direction:column;gap:14px;min-height:0;}
+.steer-bar{flex:0 0 auto;display:flex;gap:8px;padding:12px 16px 14px;border-top:1px solid var(--line);}
+.steer-bar input{
+  flex:1;background:var(--s2);border:1px solid var(--line2);border-radius:9px;
+  padding:9px 12px;color:var(--t1);font-size:12.5px;outline:none;
+}
+.steer-bar input:focus{border-color:var(--jade-bd);}
+.steer-bar input::placeholder{color:var(--t3);}
+.steer-bar button{
+  background:var(--jade);border:none;border-radius:9px;padding:0 16px;
+  font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;
+}
+.steer-bar input:disabled{opacity:.45;}
+.steer-bar button:disabled{opacity:.45;cursor:not-allowed;}
+.steer-hint{font-size:11px;color:var(--t3);padding:0 16px 12px;}
+
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:var(--s3);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+@media (max-width:860px){
+  main{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;overflow-y:auto;}
+  #conditions{grid-column:1;}
+  .right-col{grid-row:auto;}
+  #nudges{grid-row:auto;}
+}
+@media (prefers-reduced-motion:reduce){
+  .live-dot,.cond.exception{animation:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ COCKPIT (live) ══ -->
+<header>
+  <div class="wordmark">GATE<em>.</em></div>
+  <div class="meeting">
+    <span class="meeting-name" id="hdrMeet">Live Teams meeting</span>
+    <span class="live" id="liveBadge"><span class="live-dot"></span><span id="liveText">CONNECTING…</span></span>
+  </div>
+  <div class="clock" id="clock">00:00</div>
+  <div class="owner"><span>Liz's cockpit</span><span class="owner-chip">L</span></div>
+</header>
+
+<main>
+  <section class="panel" id="conditions">
+    <div class="panel-head">
+      <span class="panel-title">Conditions to close</span>
+      <span class="panel-sub">Set by you before the call. The agent drives these — you step in only when one turns red.</span>
+    </div>
+    <div class="cond-row" id="condRow"></div>
+  </section>
+
+  <section class="panel" id="nudges">
+    <div class="panel-head">
+      <span class="panel-title">Agent activity</span>
+      <span class="panel-sub">What it said in the room, and whether it landed</span>
+    </div>
+    <div class="feed" id="feed"><div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div></div>
+    <div class="steer-hint" id="steerHint">Steer the agent privately — the room never sees this.</div>
+    <div class="steer-bar">
+      <input id="steerInput" type="text" disabled placeholder="Steering arrives in Milestone 4">
+      <button id="steerBtn" disabled>Steer agent</button>
+    </div>
+  </section>
+
+  <section class="panel right-col" id="transcriptPanel">
+    <div class="panel-head">
+      <span class="panel-title">Live transcript</span>
+      <span class="panel-sub">Cleaned captions, one line per sentence</span>
+    </div>
+    <div class="transcript" id="transcript"></div>
+  </section>
+</main>
+
+<script>
+// ══ LIVE STATE ═══════════════════════════════════════════
+// The scripted demo is gone. This page now polls the bot's /state
+// endpoint every 1.5s and re-renders the three panels from real data.
+const POLL_MS = 1500;
+let startedAt = null; // set from the first /state answer; drives the clock
+
+// Escape anything that came out of the meeting before putting it in HTML.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+));
+
+// ══ RENDERERS (same visual output as the mock) ═══════════
+function renderHeader(state){
+  const badge = document.getElementById('liveBadge');
+  const text = document.getElementById('liveText');
+  if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
+  else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
+  else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
+}
+
+function renderConditions(conditions){
+  const row = document.getElementById('condRow');
+  row.innerHTML = conditions.map((c) => {
+    // Milestone 3 will add the red 'exception' state here.
+    const status = c.status === 'closed' ? 'closed' : 'open';
+    const badge = status === 'closed' ? 'CLOSED' : 'OPEN';
+    const meta = c.status === 'closed'
+      ? (c.note || 'Settled in the room.')
+      : (c.nudges > 0 ? 'Agent has raised it — waiting on the room.' : 'Not yet raised in the room.');
+    return `<div class="cond ${status}">
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span></div>
+      <div class="cond-meta">${esc(meta)}</div>
+      <div class="cond-foot">nudges: ${c.nudges}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderNudges(nudges){
+  const feed = document.getElementById('feed');
+  if(!nudges.length){
+    feed.innerHTML = '<div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div>';
+    return;
+  }
+  // Server already sends newest first.
+  feed.innerHTML = nudges.map((n) => `<div class="nudge">
+    <div class="nudge-head"><span class="nudge-tag">[GATE]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
+    <div class="nudge-text">${esc(n.text)}</div>
+  </div>`).join('');
+}
+
+function renderTranscript(lines){
+  const t = document.getElementById('transcript');
+  // Only auto-scroll if the reader is already at the bottom.
+  const nearBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 60;
+  t.innerHTML = lines.map((l) =>
+    `<div class="tline${l.hit ? ' hit' : ''}"><span class="spk">${esc(l.speaker)}:</span> ${esc(l.text)}</div>`
+  ).join('');
+  if(nearBottom) t.scrollTop = t.scrollHeight;
+}
+
+// ══ THE POLL ══════════════════════════════════════════════
+async function poll(){
+  try{
+    const response = await fetch('/state');
+    const state = await response.json();
+    if(!startedAt) startedAt = new Date(state.startedAt);
+    renderHeader(state);
+    renderConditions(state.conditions);
+    renderNudges(state.nudges);
+    renderTranscript(state.transcript);
+  }catch(e){
+    const badge = document.getElementById('liveBadge');
+    const text = document.getElementById('liveText');
+    badge.className='live bad';
+    text.textContent='COCKPIT OFFLINE — IS THE BOT RUNNING?';
+  }
+}
+poll();
+setInterval(poll, POLL_MS);
+
+// ══ CLOCK ═════════════════════════════════════════════════
+setInterval(() => {
+  if(!startedAt) return;
+  const secs = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+  const m = String(Math.floor(secs / 60)).padStart(2, '0');
+  const s = String(secs % 60).padStart(2, '0');
+  document.getElementById('clock').textContent = `${m}:${s}`;
+}, 1000);
+</script>
+</body>
+</html>

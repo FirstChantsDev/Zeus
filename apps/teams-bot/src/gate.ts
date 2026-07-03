@@ -15,7 +15,11 @@ import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
 import { Nudger } from './lib/Nudger';
+import { CockpitServer } from './lib/CockpitServer';
 import { conditions } from './conditions';
+
+/** The cockpit's local address: http://localhost:4300 */
+const COCKPIT_PORT = 4300;
 
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
@@ -52,6 +56,11 @@ const main = async () => {
     for (const condition of conditions) {
         console.log(`  - ${condition.label} (${condition.status})`);
     }
+
+    // Milestone 2: the owner's private cockpit — a tiny web server inside
+    // this same process, serving the live board at http://localhost:4300.
+    const cockpit = new CockpitServer({ botId, conditions, port: COCKPIT_PORT });
+    cockpit.start();
     if (!nudger) {
         console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
     }
@@ -75,6 +84,9 @@ const main = async () => {
         } else if (await join.isInMeetingLobby({})) {
             state = 'lobby';
         }
+
+        // Keep the cockpit header honest about where the agent is.
+        cockpit.setMeetingStatus(state === 'in-meeting' ? 'in-meeting' : state === 'lobby' ? 'lobby' : 'unknown');
 
         if (state !== lastState) {
             if (state === 'lobby') {
@@ -107,17 +119,23 @@ const main = async () => {
                 const captions = new CaptionsProcedure({
                     botId,
                     page,
-                    // Milestone 5: every finished caption line goes to the nudge brain.
+                    // Every finished caption line goes to the cockpit's
+                    // transcript, then to the nudge brain.
                     onFinishedLine: (line) => {
+                        const transcriptRecord = cockpit.addTranscriptLine(line);
                         if (!nudger) {
                             return;
                         }
                         nudgeQueue = nudgeQueue
                             .then(async () => {
-                                const nudge = await nudger.decide(line);
-                                if (nudge) {
-                                    console.log(`NUDGE >>> (${nudge.conditionId}) ${nudge.text}`);
-                                    await chat.sendMessage(nudge.text);
+                                const decision = await nudger.decide(line);
+                                if (decision.resolvedIds.length > 0) {
+                                    transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
+                                }
+                                if (decision.nudge) {
+                                    console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
+                                    cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
+                                    await chat.sendMessage(decision.nudge.text);
                                 }
                             })
                             .catch((error) => {

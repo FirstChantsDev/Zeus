@@ -27,6 +27,14 @@ export type NudgeDecision = {
     conditionId: string;
 };
 
+/** What the brain concluded about one caption line. */
+export type LineDecision = {
+    /** A nudge to post, or null for "stay quiet" */
+    nudge: NudgeDecision | null;
+    /** Conditions this line just closed (empty most of the time) */
+    resolvedIds: string[];
+};
+
 export class Nudger {
     /** Minimum quiet time between nudges, so the agent never spams the room */
     private static readonly NUDGE_COOLDOWN_MS = 45000;
@@ -43,15 +51,17 @@ export class Nudger {
     }
 
     /**
-     * Returns a nudge to post to chat, or null for "stay quiet".
+     * Returns what to do about one caption line: which conditions it closed,
+     * and a nudge to post (or null for "stay quiet").
      * Side effect: flips conditions to 'closed' when a line resolves them,
      * and increments a condition's nudge count when a nudge is returned.
      * Never throws — a failed API call just means no decision for that line.
      */
-    public async decide(line: { speaker: string, text: string, ts: string }): Promise<NudgeDecision | null> {
+    public async decide(line: { speaker: string, text: string, ts: string }): Promise<LineDecision> {
+        const quiet: LineDecision = { nudge: null, resolvedIds: [] };
         const openConditions = this.conditions.filter((c) => c.status === 'open');
         if (openConditions.length === 0) {
-            return null; // everything the owner asked for is settled — stay quiet
+            return quiet; // everything the owner asked for is settled — stay quiet
         }
 
         try {
@@ -75,7 +85,7 @@ export class Nudger {
             if (!response.ok) {
                 const errorBody = await response.text().catch(() => '(no body)');
                 this.logger.error({ message: `Anthropic API error ${response.status}`, data: errorBody });
-                return null;
+                return quiet;
             }
 
             const data = await response.json() as { content?: Array<{ type: string, text?: string }> };
@@ -87,21 +97,24 @@ export class Nudger {
 
             const decision = this._parseDecision(text);
             if (!decision) {
-                return null;
+                return quiet;
             }
 
             // 1. Close any conditions this line resolved.
+            const resolvedIds: string[] = [];
             for (const id of decision.resolves) {
                 const condition = this.conditions.find((c) => c.id === id && c.status === 'open');
                 if (condition) {
                     condition.status = 'closed';
                     condition.note = `Settled by ${line.speaker}: "${line.text}"`;
+                    resolvedIds.push(condition.id);
                     console.log(`CONDITION CLOSED >>> ${condition.label} — ${condition.note}`);
                 }
             }
 
             // 2. Maybe nudge — but respect the cooldown, and never nudge a
             //    condition that just closed above.
+            let nudge: NudgeDecision | null = null;
             if (decision.nudge) {
                 const condition = this.conditions.find((c) => c.id === decision.nudge!.conditionId && c.status === 'open');
                 const quietLongEnough = Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
@@ -111,13 +124,13 @@ export class Nudger {
                     const message = decision.nudge.message.startsWith('[GATE]')
                         ? decision.nudge.message
                         : `[GATE] ${decision.nudge.message}`;
-                    return { text: message, conditionId: condition.id };
+                    nudge = { text: message, conditionId: condition.id };
                 }
             }
-            return null;
+            return { nudge, resolvedIds };
         } catch (error) {
             this.logger.error({ message: 'Nudge decision failed', data: error });
-            return null;
+            return quiet;
         }
     }
 

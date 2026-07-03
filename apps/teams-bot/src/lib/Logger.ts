@@ -7,6 +7,7 @@ type SourceType =
     | 'captions-procedure'
     | 'chat-procedure'
     | 'nudger'
+    | 'cockpit-server'
     | 'notifier'
     | 'bot-runner'
     | 'file-streamer';
