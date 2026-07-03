@@ -200,7 +200,10 @@ export class CaptionsProcedure {
             // Inside the page: on any change in the caption area, rescan all caption
             // rows, stamp new rows with a stable incrementing id, and report each
             // row's current speaker + text up to Node.
-            await this.page.evaluate(() => {
+            // NOTE: passed as a raw string, not a function — our TypeScript runner
+            // (tsx/esbuild) rewrites functions with helpers like __name that do not
+            // exist inside the browser page, which crashes page.evaluate.
+            await this.page.evaluate(`(() => {
                 const wrapper = document.querySelector('div[data-tid="closed-caption-renderer-wrapper"]');
                 if (!wrapper) {
                     return;
@@ -213,11 +216,13 @@ export class CaptionsProcedure {
                         if (!row.hasAttribute('data-gate-id')) {
                             row.setAttribute('data-gate-id', String(nextId++));
                         }
-                        const id = row.getAttribute('data-gate-id')!;
-                        const speaker = row.querySelector('span[data-tid="author"]')?.textContent?.trim() ?? 'Unknown';
-                        const text = (row.querySelector('span[data-tid="closed-caption-text"]') as HTMLElement | null)?.innerText?.trim() ?? '';
+                        const id = row.getAttribute('data-gate-id');
+                        const authorEl = row.querySelector('span[data-tid="author"]');
+                        const textEl = row.querySelector('span[data-tid="closed-caption-text"]');
+                        const speaker = (authorEl && authorEl.textContent) ? authorEl.textContent.trim() : 'Unknown';
+                        const text = (textEl && textEl.innerText) ? textEl.innerText.trim() : '';
                         if (text) {
-                            (window as any).gateOnCaptionUpdate({ id, speaker, text });
+                            window.gateOnCaptionUpdate({ id, speaker, text });
                         }
                     });
                 };
@@ -225,7 +230,7 @@ export class CaptionsProcedure {
                 const observer = new MutationObserver(report);
                 observer.observe(wrapper, { childList: true, subtree: true, characterData: true });
                 report();
-            });
+            })()`);
 
             // Sweep the ledger: finish lines that have gone quiet
             this.sweepTimer = setInterval(() => this._sweep(), CaptionsProcedure.SWEEP_INTERVAL_MS);
