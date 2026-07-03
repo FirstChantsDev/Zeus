@@ -206,12 +206,15 @@ function renderHeader(state){
 function renderConditions(conditions){
   const row = document.getElementById('condRow');
   row.innerHTML = conditions.map((c) => {
-    // Milestone 3 will add the red 'exception' state here.
-    const status = c.status === 'closed' ? 'closed' : 'open';
-    const badge = status === 'closed' ? 'CLOSED' : 'OPEN';
-    const meta = c.status === 'closed'
+    // Milestone 3: 2+ nudges while still open = exception. The agent has
+    // pushed twice and the room keeps moving past it — Liz's cue to step in.
+    const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
+    const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS LIZ' : 'OPEN';
+    const meta = status === 'closed'
       ? (c.note || 'Settled in the room.')
-      : (c.nudges > 0 ? 'Agent has raised it — waiting on the room.' : 'Not yet raised in the room.');
+      : status === 'exception'
+        ? (c.nudges === 2 ? 'Nudged twice — the room keeps moving past it.' : `Nudged ${c.nudges} times — the room keeps moving past it.`)
+        : (c.nudges > 0 ? 'Agent has raised it — waiting on the room.' : 'Not yet raised in the room.');
     return `<div class="cond ${status}">
       <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span></div>
       <div class="cond-meta">${esc(meta)}</div>
