@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GATE — Command Centre</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+button,input,textarea{font-family:inherit;}
+
+:root{
+  --ink:#0d1210;
+  --s1:#131a17;
+  --s2:#1a231f;
+  --s3:#223029;
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(255,255,255,.13);
+  --t1:#eef4f0;
+  --t2:#8fa39a;
+  --t3:#57685f;
+  --jade:#43c293;
+  --jade-bg:rgba(67,194,147,.10);
+  --jade-bd:rgba(67,194,147,.32);
+  --amber:#e8a24a;
+  --amber-bg:rgba(232,162,74,.10);
+  --amber-bd:rgba(232,162,74,.32);
+  --red:#e86a5e;
+  --red-bg:rgba(232,106,94,.10);
+  --red-bd:rgba(232,106,94,.38);
+  --head:'Bricolage Grotesque',sans-serif;
+  --body:'Inter',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  --r:12px;
+}
+
+html,body{height:100%;background:var(--ink);color:var(--t1);font-family:var(--body);font-size:14px;}
+body{display:flex;flex-direction:column;overflow:hidden;}
+
+/* ══ BRIEFING SCREEN ══ */
+#briefing{
+  position:fixed;inset:0;z-index:100;background:var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity .6s, visibility .6s;
+}
+#briefing.gone{opacity:0;visibility:hidden;}
+.brief-card{width:min(560px,92vw);max-height:92vh;overflow-y:auto;padding:8px 4px;}
+.brief-mark{font-family:var(--head);font-weight:700;font-size:20px;letter-spacing:-.4px;margin-bottom:22px;}
+.brief-mark em{font-style:normal;color:var(--jade);}
+.brief-title{font-family:var(--head);font-weight:600;font-size:26px;letter-spacing:-.6px;line-height:1.2;margin-bottom:6px;}
+.brief-sub{font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:26px;}
+.f-label{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--t3);margin:18px 0 8px;text-transform:uppercase;}
+.f-input{
+  width:100%;background:var(--s2);border:1px solid var(--line2);border-radius:10px;
+  padding:11px 13px;color:var(--t1);font-size:13.5px;outline:none;
+}
+.f-input:focus{border-color:var(--jade-bd);}
+.f-input::placeholder{color:var(--t3);}
+.cond-inputs{display:flex;flex-direction:column;gap:8px;}
+.cond-input-row{display:flex;gap:8px;align-items:center;}
+.cond-input-row .num{font-family:var(--mono);font-size:11px;color:var(--jade);width:18px;flex:0 0 auto;}
+.cond-input-row .f-input{flex:1;}
+.cond-remove{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:8px;width:32px;height:32px;color:var(--t3);cursor:pointer;font-size:15px;line-height:1;}
+.cond-remove:hover{color:var(--red);border-color:var(--red-bd);}
+.cond-add{
+  margin-top:8px;background:none;border:1px dashed var(--line2);border-radius:10px;
+  padding:9px;width:100%;color:var(--t2);font-size:12.5px;cursor:pointer;
+}
+.cond-add:hover{border-color:var(--jade-bd);color:var(--jade);}
+.brief-go{
+  margin-top:26px;width:100%;background:var(--jade);border:none;border-radius:11px;
+  padding:13px;font-family:var(--head);font-weight:600;font-size:15px;color:#08110d;
+  cursor:pointer;letter-spacing:-.2px;
+}
+.brief-go:hover{filter:brightness(1.07);}
+.brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
+
+/* ══ HEADER ══ */
+header{
+  flex:0 0 56px;display:flex;align-items:center;gap:14px;
+  padding:0 22px;border-bottom:1px solid var(--line);
+}
+.wordmark{font-family:var(--head);font-weight:700;font-size:17px;letter-spacing:-.4px;}
+.wordmark em{font-style:normal;color:var(--jade);}
+.meeting{display:flex;align-items:center;gap:9px;margin-left:8px;padding-left:16px;border-left:1px solid var(--line2);}
+.meeting-name{font-size:13px;font-weight:500;color:var(--t2);}
+.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--jade);letter-spacing:.5px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--jade);animation:pulse 1.6s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.45;transform:scale(.8);}}
+.clock{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--t3);}
+.owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
+.owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
+
+/* ══ LAYOUT ══ */
+main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:auto 1fr;gap:14px;padding:16px 22px 18px;min-height:0;}
+.panel{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;}
+.panel-head{flex:0 0 auto;display:flex;align-items:baseline;gap:10px;padding:13px 16px 10px;}
+.panel-title{font-family:var(--head);font-weight:600;font-size:14px;letter-spacing:-.2px;}
+.panel-sub{font-size:11.5px;color:var(--t3);}
+
+/* ══ CONDITIONS ══ */
+#conditions{grid-column:1 / -1;}
+.cond-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:4px 16px 16px;}
+.cond{
+  border-radius:var(--r);border:1px solid var(--line2);background:var(--s2);
+  padding:14px 15px 13px;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .5s, background .5s;
+}
+.cond-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cond-label{font-family:var(--head);font-weight:600;font-size:14.5px;letter-spacing:-.2px;}
+.badge{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;}
+.cond-meta{font-size:12px;color:var(--t2);line-height:1.45;min-height:34px;}
+.cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t3);}
+.cond.open{border-color:var(--amber-bd);background:linear-gradient(180deg,var(--amber-bg),var(--s2) 70%);}
+.cond.open .badge{color:var(--amber);border-color:var(--amber-bd);}
+.cond.closed{border-color:var(--jade-bd);background:linear-gradient(180deg,var(--jade-bg),var(--s2) 70%);}
+.cond.closed .badge{color:var(--jade);border-color:var(--jade-bd);}
+.cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
+.cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(232,106,94,0);}50%{box-shadow:0 0 0 5px rgba(232,106,94,.08);}}
+
+/* ══ NUDGE FEED ══ */
+.feed{flex:1;overflow-y:auto;padding:2px 16px 14px;display:flex;flex-direction:column;gap:9px;}
+.nudge{border:1px solid var(--line);background:var(--s2);border-radius:10px;padding:10px 12px;}
+.nudge-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.nudge-tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--jade);}
+.nudge-cond{font-size:11px;color:var(--t3);}
+.nudge-status{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.5px;}
+.nudge-status.landed{color:var(--jade);}
+.nudge-status.waiting{color:var(--amber);}
+.nudge-status.ignored{color:var(--red);}
+.nudge-text{font-size:12.5px;line-height:1.5;color:var(--t1);}
+.nudge.steered{border-color:var(--jade-bd);}
+.steer-note{font-family:var(--mono);font-size:10px;color:var(--jade);margin-top:6px;}
+.feed-empty{font-size:12px;color:var(--t3);padding:8px 2px;}
+
+/* ══ TRANSCRIPT ══ */
+.transcript{flex:1;overflow-y:auto;padding:2px 16px 12px;display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:12px;line-height:1.55;}
+.tline{color:var(--t2);}
+.tline .spk{color:var(--t1);font-weight:500;}
+.tline.hit{color:var(--jade);}
+.tline.hit .spk{color:var(--jade);}
+
+/* ══ STEERING ══ */
+#nudges{grid-row:2;}
+.right-col{grid-row:2;display:flex;flex-direction:column;gap:14px;min-height:0;}
+.steer-bar{flex:0 0 auto;display:flex;gap:8px;padding:12px 16px 14px;border-top:1px solid var(--line);}
+.steer-bar input{
+  flex:1;background:var(--s2);border:1px solid var(--line2);border-radius:9px;
+  padding:9px 12px;color:var(--t1);font-size:12.5px;outline:none;
+}
+.steer-bar input:focus{border-color:var(--jade-bd);}
+.steer-bar input::placeholder{color:var(--t3);}
+.steer-bar button{
+  background:var(--jade);border:none;border-radius:9px;padding:0 16px;
+  font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;
+}
+.steer-hint{font-size:11px;color:var(--t3);padding:0 16px 12px;}
+
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:var(--s3);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+@media (max-width:860px){
+  main{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;overflow-y:auto;}
+  #conditions{grid-column:1;}
+  .right-col{grid-row:auto;}
+  #nudges{grid-row:auto;}
+}
+@media (prefers-reduced-motion:reduce){
+  .live-dot,.cond.exception{animation:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ BRIEFING (pre-meeting) ══ -->
+<div id="briefing">
+  <div class="brief-card">
+    <div class="brief-mark">GATE<em>.</em></div>
+    <div class="brief-title">Brief your agent</div>
+    <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
+
+    <div class="f-label">Meeting</div>
+    <input class="f-input" id="meetName" value="Spring launch — campaign kickoff">
+
+    <div class="f-label">Conditions to close — what must be decided before this meeting ends</div>
+    <div class="cond-inputs" id="condInputs">
+      <div class="cond-input-row"><span class="num">1</span><input class="f-input" value="Budget confirmed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">2</span><input class="f-input" value="Launch date locked"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">3</span><input class="f-input" value="Success metric agreed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+    </div>
+    <button class="cond-add" onclick="addCond()">+ Add condition</button>
+
+    <div class="f-label">Context for the agent — optional</div>
+    <input class="f-input" id="meetCtx" placeholder='e.g. "Maya holds the budget. Don&#39;t let creative dominate."'>
+
+    <button class="brief-go" onclick="startMeeting()">Send agent into the meeting →</button>
+    <div class="brief-note">The agent joins as a participant. Your cockpit — and every steer you make — stays private to you.</div>
+  </div>
+</div>
+
+<!-- ══ COCKPIT (live) ══ -->
+<header>
+  <div class="wordmark">GATE<em>.</em></div>
+  <div class="meeting">
+    <span class="meeting-name" id="hdrMeet">Spring launch — campaign kickoff</span>
+    <span class="live"><span class="live-dot"></span>AGENT IN MEETING</span>
+  </div>
+  <div class="clock" id="clock">00:00</div>
+  <div class="owner"><span>Liz's cockpit</span><span class="owner-chip">L</span></div>
+</header>
+
+<main>
+  <section class="panel" id="conditions">
+    <div class="panel-head">
+      <span class="panel-title">Conditions to close</span>
+      <span class="panel-sub">Set by you before the call. The agent drives these — you step in only when one turns red.</span>
+    </div>
+    <div class="cond-row" id="condRow"></div>
+  </section>
+
+  <section class="panel" id="nudges">
+    <div class="panel-head">
+      <span class="panel-title">Agent activity</span>
+      <span class="panel-sub">What it said in the room, and whether it landed</span>
+    </div>
+    <div class="feed" id="feed"><div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div></div>
+    <div class="steer-hint" id="steerHint">Steer the agent privately — the room never sees this.</div>
+    <div class="steer-bar">
+      <input id="steerInput" type="text" placeholder='e.g. "push harder on the metric, mention Friday deadline"'>
+      <button onclick="steer()">Steer agent</button>
+    </div>
+  </section>
+
+  <section class="panel right-col" id="transcriptPanel">
+    <div class="panel-head">
+      <span class="panel-title">Live transcript</span>
+      <span class="panel-sub">Cleaned captions, one line per sentence</span>
+    </div>
+    <div class="transcript" id="transcript"></div>
+  </section>
+</main>
+
+<script>
+// ══ BRIEFING ═══════════════════════════════════════════
+// Liz defines the conditions here; the board is built from her list.
+function addCond(){
+  const box = document.getElementById('condInputs');
+  if(box.children.length>=5) return;
+  const row = document.createElement('div');
+  row.className='cond-input-row';
+  row.innerHTML = `<span class="num">${box.children.length+1}</span><input class="f-input" placeholder="e.g. Owner assigned for follow-ups"><button class="cond-remove" onclick="rmCond(this)">×</button>`;
+  box.appendChild(row);
+}
+function rmCond(btn){
+  const box = document.getElementById('condInputs');
+  if(box.children.length<=1) return;
+  btn.parentElement.remove();
+  [...box.children].forEach((r,i)=>r.querySelector('.num').textContent=i+1);
+}
+
+const conds = {}; // id -> {label, nudges, status}
+const demoSlots = []; // first three condition ids drive the scripted demo
+
+function startMeeting(){
+  const labels = [...document.querySelectorAll('#condInputs .f-input')]
+    .map(i=>i.value.trim()).filter(Boolean);
+  if(!labels.length){ alert('Give the agent at least one condition to drive.'); return; }
+  document.getElementById('hdrMeet').textContent = document.getElementById('meetName').value.trim() || 'Untitled meeting';
+
+  const row = document.getElementById('condRow');
+  labels.forEach((label,i)=>{
+    const id = 'c'+i;
+    conds[id] = {label, nudges:0, status:'open'};
+    if(i<3) demoSlots.push(id);
+    const card = document.createElement('div');
+    card.className='cond open'; card.id='cond-'+id;
+    card.innerHTML = `<div class="cond-top"><span class="cond-label">${label}</span><span class="badge">OPEN</span></div><div class="cond-meta" id="meta-${id}">Not yet raised in the room.</div><div class="cond-foot" id="foot-${id}">nudges: 0</div>`;
+    row.appendChild(card);
+  });
+
+  document.getElementById('briefing').classList.add('gone');
+  startClock();
+  runScript();
+}
+
+// ══ COCKPIT STATE ══════════════════════════════════════
+let secs = 0, clockTimer = null, steered = false;
+function startClock(){
+  clockTimer = setInterval(()=>{ secs++;
+    const m=String(Math.floor(secs/60)).padStart(2,'0'), s=String(secs%60).padStart(2,'0');
+    document.getElementById('clock').textContent=`${m}:${s}`;
+  },1000);
+}
+function setCond(id, status, meta){
+  const c = document.getElementById('cond-'+id); if(!c) return;
+  c.className = 'cond '+(status==='exception'?'exception':status);
+  c.querySelector('.badge').textContent = status==='closed'?'CLOSED':status==='exception'?'NEEDS LIZ':'OPEN';
+  if(meta) document.getElementById('meta-'+id).textContent = meta;
+  conds[id].status = status;
+}
+function bumpNudge(id){
+  if(!conds[id]) return;
+  conds[id].nudges++;
+  document.getElementById('foot-'+id).textContent = 'nudges: '+conds[id].nudges;
+  if(conds[id].nudges>=2 && conds[id].status==='open'){
+    setCond(id,'exception','Nudged twice — the room keeps moving past it.');
+  }
+}
+function addNudge(condId, text, status, isSteered){
+  const feed = document.getElementById('feed');
+  const empty = feed.querySelector('.feed-empty'); if(empty) empty.remove();
+  const label = conds[condId] ? conds[condId].label : condId;
+  const div = document.createElement('div');
+  div.className = 'nudge'+(isSteered?' steered':'');
+  div.innerHTML = `<div class="nudge-head"><span class="nudge-tag">[GATE]</span><span class="nudge-cond">→ ${label}</span><span class="nudge-status ${status}">${status.toUpperCase()}</span></div><div class="nudge-text">${text}</div>${isSteered?'<div class="steer-note">↳ shaped by your steer</div>':''}`;
+  feed.prepend(div);
+}
+function addLine(spk, text, hit){
+  const t = document.getElementById('transcript');
+  const div = document.createElement('div');
+  div.className='tline'+(hit?' hit':'');
+  div.innerHTML = `<span class="spk">${spk}:</span> ${text}`;
+  t.appendChild(div);
+  t.scrollTop = t.scrollHeight;
+}
+function markWaiting(status){
+  document.querySelectorAll('.nudge-status.waiting').forEach(s=>{s.textContent=status.toUpperCase();s.className='nudge-status '+status;});
+}
+
+// ══ SCRIPTED MEETING (demo) ════════════════════════════
+// Drives the first three conditions Liz defined: slot 0 closes fast,
+// slot 1 closes after a nudge, slot 2 stalls → exception → steer closes it.
+function runScript(){
+  const [A,B,C] = demoSlots;
+  const L = id => conds[id] ? conds[id].label.toLowerCase() : 'this item';
+  const script = [
+    [1500, ()=>addLine('Maya','Right, let\u2019s get going. Where are we on creative?')],
+    [3200, ()=>addLine('Jordan','Assets are basically done, two hero variants ready.')],
+    [5200, ()=>addLine('Sam','I like the second variant, the bolder one.')],
+    A && [7200, ()=>{ addNudge(A,`We\u2019re a few minutes in \u2014 can we get ${L(A)} settled before creative goes further? Maya, your call?`,'waiting'); bumpNudge(A); setCond(A,'open','Agent has raised it \u2014 waiting on the room.'); }],
+    A && [9800, ()=>addLine('Maya',`Fair point. Consider it done \u2014 signed off yesterday.`, true)],
+    A && [11000, ()=>{ setCond(A,'closed','Confirmed by Maya \u2014 signed off yesterday.'); markWaiting('landed'); }],
+    [12800, ()=>addLine('Jordan','Great. I\u2019ll circulate the channel split next.')],
+    B && [15000, ()=>{ addNudge(B,`Before the channel split \u2014 can we settle ${L(B)}? Booking needs it this week.`,'waiting'); bumpNudge(B); setCond(B,'open','Agent has raised it \u2014 waiting on the room.'); }],
+    B && [17600, ()=>addLine('Sam','Yes \u2014 agreed, let\u2019s lock it in. Everyone good?', true)],
+    B && [19200, ()=>addLine('Maya','Works for me.', true)],
+    B && [20400, ()=>{ setCond(B,'closed','Agreed by Sam and Maya.'); markWaiting('landed'); }],
+    [22200, ()=>addLine('Jordan','Perfect. I\u2019ll get the forms in today.')],
+    C && [24200, ()=>{ addNudge(C,`One thing still open \u2014 ${L(C)}. Can we pin it down?`,'waiting'); bumpNudge(C); setCond(C,'open','Agent has raised it \u2014 waiting on the room.'); }],
+    [26800, ()=>addLine('Maya','Let\u2019s also talk influencer shortlist while we\u2019re here.')],
+    [29200, ()=>addLine('Sam','I\u2019ve got five names, sending them now.')],
+    C && [31200, ()=>{ markWaiting('ignored'); addNudge(C,`Flagging again before we close \u2014 ${L(C)} is still open.`,'waiting'); bumpNudge(C); }],
+    [33600, ()=>addLine('Jordan','Shortlist looks strong. Okay, what else\u2026')],
+    C && [35200, ()=>{ markWaiting('ignored');
+      document.getElementById('steerHint').innerHTML = `<b style="color:var(--red)">${conds[C].label} needs you.</b> Try steering: <i>\u201cname Sam directly, make it concrete\u201d</i> \u2014 or type your own.`;
+    }],
+  ].filter(Boolean);
+  script.forEach(([t,fn])=>setTimeout(fn,t));
+}
+
+// ══ STEERING ═══════════════════════════════════════════
+function steer(){
+  const C = demoSlots[2] || demoSlots[demoSlots.length-1];
+  const inp = document.getElementById('steerInput');
+  const val = inp.value.trim() || 'name Sam directly, make it concrete';
+  inp.value=''; steered = true;
+  document.getElementById('steerHint').innerHTML = 'Steer received \u2014 shaping the agent\u2019s next nudge. <span style="color:var(--jade)">The room sees nothing.</span>';
+  setTimeout(()=>{ addNudge(C,`Sam \u2014 before we wrap: can we make ${conds[C].label.toLowerCase()} concrete right now? A number we all agree on?`,'waiting',true); bumpNudge(C); },1600);
+  setTimeout(()=>addLine('Sam','\u2026fair. Let\u2019s say 500 sign-ups in the first month. Agreed?', true),4200);
+  setTimeout(()=>addLine('Maya','Agreed \u2014 500 sign-ups, first month.', true),5900);
+  setTimeout(()=>{
+    setCond(C,'closed','500 sign-ups in month one \u2014 agreed by Sam and Maya.');
+    markWaiting('landed');
+    const allClosed = Object.values(conds).every(c=>c.status==='closed');
+    document.getElementById('steerHint').innerHTML = allClosed
+      ? 'All conditions closed. <span style="color:var(--jade)">Meeting did its job \u2014 you intervened once.</span>'
+      : 'Condition closed. <span style="color:var(--jade)">You intervened once.</span>';
+  },7400);
+}
+document.getElementById('steerInput').addEventListener('keydown',e=>{if(e.key==='Enter')steer();});
+</script>
+</body>
+</html>
