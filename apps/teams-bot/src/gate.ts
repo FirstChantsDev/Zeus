@@ -128,13 +128,23 @@ const main = async () => {
                         }
                         nudgeQueue = nudgeQueue
                             .then(async () => {
-                                const decision = await nudger.decide(line);
+                                // Milestone 4: a private steer from the cockpit shapes
+                                // this decision, then is spent once a nudge fires.
+                                const steerInstruction = cockpit.peekSteer();
+                                const decision = await nudger.decide(line, steerInstruction);
                                 if (decision.resolvedIds.length > 0) {
                                     transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
                                 }
                                 if (decision.nudge) {
                                     console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
-                                    cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
+                                    cockpit.addNudge({
+                                        text: decision.nudge.text,
+                                        conditionId: decision.nudge.conditionId,
+                                        steered: steerInstruction !== null,
+                                    });
+                                    if (steerInstruction !== null) {
+                                        cockpit.consumeSteer();
+                                    }
                                     await chat.sendMessage(decision.nudge.text);
                                 }
                             })

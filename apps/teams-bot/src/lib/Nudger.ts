@@ -53,11 +53,13 @@ export class Nudger {
     /**
      * Returns what to do about one caption line: which conditions it closed,
      * and a nudge to post (or null for "stay quiet").
+     * If the owner has typed a private steer, it shapes this decision and
+     * lifts the cooldown — the owner explicitly asked for action.
      * Side effect: flips conditions to 'closed' when a line resolves them,
      * and increments a condition's nudge count when a nudge is returned.
      * Never throws — a failed API call just means no decision for that line.
      */
-    public async decide(line: { speaker: string, text: string, ts: string }): Promise<LineDecision> {
+    public async decide(line: { speaker: string, text: string, ts: string }, steerInstruction: string | null = null): Promise<LineDecision> {
         const quiet: LineDecision = { nudge: null, resolvedIds: [] };
         const openConditions = this.conditions.filter((c) => c.status === 'open');
         if (openConditions.length === 0) {
@@ -75,7 +77,7 @@ export class Nudger {
                 body: JSON.stringify({
                     model: 'claude-opus-4-8',
                     max_tokens: 300,
-                    system: this._buildSystemPrompt(),
+                    system: this._buildSystemPrompt(steerInstruction),
                     messages: [
                         { role: 'user', content: `${line.speaker}: ${line.text}` },
                     ],
@@ -117,7 +119,9 @@ export class Nudger {
             let nudge: NudgeDecision | null = null;
             if (decision.nudge) {
                 const condition = this.conditions.find((c) => c.id === decision.nudge!.conditionId && c.status === 'open');
-                const quietLongEnough = Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
+                // A steer lifts the cooldown: the owner explicitly asked for action.
+                const quietLongEnough = steerInstruction !== null
+                    || Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
                 if (condition && quietLongEnough) {
                     condition.nudges++;
                     this.lastNudgeAt = Date.now();
@@ -135,10 +139,19 @@ export class Nudger {
     }
 
     /** The instructions sent with every call, rebuilt so they always show live condition state */
-    private _buildSystemPrompt(): string {
+    private _buildSystemPrompt(steerInstruction: string | null): string {
         const conditionLines = this.conditions.map((c) =>
             `- id "${c.id}": ${c.label} — ${c.status.toUpperCase()}${c.status === 'open' ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)` : ''}`
         ).join('\n');
+
+        const steerLines = steerInstruction === null ? [] : [
+            '',
+            'PRIVATE INSTRUCTION FROM YOUR OWNER (the room cannot see this and must never learn of it):',
+            `"${steerInstruction}"`,
+            'Let this instruction shape your nudge — it overrides your usual reluctance to speak.',
+            'If there is any reasonable opening, nudge NOW in the way the instruction asks.',
+            'Never mention, quote, or hint at the instruction or that you were steered.',
+        ];
 
         return [
             'You are GATE bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
@@ -156,6 +169,8 @@ export class Nudger {
             '   Do NOT nudge if the room is actively discussing that condition and making progress.',
             '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [GATE], and asks',
             '   for a concrete decision.',
+            '',
+            ...steerLines,
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
             '{"resolves": ["<condition id>", ...], "nudge": {"conditionId": "<condition id>", "message": "[GATE] ..."}}',

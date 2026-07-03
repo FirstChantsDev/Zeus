@@ -168,8 +168,8 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="feed" id="feed"><div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div></div>
     <div class="steer-hint" id="steerHint">Steer the agent privately — the room never sees this.</div>
     <div class="steer-bar">
-      <input id="steerInput" type="text" disabled placeholder="Steering arrives in Milestone 4">
-      <button id="steerBtn" disabled>Steer agent</button>
+      <input id="steerInput" type="text" placeholder='e.g. "push harder on the metric, mention Friday deadline"'>
+      <button id="steerBtn" onclick="steer()">Steer agent</button>
     </div>
   </section>
 
@@ -230,9 +230,10 @@ function renderNudges(nudges){
     return;
   }
   // Server already sends newest first.
-  feed.innerHTML = nudges.map((n) => `<div class="nudge">
+  feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
     <div class="nudge-head"><span class="nudge-tag">[GATE]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
     <div class="nudge-text">${esc(n.text)}</div>
+    ${n.steered ? '<div class="steer-note">↳ shaped by your steer</div>' : ''}
   </div>`).join('');
 }
 
@@ -246,6 +247,41 @@ function renderTranscript(lines){
   if(nearBottom) t.scrollTop = t.scrollHeight;
 }
 
+// ══ STEERING ══════════════════════════════════════════════
+const DEFAULT_HINT = 'Steer the agent privately — the room never sees this.';
+async function steer(){
+  const input = document.getElementById('steerInput');
+  const instruction = input.value.trim();
+  if(!instruction) return;
+  const hint = document.getElementById('steerHint');
+  try{
+    const response = await fetch('/command', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({instruction}),
+    });
+    if(response.ok){
+      input.value = '';
+      hint.innerHTML = 'Steer received — shaping the agent’s next nudge. <span style="color:var(--jade)">The room sees nothing.</span>';
+    }
+  }catch(e){
+    hint.textContent = 'Could not reach the agent — is the bot running?';
+  }
+}
+document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') steer(); });
+
+function renderSteerHint(state){
+  const hint = document.getElementById('steerHint');
+  if(state.steerPending){
+    hint.innerHTML = 'Steer active — shaping the agent’s next nudge. <span style="color:var(--jade)">The room sees nothing.</span>';
+    hint.dataset.active = '1';
+  } else if(hint.dataset.active === '1'){
+    // The steer was spent on a nudge — back to the resting hint.
+    hint.textContent = DEFAULT_HINT;
+    hint.dataset.active = '';
+  }
+}
+
 // ══ THE POLL ══════════════════════════════════════════════
 async function poll(){
   try{
@@ -256,6 +292,7 @@ async function poll(){
     renderConditions(state.conditions);
     renderNudges(state.nudges);
     renderTranscript(state.transcript);
+    renderSteerHint(state);
   }catch(e){
     const badge = document.getElementById('liveBadge');
     const text = document.getElementById('liveText');

@@ -35,6 +35,8 @@ export type NudgeRecord = {
     text: string;
     conditionId: string;
     at: string;
+    /** true if the owner's private steer shaped this nudge */
+    steered: boolean;
 };
 
 export class CockpitServer {
@@ -49,6 +51,9 @@ export class CockpitServer {
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
+
+    /** The owner's private instruction, waiting to shape the agent's next nudge */
+    private steerInstruction: string | null = null;
 
     constructor(args: { botId: string, conditions: Condition[], port: number }) {
         this.conditions = args.conditions;
@@ -73,8 +78,23 @@ export class CockpitServer {
     }
 
     /** Records a nudge the agent fired */
-    public addNudge(nudge: { text: string, conditionId: string }) {
-        this.nudges.push({ ...nudge, at: new Date().toISOString() });
+    public addNudge(nudge: { text: string, conditionId: string, steered?: boolean }) {
+        this.nudges.push({
+            text: nudge.text,
+            conditionId: nudge.conditionId,
+            steered: nudge.steered ?? false,
+            at: new Date().toISOString(),
+        });
+    }
+
+    /** The pending steer instruction, if the owner has typed one */
+    public peekSteer(): string | null {
+        return this.steerInstruction;
+    }
+
+    /** Called once a steer has shaped a nudge — it applies only once */
+    public consumeSteer() {
+        this.steerInstruction = null;
     }
 
     /** Lets the cockpit header show where the agent is (lobby / in meeting) */
@@ -96,6 +116,8 @@ export class CockpitServer {
             } else if (url === '/state') {
                 res.writeHead(200, { 'content-type': 'application/json' });
                 res.end(JSON.stringify(this._buildState()));
+            } else if (url === '/command' && req.method === 'POST') {
+                this._handleCommand(req, res);
             } else {
                 res.writeHead(404, { 'content-type': 'text/plain' });
                 res.end('Not found');
@@ -109,6 +131,30 @@ export class CockpitServer {
 
         server.listen(this.port, () => {
             console.log(`\n>>> COCKPIT: open http://localhost:${this.port} in your browser <<<\n`);
+        });
+    }
+
+    /** Receives the owner's private steer: POST /command with {"instruction": "..."} */
+    private _handleCommand(req: http.IncomingMessage, res: http.ServerResponse) {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const parsed = JSON.parse(body) as { instruction?: unknown };
+                const instruction = typeof parsed.instruction === 'string' ? parsed.instruction.trim() : '';
+                if (!instruction) {
+                    res.writeHead(400, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'instruction required' }));
+                    return;
+                }
+                this.steerInstruction = instruction;
+                console.log(`STEER >>> ${instruction}`);
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch {
+                res.writeHead(400, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'body must be JSON' }));
+            }
         });
     }
 
@@ -162,6 +208,7 @@ export class CockpitServer {
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,
+            steerPending: this.steerInstruction !== null,
         };
     }
 }
