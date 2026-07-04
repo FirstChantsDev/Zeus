@@ -1,4 +1,4 @@
-# Zeus — project notes (Phases 1–3)
+# Zeus — project notes (Phases 1–4)
 
 Zeus is a meeting agent: a bot that joins a Microsoft Teams meeting as a
 participant, listens to the live captions, and drives the meeting toward
@@ -30,6 +30,25 @@ goal is being ignored, and reporting everything to a private local cockpit.
   then it waits, `/state` reports `briefed: false`, and the board is empty.
   Briefing is once per run; restart the bot to brief it again (no code edits
   needed — conditions live only in memory).
+- **Phase 4 — meeting-aware agent.** Three upgrades to the brain:
+  1. *Whole-conversation judgement.* The agent used to judge each caption
+     line in isolation, so "what's the budget?" / "£50k" / "yes, approved"
+     across three speakers never closed anything. Now every decision call
+     sends a rolling window of the last 40 transcript lines and asks the
+     model to judge each open condition against the whole conversation —
+     still one API call per spoken sentence.
+  2. *Expandable "why" on each card.* Cards look the same as before, but the
+     one-line status is now the agent's live judgement, and a small ＋ on
+     each card expands to its fuller plain-English explanation ("Sean said
+     he can't commit until finance confirms the budget, so this is blocked
+     on condition 1"). Collapsed by default; refreshed on every decision.
+  3. *Time awareness.* The briefing screen has a **"Scheduled length
+     (minutes)"** field (default 30). The clock starts when the bot enters
+     the meeting; remaining time is fed into every decision so nudges grow
+     more urgent as the end nears ("Ten minutes left and the budget is
+     still open — can we lock it now?"), and the cockpit header shows a
+     countdown (amber once under a third remains, red once over time).
+     Deliberately NOT read from the real calendar — no Graph API, no auth.
 
 ## Demo script — run the whole thing from cold
 
@@ -41,23 +60,31 @@ goal is being ignored, and reporting everything to a private local cockpit.
 
    The terminal says it's waiting for your brief. No browser window opens yet.
 2. **Open http://localhost:4300.** You get the briefing screen.
-3. **Brief it.** Type a meeting name, 1–3 conditions in any wording
-   (e.g. "Venue deposit signed off"), optionally a context line. Click
-   **"Send agent into the meeting →"**. The screen fades to the live
-   cockpit ("AWAITING YOUR BRIEF" flips to the agent's live status) and a
-   Chrome window opens and heads for the meeting.
+3. **Brief it.** Type a meeting name, a scheduled length in minutes (use
+   something short like 5 if you want to see the urgency escalate during a
+   demo), 1–3 conditions in any wording (e.g. "Venue deposit signed off"),
+   optionally a context line. Click **"Send agent into the meeting →"**.
+   The screen fades to the live cockpit ("AWAITING YOUR BRIEF" flips to the
+   agent's live status) and a Chrome window opens and heads for the meeting.
 4. **Admit it.** In Teams, admit "Zeus bot" from the lobby. It says hello in
-   chat, turns captions on, and the cockpit transcript starts moving.
+   chat, turns captions on, the cockpit transcript starts moving, and the
+   countdown appears in the header next to the clock.
    Don't close the Chrome window — that window IS the bot.
 5. **What to say out loud, and what you'll see:**
    - Talk about anything else → after a while the agent posts a [ZEUS]
      nudge about your most important open condition; it appears in the
      cockpit feed as WAITING.
-   - Clearly settle a condition ("the venue deposit is approved, book it")
-     → its card flips jade/CLOSED, the transcript line that did it turns
-     jade, and the nudge flips to LANDED.
+   - Settle a condition ACROSS SEVERAL SENTENCES AND VOICES — e.g. one
+     person asks "so what's the deposit?", another says "two hundred",
+     a third says "fine, approved" → the card still flips jade/CLOSED,
+     the closing transcript line turns jade, and the nudge flips to
+     LANDED. No single sentence has to contain the whole decision.
+   - Click the ＋ on any card → the agent's fuller explanation of why it's
+     still open (or how it closed) unfolds. Click − to collapse.
    - Keep ignoring a condition through two nudges → its card turns red and
      pulses **NEEDS LIZ**.
+   - Let the countdown run low (amber, then red once over) → the agent's
+     nudges get noticeably more urgent and start mentioning the time.
    - Type an instruction into the steer bar ("tell them lunch is moved to
      1pm") → the agent posts it in chat within seconds, tagged "shaped by
      your steer" in the feed. The room never sees the cockpit.
@@ -87,18 +114,21 @@ goal is being ignored, and reporting everything to a private local cockpit.
   `GET /` (page), `GET /state` (poll), `POST /setup` (the brief),
   `POST /command` (steers).
 - `apps/teams-bot/src/lib/Nudger.ts` — the decision brain: one API call per
-  caption line (resolve? nudge?), plus immediate steer execution. The
-  briefing context line is added to both prompts.
+  caption line, judging every open condition against the last ~40 transcript
+  lines (status + one-line reason + fuller "why") and deciding whether to
+  nudge, with remaining meeting time shaping the urgency. Also executes
+  steers immediately. The briefing context line and the time state are
+  added to both prompts.
 - `apps/teams-bot/src/cockpit.html` — the whole UI, briefing screen and live
   cockpit in one page; design lifted from the committed reference mock
   `gate-command-centre-phase2.html`.
 
 ## Parked for later
 
-- **Transcript context for decisions.** Each caption line is judged in
-  isolation. Giving the brain the last few transcript lines would let it
-  piece together garbled exchanges (see the budget/£50 story above) and
-  close conditions more robustly.
+- **Phase 5: auto-pull meeting duration from the Teams/Outlook calendar via
+  Graph API.** The scheduled length is typed into the briefing screen for
+  now; hooking the real calendar invite (duration, title, maybe attendees)
+  needs Microsoft Graph auth and is a deliberate later phase.
 - **Retry for the first chat post.** The "hello" message occasionally fails
   if the chat panel isn't ready seconds after admission (later posts are
   fine). Harmless, but a retry would tidy it.

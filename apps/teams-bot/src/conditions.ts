@@ -35,6 +35,10 @@ export type Condition = {
     status: 'open' | 'closed';
     /** How many times the agent has nudged the room about it */
     nudges: number;
-    /** Filled in by the bot when it closes: who settled it and what they said */
+    /** One-line reason shown on the card: how it closed, or where it stands */
     note?: string;
+    /** Phase 4: the agent's fuller plain-English explanation of the current
+     *  state — why it's still pending, or how it came together. Shown when
+     *  the owner expands the card. Refreshed on every decision call. */
+    why?: string;
 };

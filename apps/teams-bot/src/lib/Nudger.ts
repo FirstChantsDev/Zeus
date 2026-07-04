@@ -2,16 +2,18 @@ import { Logger } from './Logger';
 import { Condition } from '../conditions';
 
 /**
- * Nudger is the agent's decision brain (Phase 2 version).
+ * Nudger is the agent's decision brain (Phase 4 version).
  *
  * It holds the meeting's conditions (the owner's brief) and, for every
- * finished caption line, makes ONE Anthropic API call that answers two
- * questions at once:
+ * finished caption line, makes ONE Anthropic API call that judges the
+ * WHOLE conversation so far — not just the newest line — and answers:
  *
- *   1. RESOLVE — does this line clearly settle any open condition?
- *      If so, that condition is marked 'closed'.
+ *   1. JUDGE — for each open condition: is it now settled (a resolution
+ *      may unfold across several lines and speakers), a one-line reason
+ *      for the board, and a fuller "why" the owner can expand.
  *   2. NUDGE — should the agent post one short chat message pushing the
- *      room toward the most important condition still open?
+ *      room toward the most important condition still open? Remaining
+ *      meeting time shapes how urgent that nudge is.
  *
  * A cooldown stops the agent from nagging: after any nudge it stays
  * quiet for NUDGE_COOLDOWN_MS no matter what the model suggests.
@@ -27,12 +29,19 @@ export type NudgeDecision = {
     conditionId: string;
 };
 
-/** What the brain concluded about one caption line. */
+/** What the brain concluded after one caption line arrived. */
 export type LineDecision = {
     /** A nudge to post, or null for "stay quiet" */
     nudge: NudgeDecision | null;
-    /** Conditions this line just closed (empty most of the time) */
+    /** Conditions the conversation just closed (empty most of the time) */
     resolvedIds: string[];
+};
+
+/** Where the meeting stands against its scheduled length (from the briefing) */
+export type TimeState = {
+    scheduledMinutes: number;
+    /** Minutes left; negative when over time; null before the bot is in the meeting */
+    remainingMinutes: number | null;
 };
 
 export class Nudger {
@@ -58,18 +67,28 @@ export class Nudger {
     }
 
     /**
-     * Returns what to do about one caption line: which conditions it closed,
-     * and a nudge to post (or null for "stay quiet").
-     * Side effect: flips conditions to 'closed' when a line resolves them,
-     * and increments a condition's nudge count when a nudge is returned.
-     * Never throws — a failed API call just means no decision for that line.
+     * Phase 4: judges the whole conversation so far (the caller passes a
+     * rolling window of transcript lines, newest last) against every open
+     * condition, and decides whether to nudge — with urgency shaped by the
+     * remaining meeting time.
+     * Side effects: flips conditions to 'closed' when the room has settled
+     * them, refreshes each open condition's one-line reason (note) and
+     * fuller explanation (why), and increments nudge counts.
+     * Never throws — a failed API call just means no decision this line.
      */
-    public async decide(line: { speaker: string, text: string, ts: string }): Promise<LineDecision> {
+    public async decide(args: {
+        transcript: Array<{ speaker: string, text: string }>,
+        time: TimeState,
+    }): Promise<LineDecision> {
         const quiet: LineDecision = { nudge: null, resolvedIds: [] };
         const openConditions = this.conditions.filter((c) => c.status === 'open');
         if (openConditions.length === 0) {
             return quiet; // everything the owner asked for is settled — stay quiet
         }
+
+        const conversation = args.transcript.length
+            ? args.transcript.map((l) => `${l.speaker}: ${l.text}`).join('\n')
+            : '(nothing said yet)';
 
         try {
             const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -81,10 +100,10 @@ export class Nudger {
                 },
                 body: JSON.stringify({
                     model: 'claude-opus-4-8',
-                    max_tokens: 300,
-                    system: this._buildSystemPrompt(),
+                    max_tokens: 700,
+                    system: this._buildSystemPrompt(args.time),
                     messages: [
-                        { role: 'user', content: `${line.speaker}: ${line.text}` },
+                        { role: 'user', content: `Conversation so far (oldest first; the LAST line just arrived):\n${conversation}` },
                     ],
                 }),
             });
@@ -107,15 +126,24 @@ export class Nudger {
                 return quiet;
             }
 
-            // 1. Close any conditions this line resolved.
+            // 1. Apply the per-condition judgements: close what the room has
+            //    settled, and refresh every open condition's reason + why.
             const resolvedIds: string[] = [];
-            for (const id of decision.resolves) {
-                const condition = this.conditions.find((c) => c.id === id && c.status === 'open');
-                if (condition) {
+            for (const judged of decision.conditions) {
+                const condition = this.conditions.find((c) => c.id === judged.id && c.status === 'open');
+                if (!condition) {
+                    continue; // unknown id, or already closed — never reopen
+                }
+                if (judged.reason) {
+                    condition.note = judged.reason;
+                }
+                if (judged.why) {
+                    condition.why = judged.why;
+                }
+                if (judged.status === 'closed') {
                     condition.status = 'closed';
-                    condition.note = `Settled by ${line.speaker}: "${line.text}"`;
                     resolvedIds.push(condition.id);
-                    console.log(`CONDITION CLOSED >>> ${condition.label} — ${condition.note}`);
+                    console.log(`CONDITION CLOSED >>> ${condition.label} — ${condition.note ?? 'settled in the room'}`);
                 }
             }
 
@@ -141,33 +169,61 @@ export class Nudger {
         }
     }
 
-    /** The instructions sent with every call, rebuilt so they always show live condition state */
-    private _buildSystemPrompt(): string {
-        const conditionLines = this._conditionLines();
-
+    /** The instructions sent with every call, rebuilt so they always show live condition and time state */
+    private _buildSystemPrompt(time: TimeState): string {
         return [
             'You are Zeus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
-            'conditions this meeting must settle before it ends. You receive one live-caption line at a time.',
+            'conditions this meeting must settle before it ends. On every turn you receive the conversation',
+            'so far as live-caption lines, oldest first — the last line is the one that just arrived.',
             '',
             'Current conditions:',
-            conditionLines,
+            this._conditionLines(),
             ...this._contextLines(),
+            ...Nudger._timeLines(time),
             '',
-            'Answer TWO questions about the new line:',
-            '1. RESOLVE: does this line clearly settle any OPEN condition? Only count a clear decision made',
-            '   in the room (e.g. "the budget is approved at 40k" settles the budget condition). A vague',
-            '   mention or a question about the topic does NOT settle it.',
+            'Do TWO things, judging from the WHOLE conversation, not just the newest line. A resolution often',
+            'unfolds across several lines and speakers — e.g. "what\'s the budget?" / "50k" / "yes, approved"',
+            'across three speakers clearly settles a budget condition even though no single line does.',
+            '',
+            '1. JUDGE every OPEN condition:',
+            '   - status: "closed" ONLY if the room has clearly settled it — a definite decision stated or',
+            '     agreed out loud, possibly across several lines. A vague mention or an unanswered question',
+            '     does NOT settle it. Otherwise "open".',
+            '   - reason: ONE short line for the owner\'s board. If closed: who/what settled it. If open:',
+            '     where it stands in the room right now (e.g. "Not raised yet", "Waiting on finance").',
+            '   - why: 1-2 plain-English sentences telling the fuller story — what is blocking it, who said',
+            '     what, whether it depends on another condition; or, if closed, how it came together.',
+            '',
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
             '   OPEN condition? Nudge when the conversation is drifting past or away from an open condition.',
             '   Do NOT nudge if the room is actively discussing that condition and making progress.',
             '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [ZEUS], and asks',
             '   for a concrete decision.',
-            '',
+            '   URGENCY: let the remaining time shape your tone and eagerness. With plenty of time left,',
+            '   nudge sparingly and gently. Once under a third of the meeting remains, be more direct and',
+            '   mention the time. In the final minutes — or over time — push hard for immediate decisions',
+            '   on whatever is still open (e.g. "Ten minutes left and the budget is still open — can we',
+            '   lock it now?").',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"resolves": ["<condition id>", ...], "nudge": {"conditionId": "<condition id>", "message": "[ZEUS] ..."}}',
-            'Use "resolves": [] when nothing is settled, and "nudge": null when you should stay quiet.',
+            '{"conditions": [{"id": "<id>", "status": "open", "reason": "...", "why": "..."}, ...],',
+            ' "nudge": {"conditionId": "<id>", "message": "[ZEUS] ..."}}',
+            'Include EVERY open condition in "conditions" (status "open" or "closed").',
+            'Use "nudge": null when you should stay quiet.',
         ].join('\n');
+    }
+
+    /** The scheduled-length / time-remaining lines for the prompts (empty before the meeting starts) */
+    private static _timeLines(time: TimeState): string[] {
+        if (time.remainingMinutes === null) {
+            return ['', `Time: the meeting is scheduled for ${time.scheduledMinutes} minutes; it has not started yet.`];
+        }
+        const remaining = Math.round(time.remainingMinutes);
+        if (remaining >= 0) {
+            return ['', `Time: the meeting is scheduled for ${time.scheduledMinutes} minutes; about ${remaining} minute${remaining === 1 ? '' : 's'} remain.`];
+        }
+        const over = -remaining;
+        return ['', `Time: the meeting was scheduled for ${time.scheduledMinutes} minutes and is now ${over} minute${over === 1 ? '' : 's'} OVER time.`];
     }
 
     /**
@@ -180,6 +236,7 @@ export class Nudger {
     public async executeSteer(
         instruction: string,
         recentLines: Array<{ speaker: string, text: string }>,
+        time: TimeState,
     ): Promise<{ text: string, conditionId: string | null } | null> {
         const transcriptLines = recentLines.length
             ? recentLines.map((l) => `${l.speaker}: ${l.text}`)
@@ -195,6 +252,7 @@ export class Nudger {
             'Current conditions:',
             this._conditionLines(),
             ...this._contextLines(),
+            ...Nudger._timeLines(time),
             '',
             'Recent conversation in the room:',
             ...transcriptLines,
@@ -298,21 +356,33 @@ export class Nudger {
     }
 
     /** Pulls the JSON decision out of the model's reply; null if it can't be read */
-    private _parseDecision(text: string): { resolves: string[], nudge: { conditionId: string, message: string } | null } | null {
+    private _parseDecision(text: string): {
+        conditions: Array<{ id: string, status: 'open' | 'closed', reason: string, why: string }>,
+        nudge: { conditionId: string, message: string } | null,
+    } | null {
         const cleaned = Nudger._extractJson(text);
         if (cleaned === null) {
             this.logger.warn({ message: 'Could not parse decision JSON', data: text });
             return null;
         }
         try {
-            const parsed = JSON.parse(cleaned) as { resolves?: unknown, nudge?: { conditionId?: unknown, message?: unknown } | null };
-            const resolves = Array.isArray(parsed.resolves)
-                ? parsed.resolves.filter((id): id is string => typeof id === 'string')
-                : [];
+            const parsed = JSON.parse(cleaned) as {
+                conditions?: unknown,
+                nudge?: { conditionId?: unknown, message?: unknown } | null,
+            };
+            const conditions = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
+                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown } =>
+                    Boolean(item) && typeof (item as { id?: unknown }).id === 'string')
+                .map((item) => ({
+                    id: item.id,
+                    status: (item.status === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
+                    reason: typeof item.reason === 'string' ? item.reason.trim() : '',
+                    why: typeof item.why === 'string' ? item.why.trim() : '',
+                }));
             const nudge = (parsed.nudge && typeof parsed.nudge.conditionId === 'string' && typeof parsed.nudge.message === 'string')
                 ? { conditionId: parsed.nudge.conditionId, message: parsed.nudge.message }
                 : null;
-            return { resolves, nudge };
+            return { conditions, nudge };
         } catch {
             this.logger.warn({ message: 'Could not parse decision JSON', data: cleaned });
             return null;

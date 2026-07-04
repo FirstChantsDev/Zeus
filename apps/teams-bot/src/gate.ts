@@ -67,7 +67,7 @@ const main = async () => {
         onSetup: (brief) => {
             applyBrief(brief.labels);
             nudger?.setContext(brief.context);
-            console.log(`\nBRIEFED >>> "${brief.meetingName}" — the agent is driving:`);
+            console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);
             }
@@ -89,7 +89,7 @@ const main = async () => {
                         console.log('STEER ignored — the agent has not opened the meeting yet.');
                         return;
                     }
-                    const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10));
+                    const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10), cockpit.timeState());
                     if (!directive) {
                         console.log('STEER >>> could not be turned into a message (see log above).');
                         return;
@@ -187,7 +187,13 @@ const main = async () => {
                         }
                         nudgeQueue = nudgeQueue
                             .then(async () => {
-                                const decision = await nudger.decide(line);
+                                // Phase 4: the brain judges a rolling window of the
+                                // conversation (newest line included, added above),
+                                // plus where the meeting stands against the clock.
+                                const decision = await nudger.decide({
+                                    transcript: cockpit.recentTranscript(40),
+                                    time: cockpit.timeState(),
+                                });
                                 if (decision.resolvedIds.length > 0) {
                                     transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
                                 }

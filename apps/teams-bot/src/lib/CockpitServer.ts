@@ -37,6 +37,8 @@ export type Brief = {
     labels: string[];
     /** Optional extra guidance for the agent ("Maya holds the budget") */
     context: string;
+    /** Phase 4: the meeting's scheduled length in minutes (default 30) */
+    lengthMinutes: number;
 };
 
 /** One nudge the agent posted to the meeting chat */
@@ -66,6 +68,9 @@ export class CockpitServer {
     private briefed = false;
     private briefedAt: string | null = null;
     private meetingName: string | null = null;
+    /** Phase 4: scheduled length from the brief, and when the bot got into the room */
+    private scheduledMinutes = 30;
+    private meetingJoinedAt: string | null = null;
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
 
@@ -116,7 +121,25 @@ export class CockpitServer {
 
     /** Lets the cockpit header show where the agent is (lobby / in meeting) */
     public setMeetingStatus(status: 'connecting' | 'lobby' | 'in-meeting' | 'unknown') {
+        // Phase 4: the meeting clock starts the first time the bot is in the room.
+        if (status === 'in-meeting' && !this.meetingJoinedAt) {
+            this.meetingJoinedAt = new Date().toISOString();
+        }
         this.meetingStatus = status;
+    }
+
+    /**
+     * Phase 4: where the meeting stands against its scheduled length —
+     * fed into the agent's decision prompt so nudges get more urgent as
+     * time runs out. remainingMinutes is null until the bot is in the
+     * meeting, and goes negative once the meeting runs over.
+     */
+    public timeState(): { scheduledMinutes: number, remainingMinutes: number | null } {
+        if (!this.meetingJoinedAt) {
+            return { scheduledMinutes: this.scheduledMinutes, remainingMinutes: null };
+        }
+        const elapsedMinutes = (Date.now() - Date.parse(this.meetingJoinedAt)) / 60000;
+        return { scheduledMinutes: this.scheduledMinutes, remainingMinutes: this.scheduledMinutes - elapsedMinutes };
     }
 
     /**
@@ -172,7 +195,7 @@ export class CockpitServer {
                 return;
             }
             try {
-                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown };
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown };
                 const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                     .filter((label): label is string => typeof label === 'string')
                     .map((label) => label.trim())
@@ -185,11 +208,17 @@ export class CockpitServer {
                     ? parsed.meetingName.trim()
                     : 'Untitled meeting';
                 const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
+                // Phase 4: scheduled length in minutes — default 30, clamped to something sane.
+                const rawLength = Number(parsed.lengthMinutes);
+                const lengthMinutes = Number.isFinite(rawLength) && rawLength > 0
+                    ? Math.min(480, Math.max(1, Math.round(rawLength)))
+                    : 30;
 
                 this.briefed = true;
                 this.briefedAt = new Date().toISOString();
                 this.meetingName = meetingName;
-                this.onSetup({ meetingName, labels, context }); // populates the shared conditions array
+                this.scheduledMinutes = lengthMinutes;
+                this.onSetup({ meetingName, labels, context, lengthMinutes }); // populates the shared conditions array
                 answer(200, { ok: true });
             } catch {
                 answer(400, { ok: false, error: 'body must be JSON' });
@@ -283,6 +312,10 @@ export class CockpitServer {
             briefed: this.briefed,
             briefedAt: this.briefedAt,
             meetingName: this.meetingName,
+            // Phase 4: drives the header countdown. meetingJoinedAt is null
+            // until the bot is actually in the room.
+            scheduledMinutes: this.scheduledMinutes,
+            meetingJoinedAt: this.meetingJoinedAt,
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,
