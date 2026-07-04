@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { Logger } from './Logger';
-import { Condition } from '../conditions';
+import { Condition, MAX_CONDITIONS } from '../conditions';
 
 /**
  * CockpitServer is the owner's private window into the running agent.
@@ -30,6 +30,15 @@ export type TranscriptRecord = {
     hit: boolean;
 };
 
+/** The owner's typed brief, exactly as submitted from the briefing screen */
+export type Brief = {
+    meetingName: string;
+    /** 1-3 free-text condition labels, any wording */
+    labels: string[];
+    /** Optional extra guidance for the agent ("Maya holds the budget") */
+    context: string;
+};
+
 /** One nudge the agent posted to the meeting chat */
 export type NudgeRecord = {
     text: string;
@@ -50,15 +59,27 @@ export class CockpitServer {
     private readonly startedAt = new Date().toISOString();
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
+    /** Called ONCE with the owner's brief when POST /setup accepts it */
+    private readonly onSetup: (brief: Brief) => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
+    private briefed = false;
+    private briefedAt: string | null = null;
+    private meetingName: string | null = null;
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
 
-    constructor(args: { botId: string, conditions: Condition[], port: number, onCommand: (instruction: string) => void }) {
+    constructor(args: {
+        botId: string,
+        conditions: Condition[],
+        port: number,
+        onCommand: (instruction: string) => void,
+        onSetup: (brief: Brief) => void,
+    }) {
         this.conditions = args.conditions;
         this.port = args.port;
         this.onCommand = args.onCommand;
+        this.onSetup = args.onSetup;
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
     }
 
@@ -114,6 +135,8 @@ export class CockpitServer {
                 res.end(JSON.stringify(this._buildState()));
             } else if (url === '/command' && req.method === 'POST') {
                 this._handleCommand(req, res);
+            } else if (url === '/setup' && req.method === 'POST') {
+                this._handleSetup(req, res);
             } else {
                 res.writeHead(404, { 'content-type': 'text/plain' });
                 res.end('Not found');
@@ -130,11 +153,60 @@ export class CockpitServer {
         });
     }
 
+    /**
+     * Receives the owner's brief from the briefing screen:
+     * POST /setup with {"meetingName": "...", "conditions": ["...", ...], "context": "..."}
+     * Accepts 1-3 free-text condition labels. Only the FIRST brief counts —
+     * re-briefing mid-run is rejected so the board and feed never disagree.
+     */
+    private _handleSetup(req: http.IncomingMessage, res: http.ServerResponse) {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            const answer = (code: number, payload: object) => {
+                res.writeHead(code, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(payload));
+            };
+            if (this.briefed) {
+                answer(409, { ok: false, error: 'Agent is already briefed — restart the bot to brief it again.' });
+                return;
+            }
+            try {
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown };
+                const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
+                    .filter((label): label is string => typeof label === 'string')
+                    .map((label) => label.trim())
+                    .filter(Boolean);
+                if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
+                    answer(400, { ok: false, error: `Give the agent 1 to ${MAX_CONDITIONS} conditions.` });
+                    return;
+                }
+                const meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim())
+                    ? parsed.meetingName.trim()
+                    : 'Untitled meeting';
+                const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
+
+                this.briefed = true;
+                this.briefedAt = new Date().toISOString();
+                this.meetingName = meetingName;
+                this.onSetup({ meetingName, labels, context }); // populates the shared conditions array
+                answer(200, { ok: true });
+            } catch {
+                answer(400, { ok: false, error: 'body must be JSON' });
+            }
+        });
+    }
+
     /** Receives the owner's private steer: POST /command with {"instruction": "..."} */
     private _handleCommand(req: http.IncomingMessage, res: http.ServerResponse) {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
         req.on('end', () => {
+            if (!this.briefed) {
+                res.writeHead(409, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Brief the agent first — it is not in the meeting yet.' }));
+                return;
+            }
             try {
                 const parsed = JSON.parse(body) as { instruction?: unknown };
                 const instruction = typeof parsed.instruction === 'string' ? parsed.instruction.trim() : '';
@@ -206,6 +278,11 @@ export class CockpitServer {
         return {
             startedAt: this.startedAt,
             meetingStatus: this.meetingStatus,
+            // Until briefed the agent has no conditions and won't join —
+            // the page keeps showing the briefing screen while this is false.
+            briefed: this.briefed,
+            briefedAt: this.briefedAt,
+            meetingName: this.meetingName,
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,

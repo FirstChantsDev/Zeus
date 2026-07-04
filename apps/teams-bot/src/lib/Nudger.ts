@@ -42,12 +42,19 @@ export class Nudger {
     private readonly apiKey: string;
     private readonly logger: Logger;
     private readonly conditions: Condition[];
+    /** Optional extra guidance from the briefing screen ("Maya holds the budget") */
+    private context = '';
     private lastNudgeAt = 0;
 
     constructor(args: { botId: string, apiKey: string, conditions: Condition[] }) {
         this.apiKey = args.apiKey;
         this.conditions = args.conditions;
         this.logger = new Logger({ source: 'nudger', botId: args.botId });
+    }
+
+    /** Phase 3: the briefing screen's optional context line, set when the owner submits the brief */
+    public setContext(context: string) {
+        this.context = context.trim();
     }
 
     /**
@@ -144,6 +151,7 @@ export class Nudger {
             '',
             'Current conditions:',
             conditionLines,
+            ...this._contextLines(),
             '',
             'Answer TWO questions about the new line:',
             '1. RESOLVE: does this line clearly settle any OPEN condition? Only count a clear decision made',
@@ -186,6 +194,7 @@ export class Nudger {
             '',
             'Current conditions:',
             this._conditionLines(),
+            ...this._contextLines(),
             '',
             'Recent conversation in the room:',
             ...transcriptLines,
@@ -260,6 +269,14 @@ export class Nudger {
             this.logger.error({ message: 'Steer execution failed', data: error });
             return null;
         }
+    }
+
+    /** The owner's optional context line as extra prompt guidance, or nothing if she left it blank */
+    private _contextLines(): string[] {
+        if (!this.context) {
+            return [];
+        }
+        return ['', `Extra context from your owner (use it to judge and word your messages): ${this.context}`];
     }
 
     /** One line per condition, showing live status, for both prompts */

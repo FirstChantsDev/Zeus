@@ -1,29 +1,35 @@
 /**
  * ═══════════════════════════════════════════════════════════════════
- *  EDIT ME — this is the agent's meeting brief.
+ *  The agent's meeting brief.
  *
- *  These are the outcomes the agent drives the meeting toward. It will
- *  listen for each one being settled, and nudge the room when one is
- *  being ignored. To change the brief, edit the lines below:
- *
- *    - label:  the goal in plain English, as it appears on the cockpit.
- *    - id:     a short one-word nickname (lowercase, no spaces).
- *
- *  You can add or remove lines. Always leave status: 'open' and
- *  nudges: 0 — the bot updates those itself while the meeting runs.
+ *  Phase 3: conditions are NO LONGER edited here. They start empty and
+ *  are filled in from the "Brief your agent" screen at
+ *  http://localhost:4300 — whatever you type there is what the agent
+ *  drives. The bot waits for the brief before joining the meeting.
  * ═══════════════════════════════════════════════════════════════════
  */
-export const conditions: Condition[] = [
-    { id: 'budget', label: 'Budget confirmed',      status: 'open', nudges: 0 },
-    { id: 'date',   label: 'Launch date locked',    status: 'open', nudges: 0 },
-    { id: 'metric', label: 'Success metric agreed', status: 'open', nudges: 0 },
-];
+export const conditions: Condition[] = [];
+
+/** Maximum conditions the owner can brief the agent with */
+export const MAX_CONDITIONS = 3;
+
+/**
+ * Replaces the conditions with the owner's typed brief. Mutates the
+ * shared array IN PLACE — the Nudger and CockpitServer both hold a
+ * reference to it, so it must never be reassigned.
+ */
+export const applyBrief = (labels: string[]) => {
+    conditions.length = 0;
+    labels.slice(0, MAX_CONDITIONS).forEach((label, index) => {
+        conditions.push({ id: `c${index}`, label, status: 'open', nudges: 0 });
+    });
+};
 
 /** One meeting outcome the agent is responsible for closing. */
 export type Condition = {
-    /** Short one-word nickname used in logs and API calls */
+    /** Short nickname used in logs and API calls (c0/c1/c2) */
     id: string;
-    /** The goal in plain English */
+    /** The goal in plain English, exactly as the owner typed it */
     label: string;
     /** 'open' until the room clearly settles it, then 'closed' */
     status: 'open' | 'closed';
