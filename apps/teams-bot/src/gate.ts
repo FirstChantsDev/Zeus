@@ -1,12 +1,14 @@
 /**
- * GATE prototype launcher.
+ * Zeus prototype launcher.
  *
  * Usage:  npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>
  *
- * Opens a VISIBLE Chrome window, joins the meeting as "Zeus bot" with camera
- * and mic off, and then sits there printing a plain-English status line
- * whenever its situation changes (lobby / in meeting / neither).
- * The window stays open until you press Ctrl+C in the terminal.
+ * Phase 3 flow: starts the cockpit at http://localhost:4300 and WAITS.
+ * The owner types her brief there (meeting name, 1-3 conditions, optional
+ * context) and clicks "Send agent into the meeting" — only then does a
+ * VISIBLE Chrome window open and join the meeting as "Zeus bot" with
+ * camera and mic off. The window stays open until you press Ctrl+C in
+ * the terminal.
  */
 import 'dotenv/config';
 import { chromium } from 'playwright';
@@ -16,7 +18,7 @@ import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
 import { Nudger } from './lib/Nudger';
 import { CockpitServer } from './lib/CockpitServer';
-import { conditions } from './conditions';
+import { conditions, applyBrief } from './conditions';
 
 /** The cockpit's local address: http://localhost:4300 */
 const COCKPIT_PORT = 4300;
@@ -30,6 +32,84 @@ if (!meetingUrl) {
 const main = async () => {
     const botId = randomUUID();
 
+    // Phase 3: conditions start EMPTY. The owner types them into the
+    // briefing screen at http://localhost:4300; the agent drives whatever
+    // she typed. Without an API key the bot still runs, it just prints
+    // captions without ever posting nudges.
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const nudger = apiKey ? new Nudger({ botId, apiKey, conditions }) : null;
+    if (!nudger) {
+        console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
+    }
+
+    // The bot only walks into the meeting AFTER the brief is submitted:
+    // this promise resolves the moment the cockpit accepts POST /setup.
+    let briefSubmitted: () => void;
+    const briefed = new Promise<void>((resolve) => { briefSubmitted = resolve; });
+
+    // Created after the brief, when the browser opens and joins.
+    let chat: ChatProcedure | null = null;
+
+    // Everything the agent says — self-driven nudges and owner steers alike —
+    // goes through one queue, one message at a time, in order.
+    let nudgeQueue: Promise<void> = Promise.resolve();
+
+    // The owner's private cockpit — a tiny web server inside this same
+    // process, serving the briefing screen first and the live board after.
+    // A steer typed there is carried out immediately — the agent composes
+    // the message and posts it, no waiting for the next caption.
+    const cockpit: CockpitServer = new CockpitServer({
+        botId,
+        conditions,
+        port: COCKPIT_PORT,
+        // Phase 3: the briefing screen submitted — fill the shared conditions
+        // array with the owner's typed labels and let the join flow proceed.
+        onSetup: (brief) => {
+            applyBrief(brief.labels);
+            nudger?.setContext(brief.context);
+            console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
+            for (const condition of conditions) {
+                console.log(`  - ${condition.label}`);
+            }
+            if (brief.context) {
+                console.log(`  context: ${brief.context}`);
+            }
+            briefSubmitted();
+        },
+        onCommand: (instruction) => {
+            if (!nudger) {
+                console.log('STEER ignored — no ANTHROPIC_API_KEY, the agent cannot compose messages.');
+                return;
+            }
+            // Share the nudge queue so a steer never talks over a nudge in flight.
+            nudgeQueue = nudgeQueue
+                .then(async () => {
+                    const chatNow = chat;
+                    if (!chatNow) {
+                        console.log('STEER ignored — the agent has not opened the meeting yet.');
+                        return;
+                    }
+                    const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10), cockpit.timeState());
+                    if (!directive) {
+                        console.log('STEER >>> could not be turned into a message (see log above).');
+                        return;
+                    }
+                    console.log(`STEERED MESSAGE >>> ${directive.text}`);
+                    cockpit.addNudge({ text: directive.text, conditionId: directive.conditionId, steered: true });
+                    await chatNow.sendMessage(directive.text);
+                })
+                .catch((error) => {
+                    console.error('Steer pipeline error:', error);
+                });
+        },
+    });
+    cockpit.start();
+
+    // Phase 3 sequencing: brief first, THEN the agent walks in.
+    console.log(`\n=== Zeus: waiting for your brief. Open http://localhost:${COCKPIT_PORT}, type your conditions, and send the agent in. ===\n`);
+    await briefed;
+
+    console.log('\n=== Zeus bot: brief received — opening the meeting link... ===\n');
     const browser = await chromium.launch({
         headless: false,   // hard requirement: always visible
         channel: 'chrome', // Playwright's bundled Chromium won't start on this PC; use installed Chrome
@@ -45,80 +125,12 @@ const main = async () => {
     const page = await context.newPage();
 
     const join = new JoinProcedure({ botId, page });
-    const chat = new ChatProcedure({ botId, page });
+    chat = new ChatProcedure({ botId, page });
 
-    // Phase 2: the nudge brain drives the owner's pre-defined conditions
-    // (see conditions.ts). Without an API key the bot still runs,
-    // it just prints captions without ever posting nudges.
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    const nudger = apiKey ? new Nudger({ botId, apiKey, conditions }) : null;
-    if (!nudger) {
-        console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
-    }
-
-    // Everything the agent says — self-driven nudges and owner steers alike —
-    // goes through one queue, one message at a time, in order.
-    let nudgeQueue: Promise<void> = Promise.resolve();
-
-    // Phase 3: the agent joins the meeting only after the owner submits the
-    // briefing screen. This promise is the doorway it waits behind.
-    let briefingDone!: () => void;
-    const briefingReceived = new Promise<void>((resolve) => { briefingDone = resolve; });
-
-    // Milestone 2: the owner's private cockpit — a tiny web server inside
-    // this same process, serving the live board at http://localhost:4300.
-    // Milestone 4: a steer typed there is carried out immediately — the agent
-    // composes the message and posts it, no waiting for the next caption.
-    const cockpit: CockpitServer = new CockpitServer({
-        botId,
-        conditions,
-        port: COCKPIT_PORT,
-        onCommand: (instruction) => {
-            if (!nudger) {
-                console.log('STEER ignored — no ANTHROPIC_API_KEY, the agent cannot compose messages.');
-                return;
-            }
-            // Share the nudge queue so a steer never talks over a nudge in flight.
-            nudgeQueue = nudgeQueue
-                .then(async () => {
-                    const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10));
-                    if (!directive) {
-                        console.log('STEER >>> could not be turned into a message (see log above).');
-                        return;
-                    }
-                    console.log(`STEERED MESSAGE >>> ${directive.text}`);
-                    cockpit.addNudge({ text: directive.text, conditionId: directive.conditionId, steered: true });
-                    await chat.sendMessage(directive.text);
-                })
-                .catch((error) => {
-                    console.error('Steer pipeline error:', error);
-                });
-        },
-        onSetup: ({ conditionLabels, context }) => {
-            // Rebuild the shared conditions array in place — the Nudger and the
-            // cockpit both hold references to this same array.
-            conditions.length = 0;
-            conditionLabels.forEach((label, index) => {
-                conditions.push({ id: `c${index}`, label, status: 'open', nudges: 0 });
-            });
-            nudger?.setContext(context || null);
-            console.log('Conditions the agent is driving toward:');
-            for (const condition of conditions) {
-                console.log(`  - ${condition.label}`);
-            }
-            briefingDone(); // opens the doorway below
-        },
-    });
-    cockpit.start();
-
-    console.log('\n=== Zeus bot: waiting for your briefing at http://localhost:4300 — it joins the meeting once you submit it. ===\n');
-    await briefingReceived;
-
-    console.log('\n=== GATE bot: opening the meeting link... ===\n');
     await join.startMeetingLauncherFlow({ meetingUrl });
     await join.joinMeetingLobbyFlow();
 
-    console.log('\n=== GATE bot: join clicked. Watching status (Ctrl+C here to quit)... ===\n');
+    console.log('\n=== Zeus bot: join clicked. Watching status (Ctrl+C here to quit)... ===\n');
 
     let lastState = '';
     let inMeetingSince: number | null = null;
@@ -140,14 +152,14 @@ const main = async () => {
                 console.log('\n>>> STATUS: In the waiting room (lobby). Waiting to be admitted. <<<\n');
             } else if (state === 'in-meeting') {
                 inMeetingSince = Date.now();
-                console.log('\n>>> STATUS: Admitted! GATE bot is now IN the meeting. <<<\n');
+                console.log('\n>>> STATUS: Admitted! Zeus bot is now IN the meeting. <<<\n');
             } else {
                 console.log('\n>>> STATUS: Not in lobby or meeting (page may still be loading, or the call ended). <<<\n');
             }
             lastState = state;
         }
 
-        // Milestone 3: once admitted, post one hard-coded test message to chat.
+        // Once admitted, post one hello message to chat.
         if (state === 'in-meeting' && !chatMessagePosted) {
             chatMessagePosted = true; // only try once, even if it fails
             await page.waitForTimeout(3000); // let the meeting UI settle first
@@ -159,7 +171,7 @@ const main = async () => {
             }
         }
 
-        // Milestone 4: turn on live captions and print finished lines.
+        // Turn on live captions and print finished lines.
         if (state === 'in-meeting' && chatMessagePosted && !captionsStarted) {
             captionsStarted = true; // only try once, even if it fails
             try {
@@ -175,14 +187,20 @@ const main = async () => {
                         }
                         nudgeQueue = nudgeQueue
                             .then(async () => {
-                                const decision = await nudger.decide(line);
+                                // Phase 4: the brain judges a rolling window of the
+                                // conversation (newest line included, added above),
+                                // plus where the meeting stands against the clock.
+                                const decision = await nudger.decide({
+                                    transcript: cockpit.recentTranscript(40),
+                                    time: cockpit.timeState(),
+                                });
                                 if (decision.resolvedIds.length > 0) {
                                     transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
                                 }
                                 if (decision.nudge) {
                                     console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
                                     cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
-                                    await chat.sendMessage(decision.nudge.text);
+                                    await chat!.sendMessage(decision.nudge.text);
                                 }
                             })
                             .catch((error) => {
@@ -198,7 +216,7 @@ const main = async () => {
             }
         }
 
-        // Milestone 2 evidence: report a stable minute in the meeting.
+        // Report a stable minute in the meeting.
         if (state === 'in-meeting' && inMeetingSince && Date.now() - inMeetingSince >= 60000) {
             console.log('>>> STATUS: Stable in meeting for 60+ seconds. <<<');
             inMeetingSince = null; // print this only once
@@ -209,6 +227,6 @@ const main = async () => {
 };
 
 main().catch((error) => {
-    console.error('\n=== GATE bot hit a fatal error ===\n', error);
+    console.error('\n=== Zeus bot hit a fatal error ===\n', error);
     process.exit(1);
 });

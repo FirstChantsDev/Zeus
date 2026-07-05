@@ -37,7 +37,7 @@ button,input,textarea{font-family:inherit;}
 html,body{height:100%;background:var(--ink);color:var(--t1);font-family:var(--body);font-size:14px;}
 body{display:flex;flex-direction:column;overflow:hidden;}
 
-/* ══ BRIEFING SCREEN ══ */
+/* ══ BRIEFING SCREEN (Phase 3 — markup/CSS from the reference mock) ══ */
 #briefing{
   position:fixed;inset:0;z-index:100;background:var(--ink);
   display:flex;align-items:center;justify-content:center;
@@ -67,13 +67,17 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   padding:9px;width:100%;color:var(--t2);font-size:12.5px;cursor:pointer;
 }
 .cond-add:hover{border-color:var(--jade-bd);color:var(--jade);}
+.cond-add.maxed{display:none;}
 .brief-go{
   margin-top:26px;width:100%;background:var(--jade);border:none;border-radius:11px;
   padding:13px;font-family:var(--head);font-weight:600;font-size:15px;color:#08110d;
   cursor:pointer;letter-spacing:-.2px;
 }
 .brief-go:hover{filter:brightness(1.07);}
+.brief-go:disabled{opacity:.55;cursor:wait;}
 .brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
+.brief-error{margin-top:12px;font-size:12px;color:var(--red);text-align:center;line-height:1.5;display:none;}
+.brief-error.show{display:block;}
 
 /* ══ HEADER ══ */
 header{
@@ -90,6 +94,10 @@ header{
 .live-dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pulse 1.6s ease infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.45;transform:scale(.8);}}
 .clock{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--t3);}
+/* Phase 4: time remaining against the scheduled length */
+.countdown{font-family:var(--mono);font-size:12px;color:var(--t3);}
+.countdown.warn{color:var(--amber);}
+.countdown.over{color:var(--red);}
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
 
@@ -117,6 +125,13 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond.open .badge{color:var(--amber);border-color:var(--amber-bd);}
 .cond.closed{border-color:var(--jade-bd);background:linear-gradient(180deg,var(--jade-bg),var(--s2) 70%);}
 .cond.closed .badge{color:var(--jade);border-color:var(--jade-bd);}
+/* Phase 4: the expand control + fuller "why" panel on each card */
+.cond-expand{
+  flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
+  width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;
+}
+.cond-expand:hover{color:var(--jade);border-color:var(--jade-bd);}
+.cond-why{font-size:12px;color:var(--t2);line-height:1.5;border-top:1px solid var(--line);padding-top:8px;}
 .cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
 .cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
 @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(232,106,94,0);}50%{box-shadow:0 0 0 5px rgba(232,106,94,.08);}}
@@ -179,29 +194,33 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 </head>
 <body>
 
-<!-- ══ BRIEFING (pre-meeting) ══ -->
+<!-- ══ BRIEFING (pre-meeting) — the agent only joins once this is submitted ══ -->
 <div id="briefing">
   <div class="brief-card">
     <div class="brief-mark">ZEUS<em>.</em></div>
     <div class="brief-title">Brief your agent</div>
-    <div class="brief-sub">Tell it what this meeting must produce. It will join the meeting, drive the room toward these outcomes, and only pull you in when one won't close.</div>
+    <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
     <div class="f-label">Meeting</div>
-    <input class="f-input" id="meetName" placeholder="e.g. Spring launch — campaign kickoff">
+    <input class="f-input" id="meetName" placeholder='e.g. "Spring launch — campaign kickoff"'>
 
-    <div class="f-label">Conditions to close — what must be decided before this meeting ends (up to 3)</div>
+    <div class="f-label">Scheduled length (minutes)</div>
+    <input class="f-input" id="meetLen" type="number" min="1" max="480" value="30">
+
+    <div class="f-label">Conditions to close — up to three, in your own words</div>
     <div class="cond-inputs" id="condInputs">
-      <div class="cond-input-row"><span class="num">1</span><input class="f-input" placeholder="e.g. Budget confirmed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
-      <div class="cond-input-row"><span class="num">2</span><input class="f-input" placeholder="e.g. Launch date locked"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
-      <div class="cond-input-row"><span class="num">3</span><input class="f-input" placeholder="e.g. Success metric agreed"><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">1</span><input class="f-input" placeholder='e.g. "Budget confirmed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">2</span><input class="f-input" placeholder='e.g. "Launch date locked"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
+      <div class="cond-input-row"><span class="num">3</span><input class="f-input" placeholder='e.g. "Success metric agreed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
     </div>
-    <button class="cond-add" id="condAdd" onclick="addCond()" style="display:none">+ Add condition</button>
+    <button class="cond-add maxed" id="condAdd" onclick="addCond()">+ Add condition</button>
 
     <div class="f-label">Context for the agent — optional</div>
     <input class="f-input" id="meetCtx" placeholder='e.g. "Maya holds the budget. Don&#39;t let creative dominate."'>
 
-    <button class="brief-go" onclick="submitBrief()">Send agent into the meeting →</button>
-    <div class="brief-note">The agent joins as a participant once you submit. Your cockpit — and every steer you make — stays private to you.</div>
+    <button class="brief-go" id="briefGo" onclick="sendAgentIn()">Send agent into the meeting →</button>
+    <div class="brief-error" id="briefError"></div>
+    <div class="brief-note">The agent joins as a participant. Your cockpit — and every steer you make — stays private to you.</div>
   </div>
 </div>
 
@@ -213,6 +232,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <span class="live" id="liveBadge"><span class="live-dot"></span><span id="liveText">CONNECTING…</span></span>
   </div>
   <div class="clock" id="clock">00:00</div>
+  <div class="countdown" id="countdown"></div>
   <div class="owner"><span>Liz's cockpit</span><span class="owner-chip">L</span></div>
 </header>
 
@@ -248,62 +268,77 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 </main>
 
 <script>
-// ══ BRIEFING ═══════════════════════════════════════════
-// The owner types 1-3 free-text conditions; POST /setup hands them to the
-// agent, which only then joins the meeting. The agent drives whatever is
-// typed here — nothing is hard-coded.
-const MAX_CONDITIONS = 3;
-function addCond(){
-  const box = document.getElementById('condInputs');
-  if(box.children.length >= MAX_CONDITIONS) return;
-  const row = document.createElement('div');
-  row.className = 'cond-input-row';
-  row.innerHTML = `<span class="num">${box.children.length+1}</span><input class="f-input" placeholder="e.g. Owner assigned for follow-ups"><button class="cond-remove" onclick="rmCond(this)">×</button>`;
-  box.appendChild(row);
-  refreshCondRows();
-}
-function rmCond(btn){
-  const box = document.getElementById('condInputs');
-  if(box.children.length <= 1) return;
-  btn.parentElement.remove();
-  refreshCondRows();
-}
-function refreshCondRows(){
-  const box = document.getElementById('condInputs');
-  [...box.children].forEach((row, i) => row.querySelector('.num').textContent = i + 1);
-  document.getElementById('condAdd').style.display = box.children.length >= MAX_CONDITIONS ? 'none' : '';
-}
-async function submitBrief(){
-  const labels = [...document.querySelectorAll('#condInputs .f-input')]
-    .map((input) => input.value.trim()).filter(Boolean);
-  if(!labels.length){ alert('Give the agent at least one condition to drive.'); return; }
-  const body = {
-    meetingName: document.getElementById('meetName').value.trim(),
-    conditions: labels,
-    context: document.getElementById('meetCtx').value.trim(),
-  };
-  try{
-    const response = await fetch('/setup', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    if(response.ok){
-      document.getElementById('briefing').classList.add('gone');
-      poll(); // flip to the live board straight away
-    } else {
-      alert('The agent could not accept the briefing — is the bot running?');
-    }
-  }catch(e){
-    alert('Could not reach the agent — is the bot running?');
-  }
-}
-
 // ══ LIVE STATE ═══════════════════════════════════════════
 // The scripted demo is gone. This page now polls the bot's /state
 // endpoint every 1.5s and re-renders the three panels from real data.
 const POLL_MS = 1500;
 let startedAt = null; // set from the first /state answer; drives the clock
+let briefed = false;  // mirrors /state — flips the page from briefing to live cockpit
+
+// ══ BRIEFING (Phase 3) ═════════════════════════════════════
+// The owner types 1-3 free-text conditions; POST /setup hands them to the
+// agent and the bot walks into the meeting. Until then the overlay stays.
+const MAX_CONDITIONS = 3;
+
+function syncCondControls(){
+  const box = document.getElementById('condInputs');
+  [...box.children].forEach((row, i) => { row.querySelector('.num').textContent = i + 1; });
+  document.getElementById('condAdd').classList.toggle('maxed', box.children.length >= MAX_CONDITIONS);
+}
+function addCond(){
+  const box = document.getElementById('condInputs');
+  if(box.children.length >= MAX_CONDITIONS) return;
+  const row = document.createElement('div');
+  row.className = 'cond-input-row';
+  row.innerHTML = `<span class="num"></span><input class="f-input" placeholder='e.g. "Owner assigned for follow-ups"'><button class="cond-remove" onclick="rmCond(this)">×</button>`;
+  box.appendChild(row);
+  syncCondControls();
+  row.querySelector('.f-input').focus();
+}
+function rmCond(btn){
+  const box = document.getElementById('condInputs');
+  if(box.children.length <= 1) return;
+  btn.parentElement.remove();
+  syncCondControls();
+}
+function briefError(msg){
+  const el = document.getElementById('briefError');
+  el.textContent = msg;
+  el.classList.toggle('show', Boolean(msg));
+}
+async function sendAgentIn(){
+  const labels = [...document.querySelectorAll('#condInputs .f-input')]
+    .map((i) => i.value.trim()).filter(Boolean);
+  if(!labels.length){ briefError('Give the agent at least one condition to drive.'); return; }
+  briefError('');
+  const go = document.getElementById('briefGo');
+  go.disabled = true;
+  go.textContent = 'Sending the agent in…';
+  try{
+    const response = await fetch('/setup', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({
+        meetingName: document.getElementById('meetName').value.trim(),
+        conditions: labels,
+        context: document.getElementById('meetCtx').value.trim(),
+        lengthMinutes: parseInt(document.getElementById('meetLen').value, 10) || 30,
+      }),
+    });
+    if(response.ok){
+      briefed = true;
+      document.getElementById('briefing').classList.add('gone'); // the mock's fade to the live cockpit
+      poll(); // pull the freshly briefed state right away, no 1.5s wait
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    briefError(body.error || 'The agent could not accept the brief.');
+  }catch(e){
+    briefError('Could not reach the agent — is the bot running?');
+  }
+  go.disabled = false;
+  go.textContent = 'Send agent into the meeting →';
+}
 
 // Escape anything that came out of the meeting before putting it in HTML.
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
@@ -312,34 +347,47 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
 
 // ══ RENDERERS (same visual output as the mock) ═══════════
 function renderHeader(state){
-  if(state.meetingName) document.getElementById('hdrMeet').textContent = state.meetingName;
   const badge = document.getElementById('liveBadge');
   const text = document.getElementById('liveText');
-  if(!state.briefed){ badge.className='live warn'; text.textContent='AWAITING BRIEFING'; }
+  if(!state.briefed){ badge.className='live warn'; text.textContent='AWAITING YOUR BRIEF'; }
   else if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
   else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
-  else { badge.className='live warn'; text.textContent='AGENT JOINING…'; }
+  else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
+  if(state.meetingName){ document.getElementById('hdrMeet').textContent = state.meetingName; }
+}
+
+// Phase 4: which cards the owner has expanded to read the agent's fuller
+// "why". Kept here (by condition id) because the cards are re-rendered on
+// every poll — the Set survives, so an open panel stays open.
+const expandedWhys = new Set();
+let lastConditions = [];
+function toggleWhy(id){
+  if(expandedWhys.has(id)) expandedWhys.delete(id); else expandedWhys.add(id);
+  renderConditions(lastConditions); // redraw right away, no 1.5s wait
 }
 
 function renderConditions(conditions){
+  lastConditions = conditions;
   const row = document.getElementById('condRow');
-  if(!conditions.length){
-    row.innerHTML = '<div class="feed-empty">No conditions yet — brief your agent first.</div>';
-    return;
-  }
   row.innerHTML = conditions.map((c) => {
-    // Milestone 3: 2+ nudges while still open = exception. The agent has
-    // pushed twice and the room keeps moving past it — Liz's cue to step in.
+    // 2+ nudges while still open = exception. The agent has pushed twice
+    // and the room keeps moving past it — Liz's cue to step in.
     const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
     const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS LIZ' : 'OPEN';
-    const meta = status === 'closed'
-      ? (c.note || 'Settled in the room.')
+    // The one-line reason: the agent's live judgement when it has one,
+    // otherwise the same canned lines as before.
+    const meta = c.note ? c.note
+      : status === 'closed' ? 'Settled in the room.'
       : status === 'exception'
         ? (c.nudges === 2 ? 'Nudged twice — the room keeps moving past it.' : `Nudged ${c.nudges} times — the room keeps moving past it.`)
         : (c.nudges > 0 ? 'Agent has raised it — waiting on the room.' : 'Not yet raised in the room.');
+    // Phase 4: collapsed by default; ＋ reveals the agent's fuller explanation.
+    const expanded = expandedWhys.has(c.id);
+    const why = c.why || 'The agent has not formed a fuller view on this yet — it updates as the room talks.';
     return `<div class="cond ${status}">
-      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span></div>
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
+      ${expanded ? `<div class="cond-why">${esc(why)}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>
     </div>`;
   }).join('');
@@ -403,9 +451,19 @@ async function poll(){
   try{
     const response = await fetch('/state');
     const state = await response.json();
-    if(!startedAt) startedAt = new Date(state.startedAt);
-    // Already briefed (e.g. the page was refreshed mid-meeting) — skip the form.
-    if(state.briefed) document.getElementById('briefing').classList.add('gone');
+    // The clock counts from the moment the agent was briefed and set off.
+    startedAt = state.briefedAt ? new Date(state.briefedAt) : null;
+    // Phase 4: the countdown counts against the scheduled length, from the
+    // moment the bot actually got into the meeting.
+    scheduledMinutes = state.scheduledMinutes || 30;
+    meetingJoinedAt = state.meetingJoinedAt ? new Date(state.meetingJoinedAt) : null;
+    // Keep the page and the bot agreeing on whether the brief happened —
+    // covers a refresh mid-meeting (skip the form) without ever bringing
+    // the overlay back once it has faded.
+    if(state.briefed && !briefed){
+      briefed = true;
+      document.getElementById('briefing').classList.add('gone');
+    }
     renderHeader(state);
     renderConditions(state.conditions);
     renderNudges(state.nudges);
@@ -420,13 +478,36 @@ async function poll(){
 poll();
 setInterval(poll, POLL_MS);
 
-// ══ CLOCK ═════════════════════════════════════════════════
-setInterval(() => {
-  if(!startedAt) return;
-  const secs = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+// ══ CLOCK + COUNTDOWN ═════════════════════════════════════
+let scheduledMinutes = 30;
+let meetingJoinedAt = null; // set from /state once the bot is in the room
+
+const mmss = (secs) => {
   const m = String(Math.floor(secs / 60)).padStart(2, '0');
   const s = String(secs % 60).padStart(2, '0');
-  document.getElementById('clock').textContent = `${m}:${s}`;
+  return `${m}:${s}`;
+};
+
+setInterval(() => {
+  if(startedAt){
+    document.getElementById('clock').textContent = mmss(Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000)));
+  }
+  // Phase 4: time remaining vs the scheduled length. Amber once under a
+  // third remains, red once the meeting runs over.
+  const cd = document.getElementById('countdown');
+  if(!meetingJoinedAt){
+    cd.textContent = '';
+    return;
+  }
+  const totalSecs = scheduledMinutes * 60;
+  const remaining = totalSecs - Math.floor((Date.now() - meetingJoinedAt.getTime()) / 1000);
+  if(remaining >= 0){
+    cd.className = remaining <= totalSecs / 3 ? 'countdown warn' : 'countdown';
+    cd.textContent = `${mmss(remaining)} left`;
+  } else {
+    cd.className = 'countdown over';
+    cd.textContent = `${mmss(-remaining)} over`;
+  }
 }, 1000);
 </script>
 </body>

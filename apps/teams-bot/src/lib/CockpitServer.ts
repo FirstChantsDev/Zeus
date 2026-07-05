@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { Logger } from './Logger';
-import { Condition } from '../conditions';
+import { Condition, MAX_CONDITIONS } from '../conditions';
 
 /**
  * CockpitServer is the owner's private window into the running agent.
@@ -30,6 +30,17 @@ export type TranscriptRecord = {
     hit: boolean;
 };
 
+/** The owner's typed brief, exactly as submitted from the briefing screen */
+export type Brief = {
+    meetingName: string;
+    /** 1-3 free-text condition labels, any wording */
+    labels: string[];
+    /** Optional extra guidance for the agent ("Maya holds the budget") */
+    context: string;
+    /** Phase 4: the meeting's scheduled length in minutes (default 30) */
+    lengthMinutes: number;
+};
+
 /** One nudge the agent posted to the meeting chat */
 export type NudgeRecord = {
     text: string;
@@ -50,22 +61,25 @@ export class CockpitServer {
     private readonly startedAt = new Date().toISOString();
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
-    /** Called with the owner's briefing the moment POST /setup receives one */
-    private readonly onSetup: (setup: { meetingName: string | null, conditionLabels: string[], context: string }) => void;
+    /** Called ONCE with the owner's brief when POST /setup accepts it */
+    private readonly onSetup: (brief: Brief) => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
+    private briefed = false;
+    private briefedAt: string | null = null;
+    private meetingName: string | null = null;
+    /** Phase 4: scheduled length from the brief, and when the bot got into the room */
+    private scheduledMinutes = 30;
+    private meetingJoinedAt: string | null = null;
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
-    /** false until the owner submits the briefing screen */
-    private briefed = false;
-    private meetingName: string | null = null;
 
     constructor(args: {
         botId: string,
         conditions: Condition[],
         port: number,
         onCommand: (instruction: string) => void,
-        onSetup: (setup: { meetingName: string | null, conditionLabels: string[], context: string }) => void,
+        onSetup: (brief: Brief) => void,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
@@ -107,7 +121,25 @@ export class CockpitServer {
 
     /** Lets the cockpit header show where the agent is (lobby / in meeting) */
     public setMeetingStatus(status: 'connecting' | 'lobby' | 'in-meeting' | 'unknown') {
+        // Phase 4: the meeting clock starts the first time the bot is in the room.
+        if (status === 'in-meeting' && !this.meetingJoinedAt) {
+            this.meetingJoinedAt = new Date().toISOString();
+        }
         this.meetingStatus = status;
+    }
+
+    /**
+     * Phase 4: where the meeting stands against its scheduled length —
+     * fed into the agent's decision prompt so nudges get more urgent as
+     * time runs out. remainingMinutes is null until the bot is in the
+     * meeting, and goes negative once the meeting runs over.
+     */
+    public timeState(): { scheduledMinutes: number, remainingMinutes: number | null } {
+        if (!this.meetingJoinedAt) {
+            return { scheduledMinutes: this.scheduledMinutes, remainingMinutes: null };
+        }
+        const elapsedMinutes = (Date.now() - Date.parse(this.meetingJoinedAt)) / 60000;
+        return { scheduledMinutes: this.scheduledMinutes, remainingMinutes: this.scheduledMinutes - elapsedMinutes };
     }
 
     /**
@@ -144,34 +176,52 @@ export class CockpitServer {
         });
     }
 
-    /** Receives the briefing: POST /setup with {"meetingName": "...", "conditions": ["...", ...], "context": "..."} */
+    /**
+     * Receives the owner's brief from the briefing screen:
+     * POST /setup with {"meetingName": "...", "conditions": ["...", ...], "context": "..."}
+     * Accepts 1-3 free-text condition labels. Only the FIRST brief counts —
+     * re-briefing mid-run is rejected so the board and feed never disagree.
+     */
     private _handleSetup(req: http.IncomingMessage, res: http.ServerResponse) {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
         req.on('end', () => {
+            const answer = (code: number, payload: object) => {
+                res.writeHead(code, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(payload));
+            };
+            if (this.briefed) {
+                answer(409, { ok: false, error: 'Agent is already briefed — restart the bot to brief it again.' });
+                return;
+            }
             try {
-                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown };
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown };
                 const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                     .filter((label): label is string => typeof label === 'string')
                     .map((label) => label.trim())
-                    .filter(Boolean)
-                    .slice(0, 3); // the board is built for at most three
-                if (labels.length === 0) {
-                    res.writeHead(400, { 'content-type': 'application/json' });
-                    res.end(JSON.stringify({ ok: false, error: 'at least one condition required' }));
+                    .filter(Boolean);
+                if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
+                    answer(400, { ok: false, error: `Give the agent 1 to ${MAX_CONDITIONS} conditions.` });
                     return;
                 }
-                this.meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim()) ? parsed.meetingName.trim() : null;
+                const meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim())
+                    ? parsed.meetingName.trim()
+                    : 'Untitled meeting';
                 const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
-                this.nudges.length = 0; // a new brief starts a fresh activity feed
+                // Phase 4: scheduled length in minutes — default 30, clamped to something sane.
+                const rawLength = Number(parsed.lengthMinutes);
+                const lengthMinutes = Number.isFinite(rawLength) && rawLength > 0
+                    ? Math.min(480, Math.max(1, Math.round(rawLength)))
+                    : 30;
+
                 this.briefed = true;
-                console.log(`BRIEFING >>> ${labels.join(' | ')}${context ? ` (context: ${context})` : ''}`);
-                this.onSetup({ meetingName: this.meetingName, conditionLabels: labels, context });
-                res.writeHead(200, { 'content-type': 'application/json' });
-                res.end(JSON.stringify({ ok: true }));
+                this.briefedAt = new Date().toISOString();
+                this.meetingName = meetingName;
+                this.scheduledMinutes = lengthMinutes;
+                this.onSetup({ meetingName, labels, context, lengthMinutes }); // populates the shared conditions array
+                answer(200, { ok: true });
             } catch {
-                res.writeHead(400, { 'content-type': 'application/json' });
-                res.end(JSON.stringify({ ok: false, error: 'body must be JSON' }));
+                answer(400, { ok: false, error: 'body must be JSON' });
             }
         });
     }
@@ -181,6 +231,11 @@ export class CockpitServer {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
         req.on('end', () => {
+            if (!this.briefed) {
+                res.writeHead(409, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Brief the agent first — it is not in the meeting yet.' }));
+                return;
+            }
             try {
                 const parsed = JSON.parse(body) as { instruction?: unknown };
                 const instruction = typeof parsed.instruction === 'string' ? parsed.instruction.trim() : '';
@@ -251,9 +306,16 @@ export class CockpitServer {
 
         return {
             startedAt: this.startedAt,
-            briefed: this.briefed,
-            meetingName: this.meetingName,
             meetingStatus: this.meetingStatus,
+            // Until briefed the agent has no conditions and won't join —
+            // the page keeps showing the briefing screen while this is false.
+            briefed: this.briefed,
+            briefedAt: this.briefedAt,
+            meetingName: this.meetingName,
+            // Phase 4: drives the header countdown. meetingJoinedAt is null
+            // until the bot is actually in the room.
+            scheduledMinutes: this.scheduledMinutes,
+            meetingJoinedAt: this.meetingJoinedAt,
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,
