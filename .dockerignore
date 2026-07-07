@@ -20,9 +20,8 @@ dist
 .env.test.local
 .env.production.local
 
-# Zeus: runtime artefacts; the cockpit server never runs inside the bot image
+# Zeus: runtime artefacts
 output
-deploy/cockpit-server
 
 # Git
 .git
