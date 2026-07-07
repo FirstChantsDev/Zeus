@@ -232,6 +232,14 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="f-label">Meeting</div>
     <input class="f-input" id="meetName" placeholder='e.g. "Spring launch — campaign kickoff"'>
 
+    <!-- Phase 6: only shown when the bot doesn't already know the link
+         (i.e. the hosted cockpit). Locally the link comes from the launch
+         command, so this stays hidden and nothing changes. -->
+    <div id="linkField" style="display:none">
+      <div class="f-label">Teams meeting link — the agent will join this call</div>
+      <input class="f-input" id="meetLink" placeholder="paste the Teams meeting link here">
+    </div>
+
     <div class="f-label">Your name — so the agent can flag when the room needs you</div>
     <input class="f-input" id="ownerName" placeholder='e.g. "Calvin"'>
 
@@ -345,6 +353,15 @@ async function sendAgentIn(){
   const labels = [...document.querySelectorAll('#condInputs .f-input')]
     .map((i) => i.value.trim()).filter(Boolean);
   if(!labels.length){ briefError('Give the agent at least one condition to drive.'); return; }
+  // Phase 6: on the hosted cockpit the meeting link is typed here.
+  let meetingUrl;
+  if(document.getElementById('linkField').style.display !== 'none'){
+    meetingUrl = document.getElementById('meetLink').value.trim();
+    if(!meetingUrl || !meetingUrl.includes('teams.')){
+      briefError('Paste the Teams meeting link so the agent knows where to go.');
+      return;
+    }
+  }
   briefError('');
   const go = document.getElementById('briefGo');
   go.disabled = true;
@@ -359,6 +376,7 @@ async function sendAgentIn(){
         context: document.getElementById('meetCtx').value.trim(),
         lengthMinutes: parseInt(document.getElementById('meetLen').value, 10) || 30,
         ownerName: document.getElementById('ownerName').value.trim(),
+        meetingUrl, // undefined locally — the bot already knows the link
       }),
     });
     if(response.ok){
@@ -549,6 +567,11 @@ async function poll(){
     if(state.briefed && !briefed){
       briefed = true;
       document.getElementById('briefing').classList.add('gone');
+    }
+    // Phase 6: if the bot doesn't already know the meeting link (hosted
+    // cockpit), the briefing form asks for it. Locally it stays hidden.
+    if(!state.briefed && !state.meetingUrl){
+      document.getElementById('linkField').style.display = '';
     }
     renderHeader(state);
     renderMentions(state.mentions);

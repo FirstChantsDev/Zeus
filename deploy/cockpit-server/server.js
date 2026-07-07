@@ -32,6 +32,9 @@ const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
 const DEMO_MODE = (process.env.DEMO_MODE ?? '1') !== '0';
 const MAX_CONDITIONS = 3;
+// Phase 6 M3: the shared secret the cloud bot presents on /bot/* calls.
+// Set the same value on both Railway services. Empty = bot endpoints off.
+const BOT_TOKEN = process.env.BOT_TOKEN || '';
 
 // The one cockpit page, shared with the local app.
 const COCKPIT_PAGE = path.join(__dirname, '..', '..', 'apps', 'teams-bot', 'src', 'cockpit.html');
@@ -71,11 +74,36 @@ const state = {
     scheduledMinutes: 30,
     meetingJoinedAt: null,
     ownerName: '',
-    meetingUrl: '', // no Join call link until the real bot is wired in (Milestone 3)
+    meetingUrl: '', // typed into the hosted briefing form; the cloud bot joins it
+    context: '',
     conditions: [],
     nudges: [],
     transcript: [],
     mentions: [],
+};
+
+// Phase 6 M3: hub-side plumbing between the website and the cloud bot.
+// briefClaimed — the bot has collected the brief and is on its way.
+// steerQueue   — owner instructions waiting for the bot's next check-in.
+let briefClaimed = false;
+let steerQueue = [];
+
+const resetState = () => {
+    state.briefed = false;
+    state.briefedAt = null;
+    state.meetingName = null;
+    state.meetingStatus = 'connecting';
+    state.scheduledMinutes = 30;
+    state.meetingJoinedAt = null;
+    state.ownerName = '';
+    state.meetingUrl = '';
+    state.context = '';
+    state.conditions = [];
+    state.nudges = [];
+    state.transcript = [];
+    state.mentions = [];
+    briefClaimed = false;
+    steerQueue = [];
 };
 
 const buildStateJson = () => {
@@ -296,6 +324,61 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // ── Phase 6 M3: the cloud bot's endpoints — shared-secret auth, not cookies ──
+    if (url.startsWith('/bot/')) {
+        if (!BOT_TOKEN || req.headers['x-bot-token'] !== BOT_TOKEN) {
+            answer(res, 403, { ok: false, error: 'bad bot token' });
+            return;
+        }
+        if (url === '/bot/brief' && req.method === 'GET') {
+            // Hand the brief over exactly once; the bot is now responsible.
+            if (state.briefed && !briefClaimed) {
+                briefClaimed = true;
+                console.log('BOT >>> collected the brief, heading for the meeting');
+                answer(res, 200, {
+                    brief: {
+                        meetingName: state.meetingName,
+                        labels: state.conditions.map((c) => c.label),
+                        context: state.context,
+                        lengthMinutes: state.scheduledMinutes,
+                        ownerName: state.ownerName,
+                        meetingUrl: state.meetingUrl,
+                    },
+                });
+            } else {
+                answer(res, 200, { brief: null });
+            }
+            return;
+        }
+        if (url === '/bot/state' && req.method === 'POST') {
+            // The bot's snapshot replaces the hub copy; steers ride back.
+            try {
+                const snap = JSON.parse(await readBody(req));
+                if (typeof snap.meetingStatus === 'string') state.meetingStatus = snap.meetingStatus;
+                if (snap.meetingJoinedAt !== undefined) state.meetingJoinedAt = snap.meetingJoinedAt;
+                if (Array.isArray(snap.conditions)) state.conditions = snap.conditions;
+                if (Array.isArray(snap.nudges)) state.nudges = snap.nudges;
+                if (Array.isArray(snap.transcript)) state.transcript = snap.transcript;
+                if (Array.isArray(snap.mentions)) state.mentions = snap.mentions;
+                const steers = steerQueue;
+                steerQueue = [];
+                answer(res, 200, { ok: true, steers });
+            } catch {
+                answer(res, 400, { ok: false, error: 'body must be JSON' });
+            }
+            return;
+        }
+        if (url === '/bot/reset' && req.method === 'POST') {
+            // Meeting over — back to a fresh briefing screen for the next user.
+            console.log('BOT >>> meeting ended, cockpit reset for the next brief');
+            resetState();
+            answer(res, 200, { ok: true });
+            return;
+        }
+        answer(res, 404, { ok: false, error: 'unknown bot endpoint' });
+        return;
+    }
+
     // Everything below is the cockpit API — access code required.
     if (!isAuthed(req)) {
         answer(res, 401, { ok: false, error: 'access code required' });
@@ -309,11 +392,18 @@ const server = http.createServer(async (req, res) => {
 
     if (url === '/setup' && req.method === 'POST') {
         if (state.briefed) {
-            answer(res, 409, { ok: false, error: 'Agent is already briefed — restart the service to brief it again.' });
+            answer(res, 409, { ok: false, error: 'The shared agent is already handling a meeting — try again once it finishes.' });
             return;
         }
         try {
             const parsed = JSON.parse(await readBody(req));
+            // Phase 6 M3: the hosted brief carries the meeting link (locally the
+            // bot gets it from the launch command instead). Demo mode excepted.
+            const meetingUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
+            if (!DEMO_MODE && (!meetingUrl || !meetingUrl.includes('teams.'))) {
+                answer(res, 400, { ok: false, error: 'A Teams meeting link is required so the agent knows where to go.' });
+                return;
+            }
             const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                 .filter((label) => typeof label === 'string')
                 .map((label) => label.trim())
@@ -328,6 +418,8 @@ const server = http.createServer(async (req, res) => {
             state.meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim()) ? parsed.meetingName.trim() : 'Untitled meeting';
             state.scheduledMinutes = Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30;
             state.ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
+            state.meetingUrl = meetingUrl;
+            state.context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
             labels.forEach((label, index) => {
                 state.conditions.push({ id: `c${index}`, label, status: 'open', nudges: 0 });
             });
@@ -343,8 +435,25 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url === '/command' && req.method === 'POST') {
-        // Steering needs the real cloud bot — that lands in Milestone 3.
-        answer(res, 409, { ok: false, error: 'The cloud bot is not wired up yet — steering arrives with it.' });
+        // Phase 6 M3: steers are queued here; the cloud bot collects them on
+        // its next check-in (every couple of seconds) and acts immediately.
+        if (!state.briefed) {
+            answer(res, 409, { ok: false, error: 'Brief the agent first.' });
+            return;
+        }
+        try {
+            const parsed = JSON.parse(await readBody(req));
+            const instruction = typeof parsed.instruction === 'string' ? parsed.instruction.trim() : '';
+            if (!instruction) {
+                answer(res, 400, { ok: false, error: 'instruction required' });
+                return;
+            }
+            steerQueue.push(instruction);
+            console.log(`STEER queued >>> ${instruction}`);
+            answer(res, 200, { ok: true });
+        } catch {
+            answer(res, 400, { ok: false, error: 'body must be JSON' });
+        }
         return;
     }
 

@@ -27,8 +27,9 @@ COPY apps/teams-bot/package.json apps/teams-bot/package.json
 COPY apps/bot-launcher-server/package.json apps/bot-launcher-server/package.json
 RUN npm ci
 
-# The bot's source code.
+# The bot's source code — local launcher and the cloud launcher.
 COPY apps ./apps
+COPY deploy/bot ./deploy/bot
 
 # No Google Chrome in the container — use the image's bundled Chromium.
 # (Locally, without this setting, gate.ts keeps using installed Chrome.)
@@ -38,4 +39,11 @@ ENV ZEUS_BROWSER_CHANNEL=bundled
 EXPOSE 4300
 
 # xvfb-run gives the "headed" browser its virtual screen.
-CMD xvfb-run --auto-servernum -- npx tsx apps/teams-bot/src/gate.ts "$MEETING_URL"
+# Two modes, one image:
+#   HUB_URL set   → cloud mode: poll the hosted cockpit for briefs (Milestone 3)
+#   HUB_URL empty → local mode: join $MEETING_URL, cockpit on port 4300 (Milestone 2)
+CMD if [ -n "$HUB_URL" ]; then \
+        xvfb-run --auto-servernum -- npx tsx deploy/bot/src/cloud-gate.ts; \
+    else \
+        xvfb-run --auto-servernum -- npx tsx apps/teams-bot/src/gate.ts "$MEETING_URL"; \
+    fi
