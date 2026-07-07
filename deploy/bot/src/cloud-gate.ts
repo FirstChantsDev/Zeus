@@ -162,11 +162,14 @@ const runMeeting = async (brief: BriefFromHub) => {
                 '--use-fake-device-for-media-stream',
                 '--no-sandbox',              // required inside the container
                 '--disable-dev-shm-usage',   // container shared memory is tiny; use disk instead
+                '--disable-blink-features=AutomationControlled', // don't announce "I am a robot"
             ],
         });
         const context = await browser.newContext({
             viewport: { width: 1600, height: 900 },
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            // Match what the browser actually is (Linux Chromium) — claiming
+            // Windows Chrome while running Linux is a classic bot giveaway.
+            userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
         });
         const page = await context.newPage();
 
@@ -202,6 +205,7 @@ const runMeeting = async (brief: BriefFromHub) => {
         let lostSince: number | null = null;
         let chatMessagePosted = false;
         let captionsStarted = false;
+        const joinAttemptStartedAt = Date.now();
 
         try {
             while (true) {
@@ -218,6 +222,15 @@ const runMeeting = async (brief: BriefFromHub) => {
                 if (state !== lastState) {
                     console.log(`>>> STATUS: ${state} <<<`);
                     lastState = state;
+                    // Diagnosis: when Teams drops us somewhere unrecognised,
+                    // log what the page actually says — its own words explain
+                    // rejections better than our guesses.
+                    if (state === 'unknown') {
+                        const title = await page.title().catch(() => '(no title)');
+                        const bodyText = await page.evaluate(() => (document.body?.innerText ?? '').slice(0, 400)).catch(() => '(unreadable)');
+                        console.log(`PAGE SAYS >>> title: ${title}`);
+                        console.log(`PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
+                    }
                 }
 
                 // Meeting-over detection: we were in, and now we've been lost
@@ -234,6 +247,12 @@ const runMeeting = async (brief: BriefFromHub) => {
                 const remaining = timeState().remainingMinutes;
                 if (remaining !== null && remaining < -OVERTIME_LIMIT_MINUTES) {
                     console.log('=== Hard overtime limit reached — leaving the meeting. ===');
+                    break;
+                }
+                // Never admitted at all? Give up after a while so the website
+                // isn't stuck "busy" on a meeting that never started.
+                if (!meetingJoinedAt && Date.now() - joinAttemptStartedAt > 6 * 60000) {
+                    console.log('=== Not admitted within 6 minutes — giving up and freeing the cockpit. ===');
                     break;
                 }
 
