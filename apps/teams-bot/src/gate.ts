@@ -126,9 +126,15 @@ const main = async () => {
     await briefed;
 
     console.log('\n=== Zeus bot: brief received — opening the meeting link... ===\n');
+    // Which browser to drive. Locally this stays installed Google Chrome
+    // ('chrome') because Playwright's bundled Chromium won't start on this
+    // PC. The Docker container (Phase 6) has no Chrome — it sets
+    // ZEUS_BROWSER_CHANNEL=bundled to use the image's bundled Chromium.
+    // Default unchanged: without that setting, behaviour is exactly as before.
+    const browserChannel = process.env.ZEUS_BROWSER_CHANNEL === 'bundled' ? undefined : 'chrome';
     const browser = await chromium.launch({
-        headless: false,   // hard requirement: always visible
-        channel: 'chrome', // Playwright's bundled Chromium won't start on this PC; use installed Chrome
+        headless: false,   // hard requirement: always visible (the container provides a virtual screen)
+        channel: browserChannel,
         args: [
             '--use-fake-ui-for-media-stream',     // auto-accept any mic/camera permission popup
             '--use-fake-device-for-media-stream', // hand Teams a fake mic/camera instead of real hardware

@@ -12,11 +12,17 @@ out
 build
 dist
 
-# Environment files
+# Environment files — .env holds the API key and must NEVER enter an image;
+# secrets are passed at runtime (docker run --env-file / host variables).
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Zeus: runtime artefacts and the deploy folder itself
+output
+deploy
 
 # Git
 .git
