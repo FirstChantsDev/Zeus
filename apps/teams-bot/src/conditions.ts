@@ -41,4 +41,8 @@ export type Condition = {
      *  state — why it's still pending, or how it came together. Shown when
      *  the owner expands the card. Refreshed on every decision call. */
     why?: string;
+    /** Phase 5: the verbatim transcript line(s) behind the current judgement —
+     *  speaker + exact words, shown as the receipt in the expanded card.
+     *  Freezes when the condition closes (closed conditions are never re-judged). */
+    evidence?: Array<{ speaker: string, quote: string }>;
 };

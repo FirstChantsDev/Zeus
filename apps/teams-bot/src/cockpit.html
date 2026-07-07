@@ -132,6 +132,9 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 }
 .cond-expand:hover{color:var(--jade);border-color:var(--jade-bd);}
 .cond-why{font-size:12px;color:var(--t2);line-height:1.5;border-top:1px solid var(--line);padding-top:8px;}
+/* Phase 5: the verbatim transcript quote(s) behind a judgement — the receipt */
+.cond-quote{font-family:var(--mono);font-size:11px;color:var(--jade);line-height:1.5;margin-top:6px;}
+.cond-quote .spk{color:var(--t2);}
 .cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
 .cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
 @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(232,106,94,0);}50%{box-shadow:0 0 0 5px rgba(232,106,94,.08);}}
@@ -384,10 +387,14 @@ function renderConditions(conditions){
     // Phase 4: collapsed by default; ＋ reveals the agent's fuller explanation.
     const expanded = expandedWhys.has(c.id);
     const why = c.why || 'The agent has not formed a fuller view on this yet — it updates as the room talks.';
+    // Phase 5: the verbatim quote(s) that drove the judgement, shown as the receipt.
+    const quotes = (c.evidence || []).map((line) =>
+      `<div class="cond-quote">⤷ <span class="spk">${esc(line.speaker)}:</span> “${esc(line.quote)}”</div>`
+    ).join('');
     return `<div class="cond ${status}">
       <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
-      ${expanded ? `<div class="cond-why">${esc(why)}</div>` : ''}
+      ${expanded ? `<div class="cond-why">${esc(why)}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>
     </div>`;
   }).join('');

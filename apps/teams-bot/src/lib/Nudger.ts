@@ -140,10 +140,19 @@ export class Nudger {
                 if (judged.why) {
                     condition.why = judged.why;
                 }
+                // Phase 5: keep the verbatim receipt behind the current judgement.
+                // Overwritten as the judgement evolves; freezes once closed
+                // (closed conditions are never re-judged).
+                if (judged.evidence.length > 0) {
+                    condition.evidence = judged.evidence;
+                }
                 if (judged.status === 'closed') {
                     condition.status = 'closed';
                     resolvedIds.push(condition.id);
                     console.log(`CONDITION CLOSED >>> ${condition.label} — ${condition.note ?? 'settled in the room'}`);
+                    for (const line of condition.evidence ?? []) {
+                        console.log(`  ⤷ ${line.speaker}: "${line.quote}"`);
+                    }
                 }
             }
 
@@ -193,6 +202,10 @@ export class Nudger {
             '     where it stands in the room right now (e.g. "Not raised yet", "Waiting on finance").',
             '   - why: 1-2 plain-English sentences telling the fuller story — what is blocking it, who said',
             '     what, whether it depends on another condition; or, if closed, how it came together.',
+            '   - evidence: the transcript line(s) that DIRECTLY drive your judgement, copied VERBATIM from',
+            '     the conversation — the speaker and their exact words, character for character. Never',
+            '     paraphrase, shorten, or invent a quote. At most 3 lines; use [] when no specific line',
+            '     applies (e.g. the condition simply has not been raised yet).',
             '',
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
             '   OPEN condition? Nudge when the conversation is drifting past or away from an open condition.',
@@ -206,7 +219,8 @@ export class Nudger {
             '   lock it now?").',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"conditions": [{"id": "<id>", "status": "open", "reason": "...", "why": "..."}, ...],',
+            '{"conditions": [{"id": "<id>", "status": "open", "reason": "...", "why": "...",',
+            '   "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
             ' "nudge": {"conditionId": "<id>", "message": "[ZEUS] ..."}}',
             'Include EVERY open condition in "conditions" (status "open" or "closed").',
             'Use "nudge": null when you should stay quiet.',
@@ -357,7 +371,7 @@ export class Nudger {
 
     /** Pulls the JSON decision out of the model's reply; null if it can't be read */
     private _parseDecision(text: string): {
-        conditions: Array<{ id: string, status: 'open' | 'closed', reason: string, why: string }>,
+        conditions: Array<{ id: string, status: 'open' | 'closed', reason: string, why: string, evidence: Array<{ speaker: string, quote: string }> }>,
         nudge: { conditionId: string, message: string } | null,
     } | null {
         const cleaned = Nudger._extractJson(text);
@@ -371,13 +385,20 @@ export class Nudger {
                 nudge?: { conditionId?: unknown, message?: unknown } | null,
             };
             const conditions = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
-                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown } =>
+                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, evidence?: unknown } =>
                     Boolean(item) && typeof (item as { id?: unknown }).id === 'string')
                 .map((item) => ({
                     id: item.id,
                     status: (item.status === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
                     reason: typeof item.reason === 'string' ? item.reason.trim() : '',
                     why: typeof item.why === 'string' ? item.why.trim() : '',
+                    evidence: (Array.isArray(item.evidence) ? item.evidence : [])
+                        .filter((line): line is { speaker: string, quote: string } =>
+                            Boolean(line)
+                            && typeof (line as { speaker?: unknown }).speaker === 'string'
+                            && typeof (line as { quote?: unknown }).quote === 'string'
+                            && Boolean((line as { quote: string }).quote.trim()))
+                        .slice(0, 3),
                 }));
             const nudge = (parsed.nudge && typeof parsed.nudge.conditionId === 'string' && typeof parsed.nudge.message === 'string')
                 ? { conditionId: parsed.nudge.conditionId, message: parsed.nudge.message }
