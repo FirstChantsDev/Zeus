@@ -160,7 +160,8 @@ const runMeeting = async (brief: BriefFromHub) => {
             args: [
                 '--use-fake-ui-for-media-stream',
                 '--use-fake-device-for-media-stream',
-                '--no-sandbox', // required inside the container
+                '--no-sandbox',              // required inside the container
+                '--disable-dev-shm-usage',   // container shared memory is tiny; use disk instead
             ],
         });
         const context = await browser.newContext({

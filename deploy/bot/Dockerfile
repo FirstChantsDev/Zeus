@@ -14,18 +14,26 @@
 #   docker run --rm -p 4300:4300 --env-file .env -e MEETING_URL="<teams-link>" zeus-bot
 #
 # Then brief the agent at http://localhost:4300 as usual.
-FROM mcr.microsoft.com/playwright:v1.54.2-noble
+# Plain Node base + ONLY Chromium keeps the image under cloud size limits.
+# (The all-in Playwright base ships three browsers ≈ 5.5GB; deleting files
+# from a base layer hides them but doesn't shrink the image.)
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# The image already contains the browsers — stop npm re-downloading them.
+# Browsers are installed explicitly below — stop npm downloading them all.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Install dependencies first (cached unless package files change).
 COPY package.json package-lock.json turbo.json ./
 COPY apps/teams-bot/package.json apps/teams-bot/package.json
 COPY apps/bot-launcher-server/package.json apps/bot-launcher-server/package.json
-RUN npm ci
+RUN npm ci && npm cache clean --force
+
+# Chromium only, plus its system libraries and the virtual screen (xvfb).
+RUN npx playwright install --with-deps chromium \
+    && apt-get update && apt-get install -y --no-install-recommends xvfb xauth \
+    && rm -rf /var/lib/apt/lists/*
 
 # The bot's source code — local launcher and the cloud launcher.
 COPY apps ./apps
