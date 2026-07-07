@@ -167,17 +167,30 @@ const runMeeting = async (brief: BriefFromHub) => {
         });
         const context = await browser.newContext({
             viewport: { width: 1600, height: 900 },
-            // Match what the browser actually is (Linux Chromium) — claiming
-            // Windows Chrome while running Linux is a classic bot giveaway.
-            userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+            // The Windows Chrome identity is deliberate and PROVEN: it works
+            // locally and reached the lobby from the cloud. The "honest"
+            // Linux identity regressed — the Teams launcher hides the
+            // continue-on-web button from Linux visitors.
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         });
         const page = await context.newPage();
 
         const join = new JoinProcedure({ botId, page });
         const chat = new ChatProcedure({ botId, page });
 
-        await join.startMeetingLauncherFlow({ meetingUrl: brief.meetingUrl });
-        await join.joinMeetingLobbyFlow();
+        try {
+            await join.startMeetingLauncherFlow({ meetingUrl: brief.meetingUrl });
+            await join.joinMeetingLobbyFlow();
+        } catch (error) {
+            // Before giving up, put Teams' own words in the log — the page
+            // usually says exactly why it refused (unsupported browser,
+            // sign-in required, meeting not found...).
+            const title = await page.title().catch(() => '(no title)');
+            const bodyText = await page.evaluate(() => (document.body?.innerText ?? '').slice(0, 400)).catch(() => '(unreadable)');
+            console.log(`JOIN FAILED — PAGE TITLE >>> ${title}`);
+            console.log(`JOIN FAILED — PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
+            throw error;
+        }
         console.log('=== Cloud bot: join clicked, watching status ===');
 
         // Push state + collect steers every 2 seconds, independent of the

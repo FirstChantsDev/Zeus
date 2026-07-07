@@ -397,6 +397,13 @@ const server = http.createServer(async (req, res) => {
         }
         try {
             const parsed = JSON.parse(await readBody(req));
+            // Re-check after the body arrived: two near-simultaneous submits
+            // (double-click) both pass the first check, and used to both
+            // write their conditions — the "six conditions" bug.
+            if (state.briefed) {
+                answer(res, 409, { ok: false, error: 'The shared agent is already handling a meeting — try again once it finishes.' });
+                return;
+            }
             // Phase 6 M3: the hosted brief carries the meeting link (locally the
             // bot gets it from the launch command instead). Demo mode excepted.
             const meetingUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
