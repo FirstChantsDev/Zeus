@@ -28,6 +28,10 @@ button,input,textarea{font-family:inherit;}
   --red:#e86a5e;
   --red-bg:rgba(232,106,94,.10);
   --red-bd:rgba(232,106,94,.38);
+  /* Phase 5: owner-attention blue — distinct from red condition exceptions */
+  --att:#6fb1e8;
+  --att-bg:rgba(111,177,232,.10);
+  --att-bd:rgba(111,177,232,.38);
   --head:'Bricolage Grotesque',sans-serif;
   --body:'Inter',sans-serif;
   --mono:'IBM Plex Mono',monospace;
@@ -100,6 +104,20 @@ header{
 .countdown.over{color:var(--red);}
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
+
+/* ══ ATTENTION STRIP (Phase 5 — the room needs the owner) ══ */
+.attention-strip{
+  flex:0 0 auto;display:flex;flex-direction:column;gap:8px;
+  padding:10px 22px;border-bottom:1px solid var(--att-bd);background:var(--att-bg);
+  animation:breatheBlue 2.2s ease infinite;
+}
+.mention{display:flex;align-items:center;gap:10px;}
+.mention-tag{font-family:var(--mono);font-size:10px;letter-spacing:.8px;color:var(--att);border:1px solid var(--att-bd);border-radius:999px;padding:3px 8px;white-space:nowrap;background:var(--att-bg);}
+.mention-quote{font-family:var(--mono);font-size:12px;color:var(--t1);line-height:1.5;flex:1;}
+.mention-quote .spk{color:var(--att);}
+.mention-dismiss{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;}
+.mention-dismiss:hover{color:var(--t1);border-color:var(--att-bd);}
+@keyframes breatheBlue{0%,100%{box-shadow:inset 0 0 0 0 rgba(111,177,232,0);}50%{box-shadow:inset 0 -4px 14px -8px rgba(111,177,232,.35);}}
 
 /* ══ LAYOUT ══ */
 main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:auto 1fr;gap:14px;padding:16px 22px 18px;min-height:0;}
@@ -207,6 +225,9 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="f-label">Meeting</div>
     <input class="f-input" id="meetName" placeholder='e.g. "Spring launch — campaign kickoff"'>
 
+    <div class="f-label">Your name — so the agent can flag when the room needs you</div>
+    <input class="f-input" id="ownerName" placeholder='e.g. "Calvin"'>
+
     <div class="f-label">Scheduled length (minutes)</div>
     <input class="f-input" id="meetLen" type="number" min="1" max="480" value="30">
 
@@ -236,8 +257,11 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </div>
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
-  <div class="owner"><span>Liz's cockpit</span><span class="owner-chip">L</span></div>
+  <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
 </header>
+
+<!-- ══ ATTENTION (Phase 5) — shown only when the room says it needs the owner ══ -->
+<div class="attention-strip" id="attention" style="display:none"></div>
 
 <main>
   <section class="panel" id="conditions">
@@ -326,6 +350,7 @@ async function sendAgentIn(){
         conditions: labels,
         context: document.getElementById('meetCtx').value.trim(),
         lengthMinutes: parseInt(document.getElementById('meetLen').value, 10) || 30,
+        ownerName: document.getElementById('ownerName').value.trim(),
       }),
     });
     if(response.ok){
@@ -357,6 +382,40 @@ function renderHeader(state){
   else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
   else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
   if(state.meetingName){ document.getElementById('hdrMeet').textContent = state.meetingName; }
+  // Phase 5: the cockpit belongs to whoever briefed the agent.
+  if(state.ownerName){
+    document.getElementById('ownerLabel').textContent = `${state.ownerName}'s cockpit`;
+    document.getElementById('ownerChip').textContent = state.ownerName[0].toUpperCase();
+  }
+}
+
+// ══ ATTENTION (Phase 5) ═══════════════════════════════════
+// Mentions arrive from /state; dismissing one only hides it on this page.
+const dismissedMentions = new Set();
+let lastMentions = [];
+function renderMentions(mentions){
+  lastMentions = mentions || [];
+  const strip = document.getElementById('attention');
+  const live = lastMentions.filter((m) => !dismissedMentions.has(m.at + '|' + m.quote));
+  if(!live.length){
+    strip.style.display = 'none';
+    strip.innerHTML = '';
+    return;
+  }
+  strip.style.display = '';
+  strip.innerHTML = live.map((m) => {
+    const index = lastMentions.indexOf(m);
+    return `<div class="mention">
+      <span class="mention-tag">NEEDS YOUR ATTENTION</span>
+      <span class="mention-quote"><span class="spk">${esc(m.speaker)}:</span> “${esc(m.quote)}”</span>
+      <button class="mention-dismiss" title="Dismiss" onclick="dismissMention(${index})">×</button>
+    </div>`;
+  }).join('');
+}
+function dismissMention(index){
+  const m = lastMentions[index];
+  if(m) dismissedMentions.add(m.at + '|' + m.quote);
+  renderMentions(lastMentions);
 }
 
 // Phase 4: which cards the owner has expanded to read the agent's fuller
@@ -472,6 +531,7 @@ async function poll(){
       document.getElementById('briefing').classList.add('gone');
     }
     renderHeader(state);
+    renderMentions(state.mentions);
     renderConditions(state.conditions);
     renderNudges(state.nudges);
     renderTranscript(state.transcript);

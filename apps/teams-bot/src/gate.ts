@@ -67,6 +67,7 @@ const main = async () => {
         onSetup: (brief) => {
             applyBrief(brief.labels);
             nudger?.setContext(brief.context);
+            nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);
@@ -196,6 +197,11 @@ const main = async () => {
                                 });
                                 if (decision.resolvedIds.length > 0) {
                                     transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
+                                }
+                                // Phase 5: the room just said it needs the owner.
+                                if (decision.mention) {
+                                    console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
+                                    cockpit.addMention(decision.mention);
                                 }
                                 if (decision.nudge) {
                                     console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);

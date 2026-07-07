@@ -35,6 +35,8 @@ export type LineDecision = {
     nudge: NudgeDecision | null;
     /** Conditions the conversation just closed (empty most of the time) */
     resolvedIds: string[];
+    /** Phase 5: the newest line named the owner in a way that needs them */
+    mention: { speaker: string, quote: string } | null;
 };
 
 /** Where the meeting stands against its scheduled length (from the briefing) */
@@ -53,6 +55,8 @@ export class Nudger {
     private readonly conditions: Condition[];
     /** Optional extra guidance from the briefing screen ("Maya holds the budget") */
     private context = '';
+    /** Phase 5: the owner's name from the briefing — lets the agent spot when the room needs them */
+    private ownerName = '';
     private lastNudgeAt = 0;
 
     constructor(args: { botId: string, apiKey: string, conditions: Condition[] }) {
@@ -64,6 +68,11 @@ export class Nudger {
     /** Phase 3: the briefing screen's optional context line, set when the owner submits the brief */
     public setContext(context: string) {
         this.context = context.trim();
+    }
+
+    /** Phase 5: who the owner is, so mentions of them in the room can be flagged */
+    public setOwner(name: string) {
+        this.ownerName = name.trim();
     }
 
     /**
@@ -80,7 +89,7 @@ export class Nudger {
         transcript: Array<{ speaker: string, text: string }>,
         time: TimeState,
     }): Promise<LineDecision> {
-        const quiet: LineDecision = { nudge: null, resolvedIds: [] };
+        const quiet: LineDecision = { nudge: null, resolvedIds: [], mention: null };
         const openConditions = this.conditions.filter((c) => c.status === 'open');
         if (openConditions.length === 0) {
             return quiet; // everything the owner asked for is settled — stay quiet
@@ -171,7 +180,10 @@ export class Nudger {
                     nudge = { text: message, conditionId: condition.id };
                 }
             }
-            return { nudge, resolvedIds };
+
+            // 3. Phase 5: pass along an owner mention, but only when a name was briefed.
+            const mention = this.ownerName ? decision.mention : null;
+            return { nudge, resolvedIds, mention };
         } catch (error) {
             this.logger.error({ message: 'Nudge decision failed', data: error });
             return quiet;
@@ -180,6 +192,18 @@ export class Nudger {
 
     /** The instructions sent with every call, rebuilt so they always show live condition and time state */
     private _buildSystemPrompt(time: TimeState): string {
+        // Phase 5: only ask about owner mentions when a name was briefed. Scoped
+        // to the LAST line so one remark is flagged once, not on every turn the
+        // rolling window still contains it.
+        const mentionTask = this.ownerName ? [
+            '',
+            `3. MENTION: look ONLY at the LAST line — the one that just arrived. Does it name or clearly`,
+            `   refer to your owner, ${this.ownerName}, in a way that needs their input, decision, or`,
+            `   presence — e.g. "we can't confirm until ${this.ownerName} gets back to us" or "let's check`,
+            `   with ${this.ownerName}"? If yes, report the speaker and their exact verbatim words.`,
+            `   A mention that needs nothing from ${this.ownerName} (e.g. "${this.ownerName} already`,
+            `   approved this") is NOT an alert — use null.`,
+        ] : [];
         return [
             'You are Zeus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
             'conditions this meeting must settle before it ends. On every turn you receive the conversation',
@@ -190,7 +214,7 @@ export class Nudger {
             ...this._contextLines(),
             ...Nudger._timeLines(time),
             '',
-            'Do TWO things, judging from the WHOLE conversation, not just the newest line. A resolution often',
+            `Do ${this.ownerName ? 'THREE' : 'TWO'} things, judging from the WHOLE conversation, not just the newest line. A resolution often`,
             'unfolds across several lines and speakers — e.g. "what\'s the budget?" / "50k" / "yes, approved"',
             'across three speakers clearly settles a budget condition even though no single line does.',
             '',
@@ -217,13 +241,15 @@ export class Nudger {
             '   mention the time. In the final minutes — or over time — push hard for immediate decisions',
             '   on whatever is still open (e.g. "Ten minutes left and the budget is still open — can we',
             '   lock it now?").',
+            ...mentionTask,
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
             '{"conditions": [{"id": "<id>", "status": "open", "reason": "...", "why": "...",',
             '   "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
-            ' "nudge": {"conditionId": "<id>", "message": "[ZEUS] ..."}}',
+            ' "nudge": {"conditionId": "<id>", "message": "[ZEUS] ..."}' + (this.ownerName ? ',' : '}'),
+            ...(this.ownerName ? [' "mention": {"speaker": "<name>", "quote": "<their exact words>"}}'] : []),
             'Include EVERY open condition in "conditions" (status "open" or "closed").',
-            'Use "nudge": null when you should stay quiet.',
+            'Use "nudge": null when you should stay quiet' + (this.ownerName ? ', and "mention": null unless the newest line genuinely needs your owner.' : '.'),
         ].join('\n');
     }
 
@@ -373,6 +399,7 @@ export class Nudger {
     private _parseDecision(text: string): {
         conditions: Array<{ id: string, status: 'open' | 'closed', reason: string, why: string, evidence: Array<{ speaker: string, quote: string }> }>,
         nudge: { conditionId: string, message: string } | null,
+        mention: { speaker: string, quote: string } | null,
     } | null {
         const cleaned = Nudger._extractJson(text);
         if (cleaned === null) {
@@ -383,6 +410,7 @@ export class Nudger {
             const parsed = JSON.parse(cleaned) as {
                 conditions?: unknown,
                 nudge?: { conditionId?: unknown, message?: unknown } | null,
+                mention?: { speaker?: unknown, quote?: unknown } | null,
             };
             const conditions = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                 .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, evidence?: unknown } =>
@@ -403,7 +431,11 @@ export class Nudger {
             const nudge = (parsed.nudge && typeof parsed.nudge.conditionId === 'string' && typeof parsed.nudge.message === 'string')
                 ? { conditionId: parsed.nudge.conditionId, message: parsed.nudge.message }
                 : null;
-            return { conditions, nudge };
+            const mention = (parsed.mention && typeof parsed.mention.speaker === 'string'
+                && typeof parsed.mention.quote === 'string' && parsed.mention.quote.trim())
+                ? { speaker: parsed.mention.speaker, quote: parsed.mention.quote }
+                : null;
+            return { conditions, nudge, mention };
         } catch {
             this.logger.warn({ message: 'Could not parse decision JSON', data: cleaned });
             return null;

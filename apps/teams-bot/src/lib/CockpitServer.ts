@@ -39,6 +39,16 @@ export type Brief = {
     context: string;
     /** Phase 4: the meeting's scheduled length in minutes (default 30) */
     lengthMinutes: number;
+    /** Phase 5: the owner's name, so the agent can flag when the room needs them ('' if not given) */
+    ownerName: string;
+};
+
+/** Phase 5: one moment the room named the owner in a way that needs them */
+export type MentionRecord = {
+    speaker: string;
+    /** Their exact words, verbatim from the transcript */
+    quote: string;
+    at: string;
 };
 
 /** One nudge the agent posted to the meeting chat */
@@ -73,6 +83,9 @@ export class CockpitServer {
     private meetingJoinedAt: string | null = null;
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
+    /** Phase 5: moments the room said it needs the owner */
+    private readonly mentions: MentionRecord[] = [];
+    private ownerName = '';
 
     constructor(args: {
         botId: string,
@@ -117,6 +130,16 @@ export class CockpitServer {
     /** The last few transcript lines — context for steer execution */
     public recentTranscript(count: number): TranscriptRecord[] {
         return this.transcript.slice(-count);
+    }
+
+    /** Phase 5: records that the room named the owner in a way that needs them */
+    public addMention(mention: { speaker: string, quote: string }) {
+        // The same remark can be re-reported if captions repeat — keep it once.
+        const duplicate = this.mentions.some((m) => m.speaker === mention.speaker && m.quote === mention.quote);
+        if (duplicate) {
+            return;
+        }
+        this.mentions.push({ ...mention, at: new Date().toISOString() });
     }
 
     /** Lets the cockpit header show where the agent is (lobby / in meeting) */
@@ -195,7 +218,7 @@ export class CockpitServer {
                 return;
             }
             try {
-                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown };
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown, ownerName?: unknown };
                 const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                     .filter((label): label is string => typeof label === 'string')
                     .map((label) => label.trim())
@@ -214,11 +237,15 @@ export class CockpitServer {
                     ? Math.min(480, Math.max(1, Math.round(rawLength)))
                     : 30;
 
+                // Phase 5: the owner's name — optional, '' when left blank.
+                const ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
+
                 this.briefed = true;
                 this.briefedAt = new Date().toISOString();
                 this.meetingName = meetingName;
                 this.scheduledMinutes = lengthMinutes;
-                this.onSetup({ meetingName, labels, context, lengthMinutes }); // populates the shared conditions array
+                this.ownerName = ownerName;
+                this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName }); // populates the shared conditions array
                 answer(200, { ok: true });
             } catch {
                 answer(400, { ok: false, error: 'body must be JSON' });
@@ -319,6 +346,9 @@ export class CockpitServer {
             conditions: this.conditions,
             nudges: nudgesWithStatus,
             transcript: this.transcript,
+            // Phase 5: owner identity + moments the room said it needs them (newest first).
+            ownerName: this.ownerName,
+            mentions: [...this.mentions].reverse(),
         };
     }
 }
