@@ -36,9 +36,10 @@ RUN npx playwright install --with-deps chromium \
     && apt-get update && apt-get install -y --no-install-recommends xvfb xauth \
     && rm -rf /var/lib/apt/lists/*
 
-# The bot's source code — local launcher and the cloud launcher.
+# The bot's source code — local launcher, cloud launcher, shared start file.
 COPY apps ./apps
 COPY deploy/bot ./deploy/bot
+COPY deploy/start.js ./deploy/start.js
 
 # No Google Chrome in the container — use the image's bundled Chromium.
 # (Locally, without this setting, gate.ts keeps using installed Chrome.)
