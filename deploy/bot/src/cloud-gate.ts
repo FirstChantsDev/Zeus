@@ -185,8 +185,8 @@ const runMeeting = async (brief: BriefFromHub) => {
             // Before giving up, put Teams' own words in the log — the page
             // usually says exactly why it refused (unsupported browser,
             // sign-in required, meeting not found...).
-            const title = await page.title().catch(() => '(no title)');
-            const bodyText = await page.evaluate(() => (document.body?.innerText ?? '').slice(0, 400)).catch(() => '(unreadable)');
+            const title = await page.title().catch(() => '(no title — page/browser may be dead)');
+            const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable — page/browser may be dead)') as string;
             console.log(`JOIN FAILED — PAGE TITLE >>> ${title}`);
             console.log(`JOIN FAILED — PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
             throw error;
@@ -239,8 +239,11 @@ const runMeeting = async (brief: BriefFromHub) => {
                     // log what the page actually says — its own words explain
                     // rejections better than our guesses.
                     if (state === 'unknown') {
-                        const title = await page.title().catch(() => '(no title)');
-                        const bodyText = await page.evaluate(() => (document.body?.innerText ?? '').slice(0, 400)).catch(() => '(unreadable)');
+                        // NOTE: raw string, not a function — tsx rewrites
+                        // functions with helpers that don't exist in the page
+                        // (same trap documented in captions-procedure.ts).
+                        const title = await page.title().catch(() => '(no title — page/browser may be dead)');
+                        const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable — page/browser may be dead)') as string;
                         console.log(`PAGE SAYS >>> title: ${title}`);
                         console.log(`PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
                     }
