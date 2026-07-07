@@ -24,11 +24,12 @@ WORKDIR /app
 # Browsers are installed explicitly below — stop npm downloading them all.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# Install dependencies first (cached unless package files change).
-COPY package.json package-lock.json turbo.json ./
-COPY apps/teams-bot/package.json apps/teams-bot/package.json
-COPY apps/bot-launcher-server/package.json apps/bot-launcher-server/package.json
-RUN npm ci && npm cache clean --force
+# Only the packages the bot actually imports (playwright pinned to match the
+# browser below). The full monorepo install carries dev tools and leftovers
+# that push the image past Railway's 4GB estimated limit.
+RUN npm init -y > /dev/null \
+    && npm install playwright@1.54.2 @playwright/test@1.54.2 zod dotenv tsx \
+    && npm cache clean --force
 
 # Chromium only, plus its system libraries and the virtual screen (xvfb).
 RUN npx playwright install --with-deps chromium \
