@@ -453,9 +453,9 @@ function renderConditions(conditions){
   const row = document.getElementById('condRow');
   row.innerHTML = conditions.map((c) => {
     // 2+ nudges while still open = exception. The agent has pushed twice
-    // and the room keeps moving past it — Liz's cue to step in.
+    // and the room keeps moving past it — the owner's cue to step in.
     const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
-    const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS LIZ' : 'OPEN';
+    const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS YOU' : 'OPEN';
     // The one-line reason: the agent's live judgement when it has one,
     // otherwise the same canned lines as before.
     const meta = c.note ? c.note
