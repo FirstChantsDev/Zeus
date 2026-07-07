@@ -23,6 +23,15 @@ import { conditions, applyBrief } from './conditions';
 /** The cockpit's local address: http://localhost:4300 */
 const COCKPIT_PORT = 4300;
 
+/**
+ * Phase 5: THE greeting the bot posts to the meeting chat when it joins.
+ * One place on purpose — change the wording here (it becomes configurable
+ * from the briefing screen in a later phase). {owner} comes from the brief.
+ */
+const greetingFor = (ownerName: string) => ownerName
+    ? `Hi, I'm ${ownerName}'s meeting assistant. I'll help keep us on track.`
+    : `Hi, I'm the meeting assistant. I'll help keep us on track.`;
+
 const meetingUrl = process.argv[2];
 if (!meetingUrl) {
     console.error('Usage: npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>');
@@ -50,6 +59,9 @@ const main = async () => {
     // Created after the brief, when the browser opens and joins.
     let chat: ChatProcedure | null = null;
 
+    // Phase 5: the owner's name from the brief, for the greeting.
+    let ownerName = '';
+
     // Everything the agent says — self-driven nudges and owner steers alike —
     // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
@@ -70,6 +82,7 @@ const main = async () => {
             applyBrief(brief.labels);
             nudger?.setContext(brief.context);
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
+            ownerName = brief.ownerName;       // Phase 5: personalises the greeting
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);
@@ -162,15 +175,18 @@ const main = async () => {
             lastState = state;
         }
 
-        // Once admitted, post one hello message to chat.
+        // Phase 5: once admitted, post the greeting — reliably. The send is
+        // confirmed (the compose box must clear) and retried a few times,
+        // because this message becomes customisable later and must not be
+        // hit-or-miss.
         if (state === 'in-meeting' && !chatMessagePosted) {
-            chatMessagePosted = true; // only try once, even if it fails
+            chatMessagePosted = true; // one greeting per meeting — retries live inside sendMessageReliably
             await page.waitForTimeout(3000); // let the meeting UI settle first
-            try {
-                await chat.sendMessage('hello from Zeus bot');
-                console.log('\n>>> STATUS: Posted test message to the meeting chat. <<<\n');
-            } catch (error) {
-                console.error('\n>>> PROBLEM: Could not post to the meeting chat. <<<\n', error);
+            const posted = await chat.sendMessageReliably(greetingFor(ownerName));
+            if (posted) {
+                console.log('\n>>> STATUS: Greeting posted to the meeting chat. <<<\n');
+            } else {
+                console.error('\n>>> PROBLEM: Greeting did not post after several attempts — carrying on without it. <<<\n');
             }
         }
 

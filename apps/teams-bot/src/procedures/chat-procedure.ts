@@ -109,4 +109,38 @@ export class ChatProcedure {
         await this.page.keyboard.press('Enter');
         this.logger.info({ message: `Sent chat message: ${text}` });
     }
+
+    /**
+     * Phase 5: sends one message and CONFIRMS it went — used for the greeting,
+     * which must be dependable (it becomes customisable later).
+     * On a successful send Teams clears the compose box, so leftover text
+     * means the Enter didn't take. Retries the whole flow (panel open
+     * included) a few times before giving up, logging clearly either way.
+     * Returns true once confirmed posted.
+     */
+    public async sendMessageReliably(text: string, attempts = 3): Promise<boolean> {
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                await this.openChatPanel();
+                const composeBox = this._composeBox();
+                await composeBox.click();
+                await composeBox.fill(text);
+                await this.page.keyboard.press('Enter');
+
+                // Confirm: give Teams a moment, then check the box emptied.
+                await this.page.waitForTimeout(1200);
+                const leftover = (await composeBox.innerText().catch(() => '')).trim();
+                if (!leftover) {
+                    this.logger.info({ message: `Confirmed chat message posted (attempt ${attempt}): ${text}` });
+                    return true;
+                }
+                this.logger.warn({ message: `Message still sitting in the compose box after attempt ${attempt} — retrying.` });
+            } catch (error) {
+                this.logger.warn({ message: `Send attempt ${attempt} failed — retrying.`, data: error });
+            }
+            await this.page.waitForTimeout(1500); // let the meeting UI settle before the next try
+        }
+        this.logger.error({ message: `Could NOT post chat message after ${attempts} attempts: ${text}` });
+        return false;
+    }
 }
