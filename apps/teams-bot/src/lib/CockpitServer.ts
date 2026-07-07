@@ -69,6 +69,8 @@ export class CockpitServer {
     private readonly port: number;
     private readonly logger: Logger;
     private readonly startedAt = new Date().toISOString();
+    /** Phase 5: the Teams link the bot was launched with — the Join call button opens it */
+    private readonly meetingUrl: string;
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
     /** Called ONCE with the owner's brief when POST /setup accepts it */
@@ -91,11 +93,13 @@ export class CockpitServer {
         botId: string,
         conditions: Condition[],
         port: number,
+        meetingUrl: string,
         onCommand: (instruction: string) => void,
         onSetup: (brief: Brief) => void,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
+        this.meetingUrl = args.meetingUrl;
         this.onCommand = args.onCommand;
         this.onSetup = args.onSetup;
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
@@ -349,6 +353,8 @@ export class CockpitServer {
             // Phase 5: owner identity + moments the room said it needs them (newest first).
             ownerName: this.ownerName,
             mentions: [...this.mentions].reverse(),
+            // Phase 5: lets the owner join the meeting as themselves.
+            meetingUrl: this.meetingUrl,
         };
     }
 }

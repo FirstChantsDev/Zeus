@@ -102,6 +102,13 @@ header{
 .countdown{font-family:var(--mono);font-size:12px;color:var(--t3);}
 .countdown.warn{color:var(--amber);}
 .countdown.over{color:var(--red);}
+/* Phase 5: opens the meeting link so the owner joins as themselves */
+.join-btn{
+  background:none;border:1px solid var(--jade-bd);border-radius:9px;padding:6px 13px;
+  font-family:var(--head);font-weight:600;font-size:12px;color:var(--jade);cursor:pointer;
+  letter-spacing:-.1px;white-space:nowrap;
+}
+.join-btn:hover{background:var(--jade-bg);}
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
 
@@ -257,6 +264,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </div>
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
+  <button class="join-btn" id="joinBtn" style="display:none" onclick="joinCall()" title="Open the meeting link so you join as yourself">Join call</button>
   <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
 </header>
 
@@ -387,6 +395,18 @@ function renderHeader(state){
     document.getElementById('ownerLabel').textContent = `${state.ownerName}'s cockpit`;
     document.getElementById('ownerChip').textContent = state.ownerName[0].toUpperCase();
   }
+  // Phase 5: Join call — shown as soon as the bot has told us the link.
+  if(state.meetingUrl){
+    meetingLink = state.meetingUrl;
+    document.getElementById('joinBtn').style.display = '';
+  }
+}
+
+// Phase 5: open the meeting in the owner's own browser — they join as
+// themselves via the normal Teams flow, entirely separate from the bot.
+let meetingLink = null;
+function joinCall(){
+  if(meetingLink) window.open(meetingLink, '_blank', 'noopener');
 }
 
 // ══ ATTENTION (Phase 5) ═══════════════════════════════════

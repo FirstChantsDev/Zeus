@@ -62,6 +62,8 @@ const main = async () => {
         botId,
         conditions,
         port: COCKPIT_PORT,
+        meetingUrl, // Phase 5: the cockpit's Join call button opens this link
+
         // Phase 3: the briefing screen submitted — fill the shared conditions
         // array with the owner's typed labels and let the join flow proceed.
         onSetup: (brief) => {
