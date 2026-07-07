@@ -5,7 +5,7 @@
     "buildCommand": "echo 'cockpit-server is plain Node - no build step'"
   },
   "deploy": {
-    "startCommand": "node deploy/cockpit-server/server.js",
+    "startCommand": "if [ -n \"$HUB_URL\" ]; then xvfb-run --auto-servernum -- npx tsx deploy/bot/src/cloud-gate.ts; else node deploy/cockpit-server/server.js; fi",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
