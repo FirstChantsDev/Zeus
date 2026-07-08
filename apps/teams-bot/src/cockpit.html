@@ -235,6 +235,12 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   header{flex:0 0 auto;flex-wrap:wrap;height:auto;min-height:52px;padding:10px 14px;row-gap:8px;gap:10px;}
   .meeting{margin-left:0;padding-left:10px;min-width:0;}
   .meeting-name{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* Second header row: timers left, Join call and the owner chip right.
+     The "…'s cockpit" text goes — the chip carries the identity. */
+  .clock{margin-left:0;}
+  .owner{margin-left:auto;}
+  .owner span:first-child{display:none;}
+  .panel-head{flex-wrap:wrap;row-gap:2px;}
   .cond-row{grid-template-columns:1fr;padding:4px 12px 14px;}
   .cond-meta{min-height:0;font-size:12.5px;}
   .nudge-text{font-size:13px;}

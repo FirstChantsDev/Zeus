@@ -115,6 +115,16 @@ goal is being ignored, and reporting everything to a private local cockpit.
 6. **Shut it down** with Ctrl+C in the terminal as soon as the meeting
    ends — the bot makes a paid API call per spoken sentence.
 
+- **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
+  or deploy setup touched — purely cockpit.html CSS plus two tiny render
+  fixes. Condition cards cap at ~360px instead of stretching on wide
+  screens; the newest agent-activity item is no longer clipped (missing
+  top padding + a stale-scroll-position bug on re-render); tablets get a
+  single-column stack with per-panel scroll caps; phones get full-width
+  cards, a wrapping two-row header (identity chip only), 16px inputs (no
+  iOS auto-zoom), 44px tap targets, and no horizontal scroll. The reported
+  "Lanch date"/"meetingng" typos were typed briefing input, not code.
+
 ## Hosted demo script — no terminal anywhere
 
 1. Both Railway services ("cockpit" and "bot" in the **zeus-cockpit**
