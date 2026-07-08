@@ -1,4 +1,4 @@
-# Zeus — project notes (Phases 1–4)
+# Zeus — project notes (Phases 1–6)
 
 Zeus is a meeting agent: a bot that joins a Microsoft Teams meeting as a
 participant, listens to the live captions, and drives the meeting toward
@@ -50,6 +50,30 @@ goal is being ignored, and reporting everything to a private local cockpit.
      countdown (amber once under a third remains, red once over time).
      Deliberately NOT read from the real calendar — no Graph API, no auth.
 
+- **Phase 5 — the owner's agent.** Four upgrades: (1) *Evidence quotes* —
+  every judgement carries the verbatim transcript line(s) behind it
+  (speaker + exact words), shown in the expanded card as the receipt.
+  (2) *Owner-mention detection* — the briefing takes "Your name"; when the
+  room says it needs you ("we can't confirm until Calvin looks"), a blue
+  **NEEDS YOUR ATTENTION** strip appears with the quote — distinct from the
+  red condition exceptions. (3) *Join call button* in the header opens the
+  meeting link so the owner joins as themselves. (4) *Reliable greeting* —
+  the hello ("Hi, I'm {owner}'s meeting assistant…", one place: `greetingFor`
+  in gate.ts) is confirmed posted (compose box must clear) and retried.
+  The red badge also became **NEEDS YOU** (was NEEDS LIZ).
+- **Phase 6 — deployed to the web.** Two halves, hosted separately on
+  Railway, all code additive in `deploy/` — **the local run is unchanged**:
+  1. *The cockpit* — `deploy/cockpit-server/server.js`, a dependency-free
+     Node server at **https://cockpit-production-062b.up.railway.app**
+     behind an access code. Serves the SAME cockpit.html as local.
+  2. *The bot* — the same procedures in a Docker container
+     (`deploy/bot/Dockerfile` + `deploy/bot/src/cloud-gate.ts`), polling
+     the cockpit for briefs, joining the meeting from the cloud, pushing
+     state back every 2s and collecting steers.
+  **One shared cloud bot, one meeting at a time** — a second brief while
+  busy gets a polite "agent is busy" message. Per-user sessions / a browser
+  pool is the **Phase 7** upgrade, when concurrent meetings are real.
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):
@@ -91,6 +115,47 @@ goal is being ignored, and reporting everything to a private local cockpit.
 6. **Shut it down** with Ctrl+C in the terminal as soon as the meeting
    ends — the bot makes a paid API call per spoken sentence.
 
+## Hosted demo script — no terminal anywhere
+
+1. Both Railway services ("cockpit" and "bot" in the **zeus-cockpit**
+   project) must be Online — check https://railway.com dashboard.
+2. Start a Teams meeting on any account.
+3. Open **https://cockpit-production-062b.up.railway.app** on any device
+   and enter the access code (Railway variable `ACCESS_CODE` on the
+   cockpit service — change it there anytime).
+4. Brief the agent: paste the **Teams meeting link** into its field, add
+   your name, length, and 1–3 conditions. One click on "Send agent in".
+5. Within ~10 seconds the cloud bot heads for the meeting — **admit
+   "Zeus bot"** from the lobby. It greets in chat; the website board,
+   transcript, nudges, mentions, and steering all run live.
+6. When the meeting ends, the bot notices (~90s), resets the website to a
+   fresh briefing screen for the next person, and waits.
+
+## Hosted operations — redeploy, secrets, costs, kill switch
+
+- **Redeploy** (after code changes, from the repo root, `railway` CLI
+  logged in): `npx @railway/cli up --service cockpit` and/or
+  `npx @railway/cli up --service bot`. Both start via `node deploy/start.js`
+  (Railway runs Dockerfile start commands WITHOUT a shell — no `if`).
+- **Secrets live as Railway service variables, never in code:** cockpit has
+  `ACCESS_CODE`, `BOT_TOKEN`, `DEMO_MODE=0`; bot has `ANTHROPIC_API_KEY`,
+  `BOT_TOKEN` (same value), `HUB_URL`, `MAX_DAILY_DECISIONS`,
+  `RAILWAY_DOCKERFILE_PATH=deploy/bot/Dockerfile`.
+- **Usage cap:** the bot makes at most `MAX_DAILY_DECISIONS` (500) paid API
+  calls per UTC day, then goes quiet until tomorrow.
+- **Kill switch:** Railway dashboard → bot service → Settings → remove the
+  active deployment (or delete the service). The cockpit alone costs
+  pennies; the bot is the ~1GB always-on machine — stop it when not
+  demoing. Plan note: the **Hobby plan ($5/mo) is required** — the trial's
+  500MB memory limit kills Chrome the moment a Teams meeting loads
+  (diagnosed live: "joined then left").
+- **Version pin:** the bot image installs `playwright@1.54.2` explicitly
+  (deploy/bot/Dockerfile). If the repo's Playwright is ever upgraded, bump
+  that pin to match, or browser and library drift apart.
+- **Teams-join fingerprint (hard-won):** the cloud bot must present as
+  **Windows Chrome** — an honest Linux user agent makes the Teams launcher
+  hide the "continue on this browser" button entirely.
+
 ## Lessons from live testing
 
 - **Honest framing matters to the model.** The first steering design slipped
@@ -125,13 +190,16 @@ goal is being ignored, and reporting everything to a private local cockpit.
 
 ## Parked for later
 
-- **Phase 5: auto-pull meeting duration from the Teams/Outlook calendar via
-  Graph API.** The scheduled length is typed into the briefing screen for
-  now; hooking the real calendar invite (duration, title, maybe attendees)
-  needs Microsoft Graph auth and is a deliberate later phase.
-- **Retry for the first chat post.** The "hello" message occasionally fails
-  if the chat panel isn't ready seconds after admission (later posts are
-  fine). Harmless, but a retry would tidy it.
+- **Phase 7: per-user bot sessions.** Separate logins, private cockpits,
+  concurrent meetings (a browser pool or bot-per-brief), per-user billing.
+  Today: one shared bot, one meeting at a time, one shared access code —
+  fine for demos and first users, not for two active users at once.
+- **Auto-pull meeting duration from the Teams/Outlook calendar via Graph
+  API.** The scheduled length is typed into the briefing screen for now.
+- **Consolidate the two launchers.** `deploy/bot/src/cloud-gate.ts`
+  deliberately mirrors `apps/teams-bot/src/gate.ts` (same procedures, hub
+  instead of local cockpit). If the meeting loop changes, change BOTH —
+  merging them is a Phase 7 refactor candidate.
 - **Re-brief without restart.** `POST /setup` is deliberately once per run
   so the board and feed never disagree; a "new meeting" reset button would
   need to clear both.
