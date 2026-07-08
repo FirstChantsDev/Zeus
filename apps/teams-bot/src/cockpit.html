@@ -203,7 +203,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .steer-bar input::placeholder{color:var(--t3);}
 .steer-bar button{
   background:var(--jade);border:none;border-radius:9px;padding:0 16px;
-  font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;
+  font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;white-space:nowrap;
 }
 .steer-bar input:disabled{opacity:.45;}
 .steer-bar button:disabled{opacity:.45;cursor:not-allowed;}
@@ -213,11 +213,41 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 ::-webkit-scrollbar-thumb{background:var(--s3);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
 
+/* ══ RESPONSIVE (Phase 7a) ══ */
+/* Tablet and down: one column — conditions, then agent activity, then
+   transcript. The page scrolls as a whole; each feed keeps its own
+   bounded scroll so no panel can swallow the screen. */
 @media (max-width:860px){
-  main{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;overflow-y:auto;}
+  main{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto;gap:12px;padding:12px 14px 16px;}
   #conditions{grid-column:1;}
   .right-col{grid-row:auto;}
   #nudges{grid-row:auto;}
+  .panel{flex:0 0 auto;}
+  /* In the stacked layout panels size to their content, so flex-grow
+     areas would collapse to nothing — size them by content instead,
+     capped so one panel can't swallow the screen. */
+  .feed,.transcript{flex:0 0 auto;max-height:45vh;}
+  .transcript{max-height:40vh;}
+}
+/* Phone: full-width cards, wrapping header, finger-sized targets, and
+   16px inputs (anything smaller makes iPhones zoom the whole page). */
+@media (max-width:640px){
+  header{flex:0 0 auto;flex-wrap:wrap;height:auto;min-height:52px;padding:10px 14px;row-gap:8px;gap:10px;}
+  .meeting{margin-left:0;padding-left:10px;min-width:0;}
+  .meeting-name{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cond-row{grid-template-columns:1fr;padding:4px 12px 14px;}
+  .cond-meta{min-height:0;font-size:12.5px;}
+  .nudge-text{font-size:13px;}
+  .transcript{font-size:12.5px;}
+  .f-input{font-size:16px;}
+  .steer-bar{padding:10px 12px 12px;}
+  .steer-bar input{font-size:16px;padding:11px 12px;}
+  .steer-bar button{min-height:44px;padding:0 18px;}
+  .cond-expand,.mention-dismiss{width:30px;height:30px;font-size:15px;}
+  .cond-remove{width:38px;height:38px;}
+  .brief-go{min-height:48px;}
+  .mention{flex-wrap:wrap;}
+  .attention-strip{padding:10px 14px;}
 }
 @media (prefers-reduced-motion:reduce){
   .live-dot,.cond.exception{animation:none;}
