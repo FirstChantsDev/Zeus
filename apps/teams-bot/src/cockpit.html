@@ -218,14 +218,13 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
    transcript. The page scrolls as a whole; each feed keeps its own
    bounded scroll so no panel can swallow the screen. */
 @media (max-width:860px){
-  main{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto;gap:12px;padding:12px 14px 16px;}
-  #conditions{grid-column:1;}
-  .right-col{grid-row:auto;}
-  #nudges{grid-row:auto;}
-  .panel{flex:0 0 auto;}
-  /* In the stacked layout panels size to their content, so flex-grow
-     areas would collapse to nothing — size them by content instead,
-     capped so one panel can't swallow the screen. */
+  /* No grid at all when stacked: grid rows compressed the panels and let
+     their content spill underneath the next one. Plain stacked blocks
+     cannot overlap — each panel takes its full content height and the
+     page scrolls. */
+  main{display:block;overflow-y:auto;padding:12px 14px 4px;}
+  .panel{margin-bottom:12px;}
+  /* Feeds size to content, capped so one panel can't swallow the screen. */
   .feed,.transcript{flex:0 0 auto;max-height:45vh;}
   .transcript{max-height:40vh;}
 }
