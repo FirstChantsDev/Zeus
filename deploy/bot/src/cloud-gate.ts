@@ -25,7 +25,7 @@ import { JoinProcedure } from '../../../apps/teams-bot/src/procedures/join-proce
 import { ChatProcedure } from '../../../apps/teams-bot/src/procedures/chat-procedure';
 import { CaptionsProcedure } from '../../../apps/teams-bot/src/procedures/captions-procedure';
 import { Nudger, TimeState } from '../../../apps/teams-bot/src/lib/Nudger';
-import { conditions, applyBrief } from '../../../apps/teams-bot/src/conditions';
+import { Condition } from '../../../apps/teams-bot/src/conditions';
 
 const HUB_URL = (process.env.HUB_URL ?? '').replace(/\/$/, '');
 const BOT_TOKEN = process.env.BOT_TOKEN ?? '';
@@ -48,6 +48,8 @@ const greetingFor = (ownerName: string) => ownerName
     : `Hi, I'm the meeting assistant. I'll help keep us on track.`;
 
 type BriefFromHub = {
+    /** Phase 7c: which drawer of hub state this meeting lives in */
+    meetingId: string;
     meetingName: string;
     labels: string[];
     context: string;
@@ -86,13 +88,13 @@ const hub = {
         const answer = await this.call('/bot/brief');
         return (answer && answer.brief) ? answer.brief as BriefFromHub : null;
     },
-    /** Pushes the snapshot; returns any steers queued on the website */
-    async pushState(snapshot: object): Promise<string[]> {
-        const answer = await this.call('/bot/state', { method: 'POST', body: snapshot });
+    /** Pushes one meeting's snapshot; returns any steers queued for it on the website */
+    async pushState(meetingId: string, snapshot: object): Promise<string[]> {
+        const answer = await this.call(`/bot/state/${meetingId}`, { method: 'POST', body: snapshot });
         return (answer && Array.isArray(answer.steers)) ? answer.steers as string[] : [];
     },
-    async reset(): Promise<void> {
-        await this.call('/bot/reset', { method: 'POST' });
+    async reset(meetingId: string): Promise<void> {
+        await this.call(`/bot/reset/${meetingId}`, { method: 'POST' });
     },
 };
 
@@ -129,9 +131,13 @@ const underCap = (): boolean => {
  */
 const runMeeting = async (brief: BriefFromHub) => {
     const botId = randomUUID();
-    console.log(`\n=== Cloud bot briefed: "${brief.meetingName}" — ${brief.labels.join(' | ')} ===\n`);
+    console.log(`\n=== Cloud bot briefed (${brief.meetingId}): "${brief.meetingName}" — ${brief.labels.join(' | ')} ===\n`);
 
-    applyBrief(brief.labels);
+    // Phase 7c: this meeting's OWN conditions and its OWN brain — nothing is
+    // shared between meetings, so boards can never cross-contaminate.
+    const conditions: Condition[] = brief.labels.map((label, index) => ({
+        id: `c${index}`, label, status: 'open', nudges: 0,
+    }));
     const nudger = new Nudger({ botId, apiKey: API_KEY, conditions });
     nudger.setContext(brief.context);
     nudger.setOwner(brief.ownerName);
@@ -197,7 +203,7 @@ const runMeeting = async (brief: BriefFromHub) => {
         // slower status loop below.
         const pusher = setInterval(() => {
             void (async () => {
-                const steers = await hub.pushState({ meetingStatus, meetingJoinedAt, conditions, nudges, transcript, mentions });
+                const steers = await hub.pushState(brief.meetingId, { meetingStatus, meetingJoinedAt, conditions, nudges, transcript, mentions });
                 for (const instruction of steers) {
                     console.log(`STEER from hub >>> ${instruction}`);
                     nudgeQueue = nudgeQueue
@@ -326,8 +332,8 @@ const runMeeting = async (brief: BriefFromHub) => {
         if (browser) {
             await browser.close().catch(() => { /* already gone */ });
         }
-        await hub.reset();
-        console.log('=== Cloud bot: hub reset, back to waiting for the next brief. ===\n');
+        await hub.reset(brief.meetingId);
+        console.log(`=== Cloud bot: meeting ${brief.meetingId} cleaned up. ===\n`);
     }
 };
 
@@ -345,7 +351,7 @@ const main = async () => {
                 await runMeeting(brief);
             } catch (error) {
                 console.error('=== Meeting run failed ===', error);
-                await hub.reset(); // never leave the website stuck on a dead brief
+                await hub.reset(brief.meetingId); // never leave the website stuck on a dead brief
             }
         }
         await new Promise((resolve) => setTimeout(resolve, 5000));
