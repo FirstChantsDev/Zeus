@@ -26,7 +26,7 @@ const fakeSetup = async () => {
     await fetch('http://localhost:4300/setup', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ meetingName: 'Pizza night planning', conditions: ['Budget agreed', 'Venue picked'], lengthMinutes: 30, ownerName: 'Calvin' }),
+        body: JSON.stringify({ meetingName: 'Pizza night planning', conditions: ['Budget agreed', 'Venue picked', 'Delivery time locked'], lengthMinutes: 30, ownerName: 'Calvin' }),
     });
 
     // Phase 5 M2: the room says it needs the owner.
@@ -38,11 +38,35 @@ const fakeSetup = async () => {
     conditions[0].why = 'Calvin stated the figure directly and no one objected, so the budget stands agreed.';
     conditions[0].evidence = [{ speaker: 'Calvin', quote: 'The budget will be £20,000' }];
 
-    // ...and an open one still without evidence.
+    // ...an open one still without evidence...
     conditions[1].note = 'Not raised yet.';
     conditions[1].why = 'No one has mentioned the venue so far.';
 
-    cockpit.addTranscriptLine({ speaker: 'Calvin', text: 'The budget will be £20,000', ts: new Date().toISOString() }).hit = true;
-    console.log('Smoke cockpit ready with evidence data.');
+    // ...and a red one the room keeps dodging (2+ nudges = NEEDS YOU).
+    conditions[2].nudges = 2;
+    conditions[2].note = 'Nudged twice — the room keeps moving past it.';
+    conditions[2].why = 'Sam and Maya keep deferring the delivery slot; nobody will own the decision.';
+
+    // A feed's worth of nudges, newest first once rendered — enough rows
+    // to check spacing, statuses, the steered style, and top clipping.
+    cockpit.addNudge({ text: '[ZEUS] Before we drift — can we get the budget agreed? What figure are we approving?', conditionId: 'c0' });
+    cockpit.addNudge({ text: '[ZEUS] One thing still open — delivery time. Can we pin it down?', conditionId: 'c2' });
+    cockpit.addNudge({ text: '[ZEUS] Sam — the venue shortlist needs a decision before we lose the room.', conditionId: 'c1', steered: true });
+    cockpit.addNudge({ text: '[ZEUS] Flagging again before we wrap — delivery time is still open. Can someone own it now?', conditionId: 'c2' });
+    cockpit.addNudge({ text: '[ZEUS] Quick note from the agenda: lunch is moved to 1pm.', conditionId: null, steered: true });
+
+    const lines: Array<[string, string, boolean?]> = [
+        ['Maya', "Right, let's get going — where did we land after last week?"],
+        ['Jordan', 'Good progress on our side, two options ready to show.'],
+        ['Calvin', 'The budget will be £20,000', true],
+        ['Sam', 'Great — and the toppings survey came back, pineapple is banned.'],
+        ['Maya', "Let's take the delivery slot offline — next item."],
+        ['Jordan', "I'll circulate the venue shortlist after this."],
+        ['Sam', 'Anyone else watching the match tonight?'],
+    ];
+    for (const [speaker, text, hit] of lines) {
+        cockpit.addTranscriptLine({ speaker, text, ts: new Date().toISOString() }).hit = Boolean(hit);
+    }
+    console.log('Smoke cockpit ready with full fake state.');
 };
 fakeSetup().catch((error) => console.error('fakeSetup failed:', error));
