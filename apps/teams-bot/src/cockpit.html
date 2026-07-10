@@ -116,9 +116,18 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .flag.mention{color:var(--att);border-color:var(--att-bd);background:var(--att-bg);}
 .flag.ok{color:var(--t3);border-color:var(--line2);}
 .dash-empty{color:var(--t3);font-size:13px;padding:8px 2px;}
+/* The zero-state: centred, calm, one obvious action */
+.dash-empty-state{
+  grid-column:1 / -1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:16vh 16px 0;gap:6px;
+}
+.empty-title{font-family:var(--head);font-weight:600;font-size:22px;letter-spacing:-.5px;margin-top:10px;}
+.empty-sub{font-size:13px;color:var(--t2);line-height:1.5;}
+.empty-add{margin:18px 0 0;padding:13px 22px;font-size:14px;}
 @media (max-width:640px){
   #dashboard{padding:0 14px 18px;}
   .dash-grid{grid-template-columns:1fr;}
+  .dash-new{padding:12px 18px;}
 }
 
 /* ══ HEADER ══ */
@@ -348,7 +357,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="dash-title">All running agents</div>
       <div class="dash-sub" id="dashCount"></div>
     </div>
-    <button class="dash-new" id="dashNew" onclick="location.href='/?new'">+ Brief a new agent</button>
+    <button class="dash-new" id="dashNew" onclick="location.href='/?new'">+ Add agent to a meeting</button>
   </div>
   <div class="dash-grid" id="dashGrid"></div>
 </div>
@@ -432,10 +441,12 @@ if(forceNew){
   }).catch(() => { /* local — no summary, no link field */ });
 }
 
-// ══ OVERSEER DASHBOARD (Phase 7c) ══════════════════════════
-// On the hosted hub, the bare URL is the overseer view whenever agents
-// are running. Locally /summary doesn't exist, so this never activates
-// and the page behaves exactly as it always has.
+// ══ OVERSEER DASHBOARD — the hosted homepage ═══════════════
+// On the hosted hub, the bare URL is ALWAYS the homepage: the all-agents
+// view when meetings run, a clean empty state when none do. The briefing
+// screen is a sub-view reached from the "+ Add agent" button. Locally
+// /summary doesn't exist, so none of this activates and the page keeps
+// its original briefing-first behaviour.
 let dashboardMode = false;
 async function detectDashboard(){
   if(meetingParam || forceNew) return;
@@ -443,12 +454,10 @@ async function detectDashboard(){
     const r = await fetch('/summary');
     if(!r.ok) return;
     const sum = await r.json();
-    if(sum.meetings.length > 0){
-      dashboardMode = true;
-      document.getElementById('briefing').classList.add('gone');
-      document.getElementById('dashboard').classList.add('show');
-      renderDashboard(sum);
-    }
+    dashboardMode = true;
+    document.getElementById('briefing').classList.add('gone');
+    document.getElementById('dashboard').classList.add('show');
+    renderDashboard(sum);
   }catch(e){ /* local — stay in single-meeting mode */ }
 }
 
@@ -457,10 +466,16 @@ function renderDashboard(sum){
     `${sum.meetings.length} of ${sum.maxMeetings} agents running`;
   const newBtn = document.getElementById('dashNew');
   newBtn.disabled = sum.meetings.length >= sum.maxMeetings;
-  newBtn.textContent = newBtn.disabled ? `All ${sum.maxMeetings} agent slots busy` : '+ Brief a new agent';
+  newBtn.textContent = newBtn.disabled ? `All ${sum.maxMeetings} agent slots busy` : '+ Add agent to a meeting';
   const grid = document.getElementById('dashGrid');
   if(!sum.meetings.length){
-    grid.innerHTML = '<div class="dash-empty">No agents running. Brief one to get started.</div>';
+    // The zero-state a fresh visitor sees — never a blank page.
+    grid.innerHTML = `<div class="dash-empty-state">
+      <div class="brief-mark">ZEUS<em>.</em></div>
+      <div class="empty-title">No agents running</div>
+      <div class="empty-sub">Add an agent to a meeting and it will appear here, live.</div>
+      <button class="dash-new empty-add" onclick="location.href='/?new'">+ Add agent to a meeting</button>
+    </div>`;
     return;
   }
   grid.innerHTML = sum.meetings.map((m) => {
