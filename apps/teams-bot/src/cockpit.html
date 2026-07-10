@@ -82,6 +82,14 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
 .brief-error{margin-top:12px;font-size:12px;color:var(--red);text-align:center;line-height:1.5;display:none;}
 .brief-error.show{display:block;}
+/* Back to the homepage without submitting — only shown when the briefing
+   is a sub-view of the all-agents homepage. */
+.brief-back{
+  background:none;border:none;padding:10px 0;margin-bottom:6px;cursor:pointer;
+  font-family:var(--mono);font-size:12px;letter-spacing:.4px;color:var(--t2);
+  display:none;text-align:left;
+}
+.brief-back:hover{color:var(--jade);}
 
 /* ══ OVERSEER DASHBOARD (Phase 7c) — all running agents at a glance ══ */
 #dashboard{position:fixed;inset:0;z-index:90;background:var(--ink);display:none;overflow-y:auto;padding:0 22px 24px;}
@@ -128,6 +136,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   #dashboard{padding:0 14px 18px;}
   .dash-grid{grid-template-columns:1fr;}
   .dash-new{padding:12px 18px;}
+  .brief-back{padding:14px 0;} /* comfortable thumb target */
 }
 
 /* ══ HEADER ══ */
@@ -311,6 +320,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 <!-- ══ BRIEFING (pre-meeting) — the agent only joins once this is submitted ══ -->
 <div id="briefing">
   <div class="brief-card">
+    <button class="brief-back" id="briefBack" onclick="closeBriefing()">← Back to all agents</button>
     <div class="brief-mark">ZEUS<em>.</em></div>
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
@@ -465,6 +475,8 @@ async function detectDashboard(){
 // add-agent button, left by submitting (or the back control).
 function openBriefing(){
   document.getElementById('linkField').style.display = ''; // hosted briefs carry the meeting link
+  document.getElementById('briefBack').style.display = 'block'; // escape hatch back to the homepage
+  briefError('');
   document.getElementById('dashboard').classList.remove('show');
   document.getElementById('briefing').classList.remove('gone');
 }
