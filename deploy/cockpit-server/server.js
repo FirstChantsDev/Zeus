@@ -26,10 +26,10 @@ const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
 const DEMO_MODE = (process.env.DEMO_MODE ?? '1') !== '0';
 const MAX_CONDITIONS = 3;
-// Phase 7c Milestone 1: the ceiling stays at ONE running meeting — the
-// architecture underneath is per-meeting, but nothing new is exposed yet.
-// Milestone 2 raises this to 3 (each meeting is a full Chrome, ~500MB+).
-const MAX_MEETINGS = Number(process.env.MAX_MEETINGS) || 1;
+// Phase 7c Milestone 2: up to three meetings at once. Each is a full
+// Chrome on the bot machine (~500MB+), so 3 is the deliberate ceiling —
+// a 4th brief is politely refused.
+const MAX_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
 // The shared secret the cloud bot presents on /bot/* calls.
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 

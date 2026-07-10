@@ -339,19 +339,32 @@ const runMeeting = async (brief: BriefFromHub) => {
 
 /**
  * ================================================
- * Forever: wait for a brief, run the meeting, repeat
+ * Forever: collect briefs while there's capacity; each meeting runs
+ * concurrently in its own browser. One meeting crashing (its own
+ * try/finally inside runMeeting) never touches the others.
  * ================================================
  */
+const MAX_CONCURRENT_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
+let activeMeetings = 0;
+
 const main = async () => {
-    console.log(`Zeus cloud bot up — hub: ${HUB_URL}, daily decision cap: ${MAX_DAILY_DECISIONS}`);
+    console.log(`Zeus cloud bot up — hub: ${HUB_URL}, daily decision cap (ALL meetings combined): ${MAX_DAILY_DECISIONS}, max concurrent meetings: ${MAX_CONCURRENT_MEETINGS}`);
     while (true) {
-        const brief = await hub.getBrief();
-        if (brief) {
-            try {
-                await runMeeting(brief);
-            } catch (error) {
-                console.error('=== Meeting run failed ===', error);
-                await hub.reset(brief.meetingId); // never leave the website stuck on a dead brief
+        if (activeMeetings < MAX_CONCURRENT_MEETINGS) {
+            const brief = await hub.getBrief();
+            if (brief) {
+                activeMeetings++;
+                console.log(`>>> meetings running: ${activeMeetings}/${MAX_CONCURRENT_MEETINGS}`);
+                void runMeeting(brief)
+                    .catch(async (error) => {
+                        console.error(`=== Meeting ${brief.meetingId} run failed ===`, error);
+                        await hub.reset(brief.meetingId); // never leave the website stuck on a dead brief
+                    })
+                    .finally(() => {
+                        activeMeetings--;
+                        console.log(`>>> meetings running: ${activeMeetings}/${MAX_CONCURRENT_MEETINGS}`);
+                    });
+                continue; // check straight away whether another brief is waiting
             }
         }
         await new Promise((resolve) => setTimeout(resolve, 5000));

@@ -357,6 +357,30 @@ const POLL_MS = 1500;
 let startedAt = null; // set from the first /state answer; drives the clock
 let briefed = false;  // mirrors /state — flips the page from briefing to live cockpit
 
+// ══ MEETING ROUTING (Phase 7c) ═════════════════════════════
+// Hosted, each meeting lives at /?m=<id>; /?new forces a fresh briefing
+// even while meetings run. Locally neither is ever set, and the ID-less
+// endpoints keep working exactly as before.
+const pageParams = new URLSearchParams(location.search);
+let meetingParam = pageParams.get('m');
+let forceNew = pageParams.has('new');
+let stateUrl = meetingParam ? `/state/${meetingParam}` : '/state';
+let commandUrl = meetingParam ? `/command/${meetingParam}` : '/command';
+function adoptMeeting(id){
+  meetingParam = id;
+  forceNew = false;
+  stateUrl = `/state/${id}`;
+  commandUrl = `/command/${id}`;
+  history.replaceState(null, '', `/?m=${id}`);
+}
+// A fresh-brief page on the hosted cockpit needs the link field even
+// though other meetings exist (/summary only exists on the hosted hub).
+if(forceNew){
+  fetch('/summary').then((r) => {
+    if(r.ok) document.getElementById('linkField').style.display = '';
+  }).catch(() => { /* local — no summary, no link field */ });
+}
+
 // ══ BRIEFING (Phase 3) ═════════════════════════════════════
 // The owner types 1-3 free-text conditions; POST /setup hands them to the
 // agent and the bot walks into the meeting. Until then the overlay stays.
@@ -419,6 +443,10 @@ async function sendAgentIn(){
       }),
     });
     if(response.ok){
+      // Phase 7c: hosted briefs come back with the new meeting's ID —
+      // adopt it so this page shows ONLY that meeting from now on.
+      const body = await response.json().catch(() => ({}));
+      if(body.meetingId){ adoptMeeting(body.meetingId); }
       briefed = true;
       document.getElementById('briefing').classList.add('gone'); // the mock's fade to the live cockpit
       poll(); // pull the freshly briefed state right away, no 1.5s wait
@@ -576,7 +604,7 @@ async function steer(){
   if(!instruction) return;
   const hint = document.getElementById('steerHint');
   try{
-    const response = await fetch('/command', {
+    const response = await fetch(commandUrl, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify({instruction}),
@@ -596,8 +624,26 @@ document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.
 // ══ THE POLL ══════════════════════════════════════════════
 async function poll(){
   try{
-    const response = await fetch('/state');
+    const response = await fetch(stateUrl);
+    // Phase 7c: a per-meeting view whose meeting has ended.
+    if(meetingParam && response.status === 404){
+      const badge = document.getElementById('liveBadge');
+      const text = document.getElementById('liveText');
+      badge.className = 'live warn';
+      text.textContent = 'MEETING ENDED';
+      return;
+    }
     const state = await response.json();
+    // Phase 7c: a bare-URL visit while a meeting runs → move to that
+    // meeting's own address (locally meetingId is never present).
+    if(!meetingParam && !forceNew && state.briefed && state.meetingId){
+      adoptMeeting(state.meetingId);
+    }
+    // /?new keeps the briefing screen up regardless of other meetings.
+    if(forceNew){
+      renderHeader(state);
+      return;
+    }
     // The clock counts from the moment the agent was briefed and set off.
     startedAt = state.briefedAt ? new Date(state.briefedAt) : null;
     // Phase 4: the countdown counts against the scheduled length, from the
