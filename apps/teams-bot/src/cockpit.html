@@ -357,7 +357,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="dash-title">All running agents</div>
       <div class="dash-sub" id="dashCount"></div>
     </div>
-    <button class="dash-new" id="dashNew" onclick="location.href='/?new'">+ Add agent to a meeting</button>
+    <button class="dash-new" id="dashNew" onclick="openBriefing()">+ Add agent to a meeting</button>
   </div>
   <div class="dash-grid" id="dashGrid"></div>
 </div>
@@ -461,6 +461,18 @@ async function detectDashboard(){
   }catch(e){ /* local — stay in single-meeting mode */ }
 }
 
+// The briefing screen as a sub-view of the homepage: opened by the
+// add-agent button, left by submitting (or the back control).
+function openBriefing(){
+  document.getElementById('linkField').style.display = ''; // hosted briefs carry the meeting link
+  document.getElementById('dashboard').classList.remove('show');
+  document.getElementById('briefing').classList.remove('gone');
+}
+function closeBriefing(){
+  document.getElementById('briefing').classList.add('gone');
+  document.getElementById('dashboard').classList.add('show');
+}
+
 function renderDashboard(sum){
   document.getElementById('dashCount').textContent =
     `${sum.meetings.length} of ${sum.maxMeetings} agents running`;
@@ -474,7 +486,7 @@ function renderDashboard(sum){
       <div class="brief-mark">ZEUS<em>.</em></div>
       <div class="empty-title">No agents running</div>
       <div class="empty-sub">Add an agent to a meeting and it will appear here, live.</div>
-      <button class="dash-new empty-add" onclick="location.href='/?new'">+ Add agent to a meeting</button>
+      <button class="dash-new empty-add" onclick="openBriefing()">+ Add agent to a meeting</button>
     </div>`;
     return;
   }
@@ -571,9 +583,20 @@ async function sendAgentIn(){
       }),
     });
     if(response.ok){
-      // Phase 7c: hosted briefs come back with the new meeting's ID —
-      // adopt it so this page shows ONLY that meeting from now on.
       const body = await response.json().catch(() => ({}));
+      // Homepage flow: back to the all-agents view — the new card
+      // appears on the next poll (~1.5s), no refresh needed.
+      if(dashboardMode){
+        document.getElementById('meetName').value = '';
+        document.getElementById('meetLink').value = '';
+        go.disabled = false;
+        go.textContent = 'Send agent into the meeting →';
+        closeBriefing();
+        poll();
+        return;
+      }
+      // Single-meeting flow (local, or /?new): adopt the new meeting's ID
+      // so this page shows ONLY that meeting from now on.
       if(body.meetingId){ adoptMeeting(body.meetingId); }
       briefed = true;
       document.getElementById('briefing').classList.add('gone'); // the mock's fade to the live cockpit
