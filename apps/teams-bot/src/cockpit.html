@@ -83,6 +83,44 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-error{margin-top:12px;font-size:12px;color:var(--red);text-align:center;line-height:1.5;display:none;}
 .brief-error.show{display:block;}
 
+/* ══ OVERSEER DASHBOARD (Phase 7c) — all running agents at a glance ══ */
+#dashboard{position:fixed;inset:0;z-index:90;background:var(--ink);display:none;overflow-y:auto;padding:0 22px 24px;}
+#dashboard.show{display:block;}
+.dash-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap;}
+.dash-title{font-family:var(--head);font-weight:600;font-size:16px;letter-spacing:-.3px;}
+.dash-sub{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.5px;}
+.dash-new{
+  margin-left:auto;background:var(--jade);border:none;border-radius:9px;padding:9px 16px;
+  font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;white-space:nowrap;
+}
+.dash-new:hover{filter:brightness(1.07);}
+.dash-new:disabled{opacity:.45;cursor:not-allowed;}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,380px));gap:14px;}
+.agent-card{
+  background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);
+  padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:10px;
+  transition:border-color .3s;
+}
+.agent-card:hover{border-color:var(--jade-bd);}
+.agent-card.trouble{border-color:var(--red-bd);animation:breathe 2.2s ease infinite;}
+.agent-card.attention{border-color:var(--att-bd);}
+.agent-top{display:flex;align-items:center;gap:10px;}
+.agent-name{font-family:var(--head);font-weight:600;font-size:15px;letter-spacing:-.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.agent-meta{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--t2);flex-wrap:wrap;}
+.agent-meta .closed-count{color:var(--jade);}
+.agent-meta .cd-warn{color:var(--amber);}
+.agent-meta .cd-over{color:var(--red);}
+.agent-flags{display:flex;gap:8px;flex-wrap:wrap;min-height:22px;}
+.flag{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;}
+.flag.needs{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
+.flag.mention{color:var(--att);border-color:var(--att-bd);background:var(--att-bg);}
+.flag.ok{color:var(--t3);border-color:var(--line2);}
+.dash-empty{color:var(--t3);font-size:13px;padding:8px 2px;}
+@media (max-width:640px){
+  #dashboard{padding:0 14px 18px;}
+  .dash-grid{grid-template-columns:1fr;}
+}
+
 /* ══ HEADER ══ */
 header{
   flex:0 0 56px;display:flex;align-items:center;gap:14px;
@@ -302,6 +340,19 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </div>
 </div>
 
+<!-- ══ OVERSEER DASHBOARD (Phase 7c) — shown on the bare URL when agents are running ══ -->
+<div id="dashboard">
+  <div class="dash-head">
+    <div class="wordmark">ZEUS<em>.</em></div>
+    <div>
+      <div class="dash-title">All running agents</div>
+      <div class="dash-sub" id="dashCount"></div>
+    </div>
+    <button class="dash-new" id="dashNew" onclick="location.href='/?new'">+ Brief a new agent</button>
+  </div>
+  <div class="dash-grid" id="dashGrid"></div>
+</div>
+
 <!-- ══ COCKPIT (live) ══ -->
 <header>
   <div class="wordmark">ZEUS<em>.</em></div>
@@ -379,6 +430,68 @@ if(forceNew){
   fetch('/summary').then((r) => {
     if(r.ok) document.getElementById('linkField').style.display = '';
   }).catch(() => { /* local — no summary, no link field */ });
+}
+
+// ══ OVERSEER DASHBOARD (Phase 7c) ══════════════════════════
+// On the hosted hub, the bare URL is the overseer view whenever agents
+// are running. Locally /summary doesn't exist, so this never activates
+// and the page behaves exactly as it always has.
+let dashboardMode = false;
+async function detectDashboard(){
+  if(meetingParam || forceNew) return;
+  try{
+    const r = await fetch('/summary');
+    if(!r.ok) return;
+    const sum = await r.json();
+    if(sum.meetings.length > 0){
+      dashboardMode = true;
+      document.getElementById('briefing').classList.add('gone');
+      document.getElementById('dashboard').classList.add('show');
+      renderDashboard(sum);
+    }
+  }catch(e){ /* local — stay in single-meeting mode */ }
+}
+
+function renderDashboard(sum){
+  document.getElementById('dashCount').textContent =
+    `${sum.meetings.length} of ${sum.maxMeetings} agents running`;
+  const newBtn = document.getElementById('dashNew');
+  newBtn.disabled = sum.meetings.length >= sum.maxMeetings;
+  newBtn.textContent = newBtn.disabled ? `All ${sum.maxMeetings} agent slots busy` : '+ Brief a new agent';
+  const grid = document.getElementById('dashGrid');
+  if(!sum.meetings.length){
+    grid.innerHTML = '<div class="dash-empty">No agents running. Brief one to get started.</div>';
+    return;
+  }
+  grid.innerHTML = sum.meetings.map((m) => {
+    // Time remaining against the scheduled length (amber under a third, red over).
+    let time = 'joining…', timeClass = '';
+    if(m.meetingJoinedAt){
+      const totalSecs = m.scheduledMinutes * 60;
+      const remaining = totalSecs - Math.floor((Date.now() - Date.parse(m.meetingJoinedAt)) / 1000);
+      if(remaining >= 0){
+        time = `${mmss(remaining)} left`;
+        timeClass = remaining <= totalSecs / 3 ? 'cd-warn' : '';
+      } else {
+        time = `${mmss(-remaining)} over`;
+        timeClass = 'cd-over';
+      }
+    }
+    const statusDot = m.meetingStatus === 'in-meeting'
+      ? '<span class="live"><span class="live-dot"></span></span>'
+      : '<span class="live warn"><span class="live-dot"></span></span>';
+    const flags = [
+      m.needsYou ? '<span class="flag needs">NEEDS YOU</span>' : '',
+      m.mentioned ? '<span class="flag mention">MENTIONED</span>' : '',
+      (!m.needsYou && !m.mentioned) ? '<span class="flag ok">ON TRACK</span>' : '',
+    ].join('');
+    const cardClass = m.needsYou ? ' trouble' : (m.mentioned ? ' attention' : '');
+    return `<div class="agent-card${cardClass}" onclick="location.href='/?m=${esc(m.id)}'">
+      <div class="agent-top">${statusDot}<span class="agent-name">${esc(m.meetingName)}</span></div>
+      <div class="agent-meta"><span class="${timeClass}">${time}</span><span class="closed-count">${m.conditionsClosed}/${m.conditionsTotal} closed</span><span>${esc(m.ownerName ? m.ownerName + "'s agent" : 'agent')}</span></div>
+      <div class="agent-flags">${flags}</div>
+    </div>`;
+  }).join('');
 }
 
 // ══ BRIEFING (Phase 3) ═════════════════════════════════════
@@ -623,6 +736,14 @@ document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.
 
 // ══ THE POLL ══════════════════════════════════════════════
 async function poll(){
+  // The overseer view refreshes from /summary instead of a single meeting.
+  if(dashboardMode){
+    try{
+      const r = await fetch('/summary');
+      if(r.ok) renderDashboard(await r.json());
+    }catch(e){ /* transient — next poll retries */ }
+    return;
+  }
   try{
     const response = await fetch(stateUrl);
     // Phase 7c: a per-meeting view whose meeting has ended.
@@ -634,11 +755,6 @@ async function poll(){
       return;
     }
     const state = await response.json();
-    // Phase 7c: a bare-URL visit while a meeting runs → move to that
-    // meeting's own address (locally meetingId is never present).
-    if(!meetingParam && !forceNew && state.briefed && state.meetingId){
-      adoptMeeting(state.meetingId);
-    }
     // /?new keeps the briefing screen up regardless of other meetings.
     if(forceNew){
       renderHeader(state);
@@ -674,8 +790,12 @@ async function poll(){
     text.textContent='COCKPIT OFFLINE — IS THE BOT RUNNING?';
   }
 }
-poll();
-setInterval(poll, POLL_MS);
+// Decide the view first (dashboard vs single meeting), then start polling.
+(async () => {
+  await detectDashboard();
+  poll();
+  setInterval(poll, POLL_MS);
+})();
 
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
 let scheduledMinutes = 30;
