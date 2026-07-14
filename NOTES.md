@@ -112,8 +112,24 @@ goal is being ignored, and reporting everything to a private local cockpit.
    - Type an instruction into the steer bar ("tell them lunch is moved to
      1pm") → the agent posts it in chat within seconds, tagged "shaped by
      your steer" in the feed. The room never sees the cockpit.
-6. **Shut it down** with Ctrl+C in the terminal as soon as the meeting
-   ends — the bot makes a paid API call per spoken sentence.
+6. **Shutting down now takes care of itself.** When the call ends (or the
+   bot is removed), the local bot notices it has been out of the room for
+   90 seconds and kills its own process — Chrome closes, no more API calls.
+   There's also a hard stop 60 minutes past the scheduled end. To stop it
+   sooner: the red **Kill bot** button in the cockpit header (asks to
+   confirm, then the header freezes on AGENT SHUT DOWN) or Ctrl+C in the
+   terminal, same as always.
+
+- **Local kill switch + auto-shutdown.** The local bot used to run until
+  Ctrl+C, quietly billing per sentence if forgotten. Now: (1) *auto-end* —
+  once it has been in the meeting, being lost for 90s (call over, bot
+  removed) exits the process, mirroring the cloud bot's wrap-up rules,
+  plus the same 60-min hard overtime stop; (2) *Kill bot button* — red
+  button in the cockpit header, POST `/shutdown`, confirmed with a dialog;
+  works even while the bot is still waiting in the lobby. The button only
+  appears on the local cockpit (`canShutdown` in `/state`) — the hosted
+  cockpit doesn't offer it; the cloud bot already auto-ends and has the
+  Railway Stop button + daily decision cap.
 
 - **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
   or deploy setup touched — purely cockpit.html CSS plus two tiny render

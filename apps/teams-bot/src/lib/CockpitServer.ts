@@ -75,6 +75,8 @@ export class CockpitServer {
     private readonly onCommand: (instruction: string) => void;
     /** Called ONCE with the owner's brief when POST /setup accepts it */
     private readonly onSetup: (brief: Brief) => void;
+    /** Kill switch: called when the owner presses the cockpit's Kill bot button */
+    private readonly onShutdown: () => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private briefed = false;
@@ -96,12 +98,14 @@ export class CockpitServer {
         meetingUrl: string,
         onCommand: (instruction: string) => void,
         onSetup: (brief: Brief) => void,
+        onShutdown: () => void,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
         this.meetingUrl = args.meetingUrl;
         this.onCommand = args.onCommand;
         this.onSetup = args.onSetup;
+        this.onShutdown = args.onShutdown;
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
     }
 
@@ -187,6 +191,13 @@ export class CockpitServer {
                 this._handleCommand(req, res);
             } else if (url === '/setup' && req.method === 'POST') {
                 this._handleSetup(req, res);
+            } else if (url === '/shutdown' && req.method === 'POST') {
+                // The kill switch. Answer first so the page hears the "ok"
+                // before the process (and this server with it) goes away.
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+                console.log('\nKILL >>> shutdown requested from the cockpit.');
+                setTimeout(() => this.onShutdown(), 300);
             } else {
                 res.writeHead(404, { 'content-type': 'text/plain' });
                 res.end('Not found');
@@ -355,6 +366,10 @@ export class CockpitServer {
             mentions: [...this.mentions].reverse(),
             // Phase 5: lets the owner join the meeting as themselves.
             meetingUrl: this.meetingUrl,
+            // Local bot only: tells the page to show the Kill bot button.
+            // The hosted cockpit server never sets this — the cloud bot has
+            // its own automatic wrap-up and the Railway Stop button.
+            canShutdown: true,
         };
     }
 }

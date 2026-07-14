@@ -11,7 +11,7 @@
  * the terminal.
  */
 import 'dotenv/config';
-import { chromium } from 'playwright';
+import { chromium, Browser } from 'playwright';
 import { randomUUID } from 'crypto';
 import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
@@ -22,6 +22,12 @@ import { conditions, applyBrief } from './conditions';
 
 /** The cockpit's local address: http://localhost:4300 */
 const COCKPIT_PORT = 4300;
+
+/** Auto-shutdown: how long the meeting can be lost (not in-meeting/lobby)
+ *  after the bot was in, before we call it over — same as the cloud bot. */
+const MEETING_LOST_MS = 90000;
+/** Auto-shutdown: leave once this far past the scheduled end, whatever happens */
+const OVERTIME_LIMIT_MINUTES = 60;
 
 /**
  * Phase 5: THE greeting the bot posts to the meeting chat when it joins.
@@ -58,6 +64,18 @@ const main = async () => {
 
     // Created after the brief, when the browser opens and joins.
     let chat: ChatProcedure | null = null;
+    let browser: Browser | null = null;
+
+    // One exit path for everything: the cockpit's Kill bot button, the
+    // meeting ending, or hard overtime. Closes the Chrome window and stops
+    // the process — no more API calls after this.
+    const shutdown = async (reason: string) => {
+        console.log(`\n=== Zeus bot shutting down: ${reason}. No further API calls. ===\n`);
+        if (browser) {
+            await browser.close().catch(() => { /* already gone */ });
+        }
+        process.exit(0);
+    };
 
     // Phase 5: the owner's name from the brief, for the greeting.
     let ownerName = '';
@@ -118,6 +136,11 @@ const main = async () => {
                     console.error('Steer pipeline error:', error);
                 });
         },
+        // The cockpit's Kill bot button — works any time, even before the
+        // brief (kills the waiting process too).
+        onShutdown: () => {
+            void shutdown('the Kill bot button was pressed in the cockpit');
+        },
     });
     cockpit.start();
 
@@ -132,7 +155,7 @@ const main = async () => {
     // ZEUS_BROWSER_CHANNEL=bundled to use the image's bundled Chromium.
     // Default unchanged: without that setting, behaviour is exactly as before.
     const browserChannel = process.env.ZEUS_BROWSER_CHANNEL === 'bundled' ? undefined : 'chrome';
-    const browser = await chromium.launch({
+    browser = await chromium.launch({
         headless: false,   // hard requirement: always visible (the container provides a virtual screen)
         channel: browserChannel,
         args: [
@@ -158,6 +181,8 @@ const main = async () => {
     let inMeetingSince: number | null = null;
     let chatMessagePosted = false;
     let captionsStarted = false;
+    let wasInMeeting = false;   // the bot made it into the room at least once
+    let lostSince: number | null = null; // when the meeting stopped being visible
     while (true) {
         let state = 'unknown';
         if (await join.isInMeeting({})) {
@@ -168,6 +193,24 @@ const main = async () => {
 
         // Keep the cockpit header honest about where the agent is.
         cockpit.setMeetingStatus(state === 'in-meeting' ? 'in-meeting' : state === 'lobby' ? 'lobby' : 'unknown');
+
+        // Auto-shutdown, same rules as the cloud bot: once the bot has been
+        // in the meeting, being lost for 90s means the call ended (or we
+        // were removed) — kill the process instead of idling forever. And
+        // whatever happens, never linger absurdly far past the scheduled end.
+        if (state === 'in-meeting') {
+            wasInMeeting = true;
+            lostSince = null;
+        } else if (wasInMeeting) {
+            lostSince = lostSince ?? Date.now();
+            if (Date.now() - lostSince >= MEETING_LOST_MS) {
+                await shutdown('the meeting appears to be over (out of the room for 90s)');
+            }
+        }
+        const remainingMinutes = cockpit.timeState().remainingMinutes;
+        if (remainingMinutes !== null && remainingMinutes < -OVERTIME_LIMIT_MINUTES) {
+            await shutdown(`hard overtime limit reached (${OVERTIME_LIMIT_MINUTES} min past the scheduled end)`);
+        }
 
         if (state !== lastState) {
             if (state === 'lobby') {

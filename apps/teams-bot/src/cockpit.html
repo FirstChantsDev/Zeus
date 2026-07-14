@@ -165,6 +165,13 @@ header{
   letter-spacing:-.1px;white-space:nowrap;
 }
 .join-btn:hover{background:var(--jade-bg);}
+/* The kill switch: shuts the local bot process down from the cockpit */
+.kill-btn{
+  background:none;border:1px solid var(--red-bd);border-radius:9px;padding:6px 13px;
+  font-family:var(--head);font-weight:600;font-size:12px;color:var(--red);cursor:pointer;
+  letter-spacing:-.1px;white-space:nowrap;
+}
+.kill-btn:hover{background:var(--red-bg);}
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
 
@@ -382,6 +389,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
   <button class="join-btn" id="joinBtn" style="display:none" onclick="joinCall()" title="Open the meeting link so you join as yourself">Join call</button>
+  <button class="kill-btn" id="killBtn" style="display:none" onclick="killBot()" title="Shut the agent down — it leaves the meeting and stops making API calls">Kill bot</button>
   <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
 </header>
 
@@ -648,6 +656,24 @@ function renderHeader(state){
     meetingLink = state.meetingUrl;
     document.getElementById('joinBtn').style.display = '';
   }
+  // Kill switch — only the local bot offers it (the hosted cockpit doesn't).
+  if(state.canShutdown){
+    document.getElementById('killBtn').style.display = '';
+  }
+}
+
+// The kill switch: confirms, tells the bot to shut down, then marks the
+// cockpit dead. The process exits moments later, so polling stops too.
+let killed = false;
+async function killBot(){
+  if(!confirm('Shut the agent down? It leaves the meeting and stops making API calls.')) return;
+  try{ await fetch('/shutdown', { method: 'POST' }); }catch(e){ /* it may die mid-reply — fine */ }
+  killed = true;
+  const badge = document.getElementById('liveBadge');
+  const text = document.getElementById('liveText');
+  badge.className = 'live bad';
+  text.textContent = 'AGENT SHUT DOWN';
+  document.getElementById('killBtn').style.display = 'none';
 }
 
 // Phase 5: open the meeting in the owner's own browser — they join as
@@ -786,6 +812,9 @@ document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.
 
 // ══ THE POLL ══════════════════════════════════════════════
 async function poll(){
+  // Killed from this page: the process is gone on purpose — freeze the
+  // header on AGENT SHUT DOWN instead of flipping to "cockpit offline".
+  if(killed) return;
   // The overseer view refreshes from /summary instead of a single meeting.
   if(dashboardMode){
     try{

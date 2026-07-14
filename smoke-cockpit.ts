@@ -17,6 +17,10 @@ const cockpit = new CockpitServer({
         applyBrief(brief.labels);
         console.log(`smoke onSetup: ${brief.labels.join(' | ')}`);
     },
+    onShutdown: () => {
+        console.log('smoke onShutdown: kill button pressed — exiting.');
+        process.exit(0);
+    },
 });
 cockpit.start();
 cockpit.setMeetingStatus('in-meeting');
