@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
+import { listRecords, readRecord, computeMetrics } from './MeetingRecord';
 
 /**
  * CockpitServer is the owner's private window into the running agent.
@@ -43,6 +44,11 @@ export type Brief = {
     ownerName: string;
 };
 
+/** A live board change made from the cockpit (edit an existing condition, or add one) */
+export type ConditionChange =
+    | { kind: 'edited', id: string, before: string, after: string, reopened: boolean }
+    | { kind: 'added', id: string, label: string };
+
 /** Phase 5: one moment the room named the owner in a way that needs them */
 export type MentionRecord = {
     speaker: string;
@@ -77,6 +83,9 @@ export class CockpitServer {
     private readonly onSetup: (brief: Brief) => void;
     /** Kill switch: called when the owner presses the cockpit's Kill bot button */
     private readonly onShutdown: () => void;
+    /** Live condition editing: called after POST /conditions mutates the board,
+     *  so the caller can audit-log the change and re-judge the transcript. */
+    private readonly onConditionsChanged: (change: ConditionChange) => void;
 
     private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private briefed = false;
@@ -99,6 +108,7 @@ export class CockpitServer {
         onCommand: (instruction: string) => void,
         onSetup: (brief: Brief) => void,
         onShutdown: () => void,
+        onConditionsChanged?: (change: ConditionChange) => void,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
@@ -106,6 +116,7 @@ export class CockpitServer {
         this.onCommand = args.onCommand;
         this.onSetup = args.onSetup;
         this.onShutdown = args.onShutdown;
+        this.onConditionsChanged = args.onConditionsChanged ?? (() => { /* nothing to notify */ });
         this.logger = new Logger({ source: 'cockpit-server', botId: args.botId });
     }
 
@@ -191,6 +202,16 @@ export class CockpitServer {
                 this._handleCommand(req, res);
             } else if (url === '/setup' && req.method === 'POST') {
                 this._handleSetup(req, res);
+            } else if (url === '/conditions' && req.method === 'POST') {
+                this._handleConditions(req, res);
+            } else if (url === '/history') {
+                const entries = listRecords();
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ entries, metrics: computeMetrics(entries) }));
+            } else if (url.startsWith('/history/')) {
+                const record = readRecord(url.slice('/history/'.length));
+                res.writeHead(record ? 200 : 404, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(record ?? { ok: false, error: 'record not found' }));
             } else if (url === '/shutdown' && req.method === 'POST') {
                 // The kill switch. Answer first so the page hears the "ok"
                 // before the process (and this server with it) goes away.
@@ -297,6 +318,81 @@ export class CockpitServer {
         });
     }
 
+    /**
+     * Live condition editing (POST /conditions):
+     *   {op:'edit', id, label} — rewords a condition. Editing a CLOSED one
+     *   reopens it for re-evaluation with a fresh slate (note/why/evidence
+     *   cleared, nudge count reset so it doesn't instantly flag NEEDS YOU).
+     *   {op:'add', label}      — adds a condition, up to MAX_CONDITIONS.
+     * The onConditionsChanged callback lets the bot audit-log the change
+     * and immediately re-judge the whole transcript.
+     */
+    private _handleConditions(req: http.IncomingMessage, res: http.ServerResponse) {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            const answer = (code: number, payload: object) => {
+                res.writeHead(code, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(payload));
+            };
+            if (!this.briefed) {
+                answer(409, { ok: false, error: 'Brief the agent first.' });
+                return;
+            }
+            try {
+                const parsed = JSON.parse(body) as { op?: unknown, id?: unknown, label?: unknown };
+                const label = typeof parsed.label === 'string' ? parsed.label.trim() : '';
+                if (!label) {
+                    answer(400, { ok: false, error: 'The condition needs some words.' });
+                    return;
+                }
+                if (parsed.op === 'edit') {
+                    const condition = this.conditions.find((c) => c.id === parsed.id);
+                    if (!condition) {
+                        answer(404, { ok: false, error: 'No such condition.' });
+                        return;
+                    }
+                    const before = condition.label;
+                    if (before === label) {
+                        answer(200, { ok: true }); // nothing changed — no event, no re-judge
+                        return;
+                    }
+                    const reopened = condition.status === 'closed';
+                    condition.label = label;
+                    if (reopened) {
+                        condition.status = 'open';
+                        condition.nudges = 0;
+                        delete condition.note;
+                        delete condition.why;
+                        delete condition.evidence;
+                    }
+                    console.log(`CONDITION EDITED >>> ${condition.id}: "${before}" → "${label}"${reopened ? ' (reopened)' : ''}`);
+                    this.onConditionsChanged({ kind: 'edited', id: condition.id, before, after: label, reopened });
+                    answer(200, { ok: true });
+                } else if (parsed.op === 'add') {
+                    if (this.conditions.length >= MAX_CONDITIONS) {
+                        answer(400, { ok: false, error: `The board is full — the agent tracks at most ${MAX_CONDITIONS} conditions.` });
+                        return;
+                    }
+                    // Next free cN id (ids are never reused within a meeting).
+                    const nextIndex = this.conditions.reduce((max, c) => {
+                        const n = /^c(\d+)$/.exec(c.id);
+                        return n ? Math.max(max, Number(n[1]) + 1) : max;
+                    }, this.conditions.length);
+                    const condition: Condition = { id: `c${nextIndex}`, label, status: 'open', nudges: 0 };
+                    this.conditions.push(condition);
+                    console.log(`CONDITION ADDED >>> ${condition.id}: "${label}"`);
+                    this.onConditionsChanged({ kind: 'added', id: condition.id, label });
+                    answer(200, { ok: true });
+                } else {
+                    answer(400, { ok: false, error: 'op must be "edit" or "add"' });
+                }
+            } catch {
+                answer(400, { ok: false, error: 'body must be JSON' });
+            }
+        });
+    }
+
     /** Reads the page from disk on every request, so page edits show up on refresh without restarting the bot */
     private _serveCockpitPage(res: http.ServerResponse) {
         // Like the rest of the project (output/logs, output/transcripts),
@@ -318,14 +414,14 @@ export class CockpitServer {
         });
     }
 
-    /** Assembles the JSON snapshot the cockpit page polls */
-    private _buildState() {
-        // Work out each nudge's fate from current condition state:
-        //   sent    — a pure owner directive, not tied to any condition
-        //   landed  — the condition it pushed on is now closed
-        //   ignored — still open AND the agent has since nudged it again
-        //   waiting — still open, this is the latest nudge about it
-        const nudgesWithStatus = this.nudges.map((nudge, index) => {
+    /** Work out each nudge's fate from current condition state:
+     *    sent    — a pure owner directive, not tied to any condition
+     *    landed  — the condition it pushed on is now closed
+     *    ignored — still open AND the agent has since nudged it again
+     *    waiting — still open, this is the latest nudge about it
+     *  Chronological order (the feed reverses it; the record keeps it). */
+    private _nudgesWithFates() {
+        return this.nudges.map((nudge, index) => {
             const condition = nudge.conditionId === null
                 ? undefined
                 : this.conditions.find((c) => c.id === nudge.conditionId);
@@ -344,7 +440,21 @@ export class CockpitServer {
                 conditionLabel: condition?.label ?? 'your steer',
                 status,
             };
-        }).reverse(); // newest first, ready for the feed
+        });
+    }
+
+    /** Everything the meeting's persisted record needs at end-of-meeting */
+    public snapshotForRecord() {
+        return {
+            conditions: this.conditions.map((c) => ({ ...c })),
+            nudges: this._nudgesWithFates(), // chronological, fates final
+            mentions: [...this.mentions],
+        };
+    }
+
+    /** Assembles the JSON snapshot the cockpit page polls */
+    private _buildState() {
+        const nudgesWithStatus = this._nudgesWithFates().reverse(); // newest first, ready for the feed
 
         return {
             startedAt: this.startedAt,

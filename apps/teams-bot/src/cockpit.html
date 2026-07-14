@@ -172,6 +172,95 @@ header{
   letter-spacing:-.1px;white-space:nowrap;
 }
 .kill-btn:hover{background:var(--red-bg);}
+/* History: opens the past-meetings view (works before and during a meeting) */
+.hist-btn{
+  background:none;border:1px solid var(--line2);border-radius:9px;padding:6px 13px;
+  font-family:var(--head);font-weight:600;font-size:12px;color:var(--t2);cursor:pointer;
+  letter-spacing:-.1px;white-space:nowrap;
+}
+.hist-btn:hover{color:var(--jade);border-color:var(--jade-bd);}
+
+/* ══ LIVE BOARD EDITING — edit a condition / add one mid-call ══ */
+.cond-edit-btn{
+  flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
+  width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0;
+}
+.cond-edit-btn:hover{color:var(--jade);border-color:var(--jade-bd);}
+.cond.add-card{
+  border-style:dashed;background:none;display:flex;align-items:center;justify-content:center;
+  color:var(--t3);font-size:12.5px;cursor:pointer;min-height:96px;
+}
+.cond.add-card:hover{border-color:var(--jade-bd);color:var(--jade);}
+.cond-editor{display:flex;flex-direction:column;gap:8px;}
+.cond-editor .f-input{font-size:13px;}
+.cond-editor-row{display:flex;gap:8px;}
+.cond-save{
+  flex:1;background:var(--jade);border:none;border-radius:9px;padding:9px;
+  font-family:var(--head);font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;
+}
+.cond-cancel{
+  flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:9px;padding:9px 14px;
+  font-size:12.5px;color:var(--t2);cursor:pointer;
+}
+.cond-cancel:hover{color:var(--red);border-color:var(--red-bd);}
+.cond-editor-err{font-size:11.5px;color:var(--red);min-height:14px;}
+.cond-editor-hint{font-size:11px;color:var(--t3);line-height:1.4;}
+
+/* ══ HISTORY — past meetings, their records, and the metrics strip ══ */
+#history{position:fixed;inset:0;z-index:120;background:var(--ink);display:none;overflow-y:auto;padding:0 22px 28px;}
+#history.show{display:block;}
+.hist-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap;position:sticky;top:0;background:var(--ink);z-index:1;}
+.hist-title{font-family:var(--head);font-weight:600;font-size:16px;letter-spacing:-.3px;}
+.hist-back{
+  background:none;border:1px solid var(--line2);border-radius:9px;padding:7px 14px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.4px;color:var(--t2);cursor:pointer;white-space:nowrap;
+}
+.hist-back:hover{color:var(--jade);border-color:var(--jade-bd);}
+.metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+.metric{
+  background:var(--s1);border:1px solid var(--line);border-radius:var(--r);
+  padding:12px 16px;min-width:130px;flex:0 1 auto;
+}
+.metric .m-num{font-family:var(--head);font-weight:700;font-size:22px;letter-spacing:-.5px;}
+.metric .m-num em{font-style:normal;color:var(--jade);}
+.metric .m-label{font-family:var(--mono);font-size:10px;letter-spacing:.8px;color:var(--t3);text-transform:uppercase;margin-top:3px;}
+.hist-list{display:flex;flex-direction:column;gap:10px;max-width:860px;}
+.hist-item{
+  background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);
+  padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  transition:border-color .3s;
+}
+.hist-item:hover{border-color:var(--jade-bd);}
+.hist-item .h-name{font-family:var(--head);font-weight:600;font-size:14.5px;letter-spacing:-.2px;flex:1;min-width:160px;}
+.hist-item .h-meta{font-family:var(--mono);font-size:11px;color:var(--t2);display:flex;gap:12px;flex-wrap:wrap;}
+.hist-item .h-meta .closed{color:var(--jade);}
+.hist-item .h-meta .none-closed{color:var(--amber);}
+.hist-chip{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--t3);white-space:nowrap;}
+.hist-chip.edited{color:var(--att);border-color:var(--att-bd);background:var(--att-bg);}
+.hist-empty{color:var(--t3);font-size:13px;padding:14px 2px;line-height:1.6;max-width:640px;}
+/* Detail view */
+.hist-detail{max-width:860px;}
+.hd-sub{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.4px;margin-bottom:16px;line-height:1.8;}
+.hd-section{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--t3);text-transform:uppercase;margin:22px 0 10px;}
+.hd-summary{
+  background:var(--s1);border:1px solid var(--line2);border-left:3px solid var(--jade-bd);
+  border-radius:var(--r);padding:14px 16px;font-size:13.5px;line-height:1.65;color:var(--t1);max-width:720px;
+}
+.hd-summary.missing{color:var(--t3);border-left-color:var(--line2);font-style:italic;}
+.hd-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,360px));gap:12px;}
+.hd-events{display:flex;flex-direction:column;gap:0;max-width:720px;}
+.hd-event{display:flex;gap:12px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5;}
+.hd-event .e-time{font-family:var(--mono);font-size:11px;color:var(--t3);flex:0 0 auto;padding-top:1px;}
+.hd-event .e-detail{color:var(--t2);}
+.hd-event.e-closed .e-detail{color:var(--jade);}
+.hd-event.e-edit .e-detail{color:var(--att);}
+.hd-event.e-mention .e-detail{color:var(--att);}
+@media (max-width:640px){
+  #history{padding:0 14px 20px;}
+  .metric{min-width:calc(50% - 5px);}
+  .hd-board{grid-template-columns:1fr;}
+  .hist-btn{padding:10px 14px;}
+}
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
 
@@ -349,13 +438,13 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="f-label">Scheduled length (minutes)</div>
     <input class="f-input" id="meetLen" type="number" min="1" max="480" value="30">
 
-    <div class="f-label">Conditions to close — up to three, in your own words</div>
+    <div class="f-label">Conditions to close — up to five, in your own words</div>
     <div class="cond-inputs" id="condInputs">
       <div class="cond-input-row"><span class="num">1</span><input class="f-input" placeholder='e.g. "Budget confirmed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
       <div class="cond-input-row"><span class="num">2</span><input class="f-input" placeholder='e.g. "Launch date locked"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
       <div class="cond-input-row"><span class="num">3</span><input class="f-input" placeholder='e.g. "Success metric agreed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
     </div>
-    <button class="cond-add maxed" id="condAdd" onclick="addCond()">+ Add condition</button>
+    <button class="cond-add" id="condAdd" onclick="addCond()">+ Add condition</button>
 
     <div class="f-label">Context for the agent — optional</div>
     <input class="f-input" id="meetCtx" placeholder='e.g. "Maya holds the budget. Don&#39;t let creative dominate."'>
@@ -363,7 +452,17 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <button class="brief-go" id="briefGo" onclick="sendAgentIn()">Send agent into the meeting →</button>
     <div class="brief-error" id="briefError"></div>
     <div class="brief-note">The agent joins as a participant. Your cockpit — and every steer you make — stays private to you.</div>
+    <div class="brief-note"><a href="#" onclick="openHistory();return false;" style="color:var(--t2)">View past meetings →</a></div>
   </div>
+</div>
+
+<!-- ══ HISTORY (Part B) — past meetings, their audit records, metrics ══ -->
+<div id="history">
+  <div class="hist-head">
+    <button class="hist-back" id="histBack" onclick="historyBack()">‹ Back</button>
+    <span class="hist-title" id="histTitle">Past meetings</span>
+  </div>
+  <div id="histBody"></div>
 </div>
 
 <!-- ══ OVERSEER DASHBOARD (Phase 7c) — shown on the bare URL when agents are running ══ -->
@@ -388,6 +487,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </div>
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
+  <button class="hist-btn" id="histBtn" onclick="openHistory()" title="Past meetings — summaries, final boards, and the full audit trail">History</button>
   <button class="join-btn" id="joinBtn" style="display:none" onclick="joinCall()" title="Open the meeting link so you join as yourself">Join call</button>
   <button class="kill-btn" id="killBtn" style="display:none" onclick="killBot()" title="Shut the agent down — it leaves the meeting and stops making API calls">Kill bot</button>
   <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
@@ -444,11 +544,13 @@ let meetingParam = pageParams.get('m');
 let forceNew = pageParams.has('new');
 let stateUrl = meetingParam ? `/state/${meetingParam}` : '/state';
 let commandUrl = meetingParam ? `/command/${meetingParam}` : '/command';
+let conditionsUrl = meetingParam ? `/conditions/${meetingParam}` : '/conditions';
 function adoptMeeting(id){
   meetingParam = id;
   forceNew = false;
   stateUrl = `/state/${id}`;
   commandUrl = `/command/${id}`;
+  conditionsUrl = `/conditions/${id}`;
   history.replaceState(null, '', `/?m=${id}`);
 }
 // A fresh-brief page on the hosted cockpit needs the link field even
@@ -544,13 +646,14 @@ function renderDashboard(sum){
 // ══ BRIEFING (Phase 3) ═════════════════════════════════════
 // The owner types 1-3 free-text conditions; POST /setup hands them to the
 // agent and the bot walks into the meeting. Until then the overlay stays.
-const MAX_CONDITIONS = 3;
+const MAX_CONDITIONS = 5;
 
 function syncCondControls(){
   const box = document.getElementById('condInputs');
   [...box.children].forEach((row, i) => { row.querySelector('.num').textContent = i + 1; });
   document.getElementById('condAdd').classList.toggle('maxed', box.children.length >= MAX_CONDITIONS);
 }
+syncCondControls(); // the cap lives in one place (MAX_CONDITIONS), not in the markup
 function addCond(){
   const box = document.getElementById('condInputs');
   if(box.children.length >= MAX_CONDITIONS) return;
@@ -676,6 +779,95 @@ async function killBot(){
   document.getElementById('killBtn').style.display = 'none';
 }
 
+// ══ HISTORY (Part B) — past meetings, records, metrics ═════
+let historyView = 'list';
+function openHistory(){
+  document.getElementById('history').classList.add('show');
+  loadHistoryList();
+}
+function historyBack(){
+  if(historyView === 'detail'){ loadHistoryList(); }
+  else{ document.getElementById('history').classList.remove('show'); }
+}
+const histWhen = (iso) => iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+async function loadHistoryList(){
+  historyView = 'list';
+  document.getElementById('histTitle').textContent = 'Past meetings';
+  const body = document.getElementById('histBody');
+  try{
+    const r = await fetch('/history');
+    const data = await r.json();
+    const m = data.metrics || {};
+    const metricsHtml = `<div class="metrics">
+      <div class="metric"><div class="m-num">${m.totalMeetings ?? 0}</div><div class="m-label">meetings run</div></div>
+      <div class="metric"><div class="m-num"><em>${m.allConditionsClosedPct ?? 0}%</em></div><div class="m-label">all conditions closed</div></div>
+      <div class="metric"><div class="m-num">${m.noDecisionMade ?? 0}</div><div class="m-label">no decision made</div></div>
+      <div class="metric"><div class="m-num">${m.editedMidCall ?? 0}</div><div class="m-label">edited mid-call</div></div>
+    </div>`;
+    const entries = data.entries || [];
+    const listHtml = entries.length
+      ? '<div class="hist-list">' + entries.map((e) => `
+        <div class="hist-item" onclick="openRecord('${esc(e.file)}')">
+          <span class="h-name">${esc(e.meetingName)}</span>
+          ${e.editedMidCall ? '<span class="hist-chip edited">EDITED MID-CALL</span>' : ''}
+          <span class="h-meta">
+            <span>${histWhen(e.endedAt)}</span>
+            <span>${e.durationMinutes !== null ? e.durationMinutes + ' min' : 'never joined'}</span>
+            <span class="${e.conditionsClosed === 0 ? 'none-closed' : 'closed'}">${e.conditionsClosed}/${e.conditionsTotal} closed</span>
+          </span>
+        </div>`).join('') + '</div>'
+      : '<div class="hist-empty">No past meetings yet. When a meeting ends, its record — the summary, the final board with closing quotes, and the full audit trail — lands here and survives restarts.</div>';
+    body.innerHTML = metricsHtml + listHtml;
+  }catch(e){
+    body.innerHTML = '<div class="hist-empty">Could not load history — is the bot running?</div>';
+  }
+}
+
+async function openRecord(file){
+  try{
+    const r = await fetch('/history/' + file);
+    if(!r.ok) return;
+    renderRecordDetail(await r.json());
+  }catch(e){ /* stay on the list */ }
+}
+
+function renderRecordDetail(rec){
+  historyView = 'detail';
+  document.getElementById('histTitle').textContent = rec.meetingName || 'Untitled meeting';
+  const boardHtml = (rec.conditions || []).map((c) => {
+    const closed = c.status === 'closed';
+    const quotes = (c.evidence || []).map((l) => `<div class="cond-quote">⤷ <span class="spk">${esc(l.speaker)}:</span> “${esc(l.quote)}”</div>`).join('');
+    return `<div class="cond ${closed ? 'closed' : 'open'}">
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${closed ? 'CLOSED' : 'STILL OPEN'}</span></div>
+      <div class="cond-meta">${esc(c.note || (closed ? 'Settled in the room.' : 'Left open at meeting end.'))}</div>
+      ${(c.why || quotes) ? `<div class="cond-why">${esc(c.why || '')}${quotes}</div>` : ''}
+      <div class="cond-foot">nudges: ${c.nudges ?? 0}</div>
+    </div>`;
+  }).join('');
+  // The audit trail: every event as it happened. Speaker-seen events are
+  // folded into the participants line instead of cluttering the timeline.
+  const evClass = (t) => t === 'condition-closed' ? 'e-closed'
+    : (t === 'condition-edited' || t === 'condition-added') ? 'e-edit'
+    : t === 'owner-mentioned' ? 'e-mention' : '';
+  const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>
+    `<div class="hd-event ${evClass(e.type)}"><span class="e-time">${(e.at || '').slice(11, 19)}</span><span class="e-detail">${esc(e.detail || '')}</span></div>`
+  ).join('');
+  document.getElementById('histBody').innerHTML = `<div class="hist-detail">
+    <div class="hd-sub">
+      ${histWhen(rec.endedAt)} · ${rec.durationMinutes !== null ? `${rec.durationMinutes} min in the room (scheduled ${rec.scheduledMinutes})` : 'the agent never joined'} · ended: ${esc(rec.endReason || 'unknown')}<br>
+      participants heard: ${esc((rec.participants || []).join(', ') || 'none')}${rec.ownerName ? ` · owner: ${esc(rec.ownerName)}` : ''}
+    </div>
+    <div class="hd-section">Summary</div>
+    ${rec.summary ? `<div class="hd-summary">${esc(rec.summary)}</div>` : '<div class="hd-summary missing">No summary was generated for this meeting.</div>'}
+    <div class="hd-section">Final board</div>
+    <div class="hd-board">${boardHtml || '<div class="hist-empty">No conditions.</div>'}</div>
+    <div class="hd-section">What happened — the audit trail</div>
+    <div class="hd-events">${eventsHtml || '<div class="hist-empty">No events recorded.</div>'}</div>
+  </div>`;
+  document.getElementById('history').scrollTop = 0;
+}
+
 // Phase 5: open the meeting in the owner's own browser — they join as
 // themselves via the normal Teams flow, entirely separate from the bot.
 let meetingLink = null;
@@ -722,10 +914,86 @@ function toggleWhy(id){
   renderConditions(lastConditions); // redraw right away, no 1.5s wait
 }
 
-function renderConditions(conditions){
+// Live board editing state. While an editor is open the board render is
+// frozen — the 1.5s poll would otherwise rebuild the cards and wipe the
+// owner's typing mid-word.
+let editingCondId = null;   // condition id being edited, or '+' for the add card
+let editorError = '';
+
+function condCardEditor(c){
+  const current = c ? c.label : '';
+  const hint = c
+    ? (c.status === 'closed' ? 'Editing a closed condition reopens it for re-evaluation.' : 'The agent re-judges the whole conversation as soon as you save.')
+    : 'Judged against everything said so far — if the room already settled it, it closes immediately.';
+  return `<div class="cond open">
+    <div class="cond-editor">
+      <input class="f-input" id="condEditInput" value="${esc(current)}" placeholder="e.g. Budget signed off" maxlength="200">
+      <div class="cond-editor-hint">${esc(hint)}</div>
+      <div class="cond-editor-err">${esc(editorError)}</div>
+      <div class="cond-editor-row">
+        <button class="cond-save" onclick="saveCondEdit()">${c ? 'Save change' : 'Add condition'}</button>
+        <button class="cond-cancel" onclick="cancelCondEdit()">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function startCondEdit(id){
+  editingCondId = id;
+  editorError = '';
+  renderConditions(lastConditions, true);
+  const input = document.getElementById('condEditInput');
+  if(input){ input.focus(); input.select(); }
+}
+function cancelCondEdit(){
+  editingCondId = null;
+  editorError = '';
+  renderConditions(lastConditions, true);
+}
+async function saveCondEdit(){
+  const input = document.getElementById('condEditInput');
+  const label = (input ? input.value : '').trim();
+  if(!label){ editorError = 'The condition needs some words.'; renderConditions(lastConditions, true); return; }
+  const body = editingCondId === '+' ? { op: 'add', label } : { op: 'edit', id: editingCondId, label };
+  try{
+    const r = await fetch(conditionsUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const answer = await r.json().catch(() => ({}));
+    if(!r.ok){ editorError = answer.error || 'Could not save — try again.'; renderConditions(lastConditions, true); return; }
+    editingCondId = null;
+    editorError = '';
+    // Optimistic local update so the board doesn't flash stale for a poll.
+    if(body.op === 'edit'){
+      const c = lastConditions.find((x) => x.id === body.id);
+      if(c){ c.label = label; if(c.status === 'closed'){ c.status = 'open'; c.nudges = 0; delete c.note; delete c.why; delete c.evidence; } }
+    } else {
+      lastConditions.push({ id: 'pending', label, status: 'open', nudges: 0 });
+    }
+    renderConditions(lastConditions, true);
+  }catch(e){
+    editorError = 'Could not reach the agent — is the bot running?';
+    renderConditions(lastConditions, true);
+  }
+}
+
+function renderConditions(conditions, force){
+  // Frozen while an editor is open (except our own explicit re-renders).
+  if(editingCondId !== null && !force){ lastConditions = conditions; return; }
   lastConditions = conditions;
   const row = document.getElementById('condRow');
+  // The add card: only mid-meeting (briefed) and only below the cap.
+  const addCard = (briefed && conditions.length < MAX_CONDITIONS)
+    ? (editingCondId === '+'
+        ? condCardEditor(null)
+        : `<div class="cond add-card" onclick="startCondEdit('+')" title="Add a condition mid-call — judged against everything said so far">+ Add condition</div>`)
+    : '';
   row.innerHTML = conditions.map((c) => {
+    if(editingCondId === c.id){ return condCardEditor(c); }
+    return condCardHtml(c);
+  }).join('') + addCard;
+}
+
+function condCardHtml(c){
+  return [c].map((c) => {
     // 2+ nudges while still open = exception. The agent has pushed twice
     // and the room keeps moving past it — the owner's cue to step in.
     const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
@@ -745,7 +1013,7 @@ function renderConditions(conditions){
       `<div class="cond-quote">⤷ <span class="spk">${esc(line.speaker)}:</span> “${esc(line.quote)}”</div>`
     ).join('');
     return `<div class="cond ${status}">
-      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-edit-btn" title="Edit this condition — the agent picks up the change" onclick="startCondEdit('${esc(c.id)}')">✎</button><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
       ${expanded ? `<div class="cond-why">${esc(why)}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>

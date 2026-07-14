@@ -369,6 +369,83 @@ export class Nudger {
         }
     }
 
+    /**
+     * ONE API call at meeting end: a short, factual plain-English summary
+     * for the meeting's persisted record — what was decided, what stayed
+     * open, who was involved. Never throws; null means "no summary" and
+     * the record is saved without one.
+     */
+    public async summarise(args: {
+        meetingName: string,
+        ownerName: string,
+        participants: string[],
+        durationMinutes: number | null,
+        events: Array<{ at: string, type: string, detail: string }>,
+    }): Promise<string | null> {
+        const boardLines = this.conditions.map((c) => {
+            const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
+            return `- ${c.label} — ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+        }).join('\n');
+        const eventLines = args.events
+            .filter((e) => e.type !== 'speaker-seen') // participants are passed separately
+            .map((e) => `- ${e.at.slice(11, 19)} ${e.detail}`)
+            .join('\n');
+
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'claude-opus-4-8',
+                    max_tokens: 500,
+                    system: [
+                        'You are Zeus bot. A meeting you attended for your owner has just ended. Write the short,',
+                        'factual summary that goes into its permanent record — the thing your owner actually reads',
+                        'afterwards.',
+                        '',
+                        'Cover, in plain English prose (a short paragraph or two, no headings, no bullet lists):',
+                        'what was decided (with the deciding words where you have them), which conditions closed and',
+                        'which stayed open (and why, if known), anything that needed the owner, and who was involved.',
+                        'Only state what the record shows — do not embellish or guess. Keep it under 150 words.',
+                    ].join('\n'),
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            `Meeting: "${args.meetingName}"${args.ownerName ? ` (owner: ${args.ownerName})` : ''}`,
+                            args.durationMinutes !== null ? `Duration: about ${args.durationMinutes} minutes.` : 'The agent never made it into the room.',
+                            `Participants heard: ${args.participants.length ? args.participants.join(', ') : 'none'}`,
+                            '',
+                            'Final condition board:',
+                            boardLines || '(no conditions)',
+                            '',
+                            'What happened, in order:',
+                            eventLines || '(no events)',
+                        ].join('\n'),
+                    }],
+                }),
+            });
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => '(no body)');
+                this.logger.error({ message: `Anthropic API error ${response.status} (summary)`, data: errorBody });
+                return null;
+            }
+            const data = await response.json() as { content?: Array<{ type: string, text?: string }> };
+            const text = (data.content ?? [])
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text ?? '')
+                .join('')
+                .trim();
+            return text || null;
+        } catch (error) {
+            this.logger.error({ message: 'Summary generation failed', data: error });
+            return null;
+        }
+    }
+
     /** The owner's optional context line as extra prompt guidance, or nothing if she left it blank */
     private _contextLines(): string[] {
         if (!this.context) {

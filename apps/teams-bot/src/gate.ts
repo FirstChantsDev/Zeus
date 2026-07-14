@@ -16,8 +16,9 @@ import { randomUUID } from 'crypto';
 import { JoinProcedure } from './procedures/join-procedure';
 import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
-import { Nudger } from './lib/Nudger';
-import { CockpitServer } from './lib/CockpitServer';
+import { Nudger, LineDecision } from './lib/Nudger';
+import { CockpitServer, TranscriptRecord } from './lib/CockpitServer';
+import { MeetingRecord } from './lib/MeetingRecord';
 import { conditions, applyBrief } from './conditions';
 
 /** The cockpit's local address: http://localhost:4300 */
@@ -66,15 +67,65 @@ const main = async () => {
     let chat: ChatProcedure | null = null;
     let browser: Browser | null = null;
 
+    // The meeting's audit trail — events are appended AS THEY HAPPEN and
+    // the whole record is written to records/ when the meeting ends.
+    const record = new MeetingRecord(botId.slice(0, 8));
+    let wasBriefed = false;
+
     // One exit path for everything: the cockpit's Kill bot button, the
-    // meeting ending, or hard overtime. Closes the Chrome window and stops
-    // the process — no more API calls after this.
+    // meeting ending, hard overtime, or Ctrl+C. Persists the meeting's
+    // record (with a one-call summary), closes Chrome, stops the process.
+    let shuttingDown = false;
     const shutdown = async (reason: string) => {
-        console.log(`\n=== Zeus bot shutting down: ${reason}. No further API calls. ===\n`);
+        if (shuttingDown) return; // e.g. kill button and auto-end racing
+        shuttingDown = true;
+        console.log(`\n=== Zeus bot shutting down: ${reason}. No further API calls after the record is saved. ===\n`);
+        try {
+            if (wasBriefed) {
+                const snapshot = cockpit.snapshotForRecord();
+                let summary: string | null = null;
+                if (nudger && cockpit.recentTranscript(1).length > 0) {
+                    console.log('Writing the meeting summary (one API call)...');
+                    summary = await nudger.summarise(record.summaryInput());
+                }
+                record.save({ endReason: reason, ...snapshot, summary });
+            }
+        } catch (error) {
+            console.error('Could not persist the meeting record:', error);
+        }
         if (browser) {
             await browser.close().catch(() => { /* already gone */ });
         }
         process.exit(0);
+    };
+    process.on('SIGINT', () => { void shutdown('stopped from the terminal (Ctrl+C)'); });
+
+    // Everything the brain concludes lands here — from live caption lines
+    // AND from immediate re-judgements after a condition edit/addition.
+    const handleDecision = async (decision: LineDecision, transcriptRecord: TranscriptRecord | null) => {
+        for (const id of decision.resolvedIds) {
+            if (transcriptRecord) {
+                transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
+            }
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-closed', `Condition closed: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
+        // Phase 5: the room just said it needs the owner.
+        if (decision.mention) {
+            console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
+            cockpit.addMention(decision.mention);
+            record.log('owner-mentioned', `${decision.mention.speaker} said the room needs the owner: "${decision.mention.quote}"`, { ...decision.mention });
+        }
+        if (decision.nudge) {
+            console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
+            cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
+            record.log('nudge-sent', `Nudge sent: ${decision.nudge.text}`, { conditionId: decision.nudge.conditionId, text: decision.nudge.text });
+            await chat!.sendMessage(decision.nudge.text);
+        }
     };
 
     // Phase 5: the owner's name from the brief, for the greeting.
@@ -101,6 +152,8 @@ const main = async () => {
             nudger?.setContext(brief.context);
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
+            wasBriefed = true;
+            record.briefed(brief);             // the audit trail starts here
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);
@@ -115,6 +168,7 @@ const main = async () => {
                 console.log('STEER ignored — no ANTHROPIC_API_KEY, the agent cannot compose messages.');
                 return;
             }
+            record.log('steer-received', `Owner steer: "${instruction}"`, { instruction });
             // Share the nudge queue so a steer never talks over a nudge in flight.
             nudgeQueue = nudgeQueue
                 .then(async () => {
@@ -130,10 +184,35 @@ const main = async () => {
                     }
                     console.log(`STEERED MESSAGE >>> ${directive.text}`);
                     cockpit.addNudge({ text: directive.text, conditionId: directive.conditionId, steered: true });
+                    record.log('nudge-sent', `Steered message sent: ${directive.text}`, { conditionId: directive.conditionId, text: directive.text, steered: true });
                     await chatNow.sendMessage(directive.text);
                 })
                 .catch((error) => {
                     console.error('Steer pipeline error:', error);
+                });
+        },
+        // Live board edits from the cockpit: audit-log the change, then
+        // immediately re-judge the WHOLE transcript so far — a condition
+        // added after the room already settled it closes straight away.
+        onConditionsChanged: (change) => {
+            if (change.kind === 'edited') {
+                record.log('condition-edited', `Condition ${change.id} edited: "${change.before}" → "${change.after}"${change.reopened ? ' (was closed — reopened for re-evaluation)' : ''}`, { ...change });
+            } else {
+                record.log('condition-added', `Condition added mid-call: "${change.label}"`, { ...change });
+            }
+            if (!nudger || !chat || cockpit.recentTranscript(1).length === 0) {
+                return; // nothing said yet (or no API key) — the next caption picks it up
+            }
+            nudgeQueue = nudgeQueue
+                .then(async () => {
+                    const decision = await nudger.decide({
+                        transcript: cockpit.recentTranscript(40),
+                        time: cockpit.timeState(),
+                    });
+                    await handleDecision(decision, null);
+                })
+                .catch((error) => {
+                    console.error('Re-judge pipeline error:', error);
                 });
         },
         // The cockpit's Kill bot button — works any time, even before the
@@ -217,6 +296,7 @@ const main = async () => {
                 console.log('\n>>> STATUS: In the waiting room (lobby). Waiting to be admitted. <<<\n');
             } else if (state === 'in-meeting') {
                 inMeetingSince = Date.now();
+                record.joined(); // audit trail: the agent is in the room (first time only)
                 console.log('\n>>> STATUS: Admitted! Zeus bot is now IN the meeting. <<<\n');
             } else {
                 console.log('\n>>> STATUS: Not in lobby or meeting (page may still be loading, or the call ended). <<<\n');
@@ -250,6 +330,7 @@ const main = async () => {
                     // transcript, then to the nudge brain.
                     onFinishedLine: (line) => {
                         const transcriptRecord = cockpit.addTranscriptLine(line);
+                        record.sawSpeaker(line.speaker); // first appearance = participant event
                         if (!nudger) {
                             return;
                         }
@@ -262,19 +343,7 @@ const main = async () => {
                                     transcript: cockpit.recentTranscript(40),
                                     time: cockpit.timeState(),
                                 });
-                                if (decision.resolvedIds.length > 0) {
-                                    transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
-                                }
-                                // Phase 5: the room just said it needs the owner.
-                                if (decision.mention) {
-                                    console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
-                                    cockpit.addMention(decision.mention);
-                                }
-                                if (decision.nudge) {
-                                    console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
-                                    cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
-                                    await chat!.sendMessage(decision.nudge.text);
-                                }
+                                await handleDecision(decision, transcriptRecord);
                             })
                             .catch((error) => {
                                 console.error('Nudge pipeline error:', error);

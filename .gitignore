@@ -17,6 +17,9 @@
 **/logs/
 **/output/
 
+# persisted meeting records — contain meeting content, never commit them
+records/
+
 # next.js
 **/*/.next/
 **/out/

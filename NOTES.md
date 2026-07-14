@@ -86,7 +86,7 @@ goal is being ignored, and reporting everything to a private local cockpit.
 2. **Open http://localhost:4300.** You get the briefing screen.
 3. **Brief it.** Type a meeting name, a scheduled length in minutes (use
    something short like 5 if you want to see the urgency escalate during a
-   demo), 1–3 conditions in any wording (e.g. "Venue deposit signed off"),
+   demo), 1–5 conditions in any wording (e.g. "Venue deposit signed off"),
    optionally a context line. Click **"Send agent into the meeting →"**.
    The screen fades to the live cockpit ("AWAITING YOUR BRIEF" flips to the
    agent's live status) and a Chrome window opens and heads for the meeting.
@@ -131,6 +131,31 @@ goal is being ignored, and reporting everything to a private local cockpit.
   cockpit doesn't offer it; the cloud bot already auto-ends and has the
   Railway Stop button + daily decision cap.
 
+- **Phase 8 — live editing + the audit log.** Two connected halves:
+  - *Part A — the board is editable mid-call, and the cap is now 5.* Every
+    card has a ✎ that opens an inline editor (the poll-driven re-render is
+    frozen while you type); a dashed "+ Add condition" card appears below
+    the cap. Edits reach the agent immediately: it re-judges the WHOLE
+    transcript so far on every edit/addition, so a condition added after
+    the room already settled it closes on the spot. Editing a closed
+    condition reopens it with a fresh slate (note/why/evidence cleared,
+    nudge count reset). On the hosted cockpit, edits queue on the hub and
+    the cloud bot applies them on its next 2-second check-in.
+  - *Part B — the first durable state.* Every meeting appends timestamped
+    events AS THEY HAPPEN (brief, join, first-time speakers, condition
+    closes with their verbatim evidence, every nudge/steer, every edit
+    with before → after text, owner mentions, meeting end + reason). On
+    meeting end the bot makes ONE more API call for a plain-English
+    summary, then writes the whole record to **one JSON file per meeting**
+    in `records/` at the repo root (`ZEUS_RECORDS_DIR` overrides; the hub
+    uses `RECORDS_DIR`). A **History** view (header button, or the link on
+    the briefing screen) lists past meetings with an honest metrics strip
+    (meetings run, % all-conditions-closed, no-decision count, edited-mid-
+    call count) and opens each record: summary, final board with closing
+    quotes, and the full audit trail. Records survive restarts; the full
+    transcript is deliberately NOT stored (evidence quotes carry the
+    load-bearing words).
+
 - **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
   or deploy setup touched — purely cockpit.html CSS plus two tiny render
   fixes. Condition cards cap at ~360px instead of stretching on wide
@@ -150,7 +175,7 @@ goal is being ignored, and reporting everything to a private local cockpit.
    and enter the access code (Railway variable `ACCESS_CODE` on the
    cockpit service — change it there anytime).
 4. Brief the agent: paste the **Teams meeting link** into its field, add
-   your name, length, and 1–3 conditions. One click on "Send agent in".
+   your name, length, and 1–5 conditions. One click on "Send agent in".
 5. Within ~10 seconds the cloud bot heads for the meeting — **admit
    "Zeus bot"** from the lobby. It greets in chat; the website board,
    transcript, nudges, mentions, and steering all run live.
@@ -214,8 +239,31 @@ goal is being ignored, and reporting everything to a private local cockpit.
   cockpit in one page; design lifted from the committed reference mock
   `gate-command-centre-phase2.html`.
 
+## Meeting records — scope, sensitivity, where they live
+
+- **Where:** one JSON file per completed meeting. Locally in `records/` at
+  the repo root (override with `ZEUS_RECORDS_DIR`); on the hosted hub in
+  `records/` next to the process (override with `RECORDS_DIR`). Deliberately
+  NOT a database — plain files are the right size for this stage; a
+  database is the later scaling step.
+- **Railway caveat:** container filesystems are wiped on redeploy. For the
+  hosted records to survive deploys, mount a Railway volume and point
+  `RECORDS_DIR` at it. Local records are ordinary files and just persist.
+- **Sensitive:** records contain meeting content — decisions, verbatim
+  quotes, participant names, summaries. They are gitignored (`records/`),
+  must never be committed, and should be treated like meeting notes.
+- **Scope honesty:** this is a *faithful, persisted, readable* history —
+  events are appended as they happen, never reconstructed. It is NOT
+  tamper-proof: no signatures, no hash chain, no write-once storage, no
+  compliance certification. Anyone with disk access can edit a record.
+  The enterprise-grade version is parked below, on purpose.
+
 ## Parked for later
 
+- **Enterprise-grade audit trail.** The honest upgrade path from today's
+  records: hash-chained or signed events, write-once storage, retention
+  policy, access control per owner. Build it when a real compliance
+  requirement shows up — not before.
 - **Phase 7: per-user bot sessions.** Separate logins, private cockpits,
   concurrent meetings (a browser pool or bot-per-brief), per-user billing.
   Today: one shared bot, one meeting at a time, one shared access code —

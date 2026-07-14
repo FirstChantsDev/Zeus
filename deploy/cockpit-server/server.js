@@ -25,7 +25,7 @@ const crypto = require('crypto');
 const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
 const DEMO_MODE = (process.env.DEMO_MODE ?? '1') !== '0';
-const MAX_CONDITIONS = 3;
+const MAX_CONDITIONS = 5;
 // Phase 7c Milestone 2: up to three meetings at once. Each is a full
 // Chrome on the bot machine (~500MB+), so 3 is the deliberate ceiling —
 // a 4th brief is politely refused.
@@ -35,6 +35,79 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '';
 
 // The one cockpit page, shared with the local app.
 const COCKPIT_PAGE = path.join(__dirname, '..', '..', 'apps', 'teams-bot', 'src', 'cockpit.html');
+
+/**
+ * ================================================
+ * Persisted meeting records — one JSON file per completed meeting.
+ * The cloud bot POSTs the finished record to /bot/record/<id>; the
+ * cockpit reads it back via /history. Same file shape as the local
+ * bot's records/ directory. NOTE: on Railway this directory is only
+ * durable if a volume is mounted at RECORDS_DIR — documented in NOTES.md.
+ * ================================================
+ */
+const RECORDS_DIR = process.env.RECORDS_DIR || path.join(process.cwd(), 'records');
+
+const writeRecordFile = (record) => {
+    try {
+        fs.mkdirSync(RECORDS_DIR, { recursive: true });
+        const file = path.join(RECORDS_DIR, `${String(record.endedAt).replace(/[:.]/g, '-')}-${record.id}.json`);
+        fs.writeFileSync(file, JSON.stringify(record, null, 2));
+        console.log(`RECORD SAVED >>> ${file}`);
+        return true;
+    } catch (error) {
+        console.error('RECORD SAVE FAILED >>>', error);
+        return false;
+    }
+};
+
+/** All records, newest first — same shape as the local bot's /history */
+const listRecords = () => {
+    let files = [];
+    try {
+        files = fs.readdirSync(RECORDS_DIR).filter((f) => f.endsWith('.json'));
+    } catch {
+        return [];
+    }
+    const entries = [];
+    for (const file of files) {
+        try {
+            const record = JSON.parse(fs.readFileSync(path.join(RECORDS_DIR, file), 'utf8'));
+            entries.push({
+                file,
+                meetingName: record.meetingName || 'Untitled meeting',
+                ownerName: record.ownerName || '',
+                endedAt: record.endedAt || '',
+                durationMinutes: record.durationMinutes ?? null,
+                conditionsTotal: (record.conditions || []).length,
+                conditionsClosed: (record.conditions || []).filter((c) => c.status === 'closed').length,
+                editedMidCall: Boolean(record.editedMidCall),
+                hasSummary: Boolean(record.summary),
+            });
+        } catch { /* a corrupt file must not break the whole history */ }
+    }
+    return entries.sort((a, b) => b.endedAt.localeCompare(a.endedAt));
+};
+
+const readRecord = (file) => {
+    if (!/^[0-9A-Za-z\-]+\.json$/.test(file)) return null;
+    try {
+        return JSON.parse(fs.readFileSync(path.join(RECORDS_DIR, file), 'utf8'));
+    } catch {
+        return null;
+    }
+};
+
+const computeMetrics = (entries) => {
+    const total = entries.length;
+    const allClosed = entries.filter((e) => e.conditionsTotal > 0 && e.conditionsClosed === e.conditionsTotal).length;
+    return {
+        totalMeetings: total,
+        allConditionsClosed: allClosed,
+        allConditionsClosedPct: total ? Math.round((allClosed / total) * 100) : 0,
+        noDecisionMade: entries.filter((e) => e.conditionsClosed === 0).length,
+        editedMidCall: entries.filter((e) => e.editedMidCall).length,
+    };
+};
 
 /**
  * ================================================
@@ -85,6 +158,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         // Hub-side plumbing between the website and the cloud bot:
         briefClaimed: false, // the bot has collected this brief and owns the meeting
         steerQueue: [],      // owner instructions waiting for the bot's next check-in
+        editQueue: [],       // live board edits waiting for the bot's next check-in
     };
     meetings.set(id, meeting);
     return meeting;
@@ -403,7 +477,24 @@ const server = http.createServer(async (req, res) => {
                 if (Array.isArray(snap.mentions)) meeting.mentions = snap.mentions;
                 const steers = meeting.steerQueue;
                 meeting.steerQueue = [];
-                answer(res, 200, { ok: true, steers });
+                const edits = meeting.editQueue;
+                meeting.editQueue = [];
+                answer(res, 200, { ok: true, steers, edits });
+            } catch {
+                answer(res, 400, { ok: false, error: 'body must be JSON' });
+            }
+            return;
+        }
+        const recordId = idFrom(url, '/bot/record');
+        if (recordId && req.method === 'POST') {
+            // The finished meeting's audit record — persist it to disk.
+            try {
+                const record = JSON.parse(await readBody(req));
+                if (!record || typeof record !== 'object' || !record.endedAt || !record.id) {
+                    answer(res, 400, { ok: false, error: 'not a meeting record' });
+                    return;
+                }
+                answer(res, writeRecordFile(record) ? 200 : 500, { ok: true });
             } catch {
                 answer(res, 400, { ok: false, error: 'body must be JSON' });
             }
@@ -489,6 +580,72 @@ const server = http.createServer(async (req, res) => {
                 runDemoMeeting(meeting);
             }
             answer(res, 200, { ok: true, meetingId: meeting.id });
+        } catch {
+            answer(res, 400, { ok: false, error: 'body must be JSON' });
+        }
+        return;
+    }
+
+    // Past-meeting history + the metrics strip (read from the records dir).
+    if (url === '/history') {
+        const entries = listRecords();
+        answer(res, 200, { entries, metrics: computeMetrics(entries) });
+        return;
+    }
+    if (url.startsWith('/history/')) {
+        const record = readRecord(url.slice('/history/'.length));
+        answer(res, record ? 200 : 404, record ?? { ok: false, error: 'record not found' });
+        return;
+    }
+
+    // Live board edits — per meeting, with the ID-less legacy form.
+    const conditionsId = idFrom(url, '/conditions');
+    if ((url === '/conditions' || conditionsId) && req.method === 'POST') {
+        const meeting = conditionsId ? meetings.get(conditionsId) : defaultMeeting();
+        if (!meeting) {
+            answer(res, 409, { ok: false, error: 'Brief the agent first.' });
+            return;
+        }
+        try {
+            const parsed = JSON.parse(await readBody(req));
+            const label = typeof parsed.label === 'string' ? parsed.label.trim() : '';
+            if (!label) {
+                answer(res, 400, { ok: false, error: 'The condition needs some words.' });
+                return;
+            }
+            if (parsed.op === 'add' && meeting.conditions.length + meeting.editQueue.filter((e) => e.op === 'add').length >= MAX_CONDITIONS) {
+                answer(res, 400, { ok: false, error: `The board is full — the agent tracks at most ${MAX_CONDITIONS} conditions.` });
+                return;
+            }
+            if (parsed.op === 'edit' && !meeting.conditions.some((c) => c.id === parsed.id)) {
+                answer(res, 404, { ok: false, error: 'No such condition.' });
+                return;
+            }
+            if (parsed.op !== 'edit' && parsed.op !== 'add') {
+                answer(res, 400, { ok: false, error: 'op must be "edit" or "add"' });
+                return;
+            }
+            if (meeting.briefClaimed) {
+                // The bot owns this meeting's state — queue the edit; it is
+                // applied (and audit-logged) on the bot's next 2s check-in.
+                meeting.editQueue.push(parsed.op === 'edit' ? { op: 'edit', id: parsed.id, label } : { op: 'add', label });
+                console.log(`EDIT queued >>> (${meeting.id}) ${parsed.op} ${parsed.id ?? ''} "${label}"`);
+            } else {
+                // No bot attached (demo mode) — apply directly to hub state.
+                if (parsed.op === 'edit') {
+                    const condition = meeting.conditions.find((c) => c.id === parsed.id);
+                    if (condition.status === 'closed') {
+                        condition.status = 'open';
+                        condition.nudges = 0;
+                        delete condition.note; delete condition.why; delete condition.evidence;
+                    }
+                    condition.label = label;
+                } else {
+                    meeting.conditions.push({ id: `c${meeting.conditions.length}`, label, status: 'open', nudges: 0 });
+                }
+                console.log(`EDIT applied (demo) >>> (${meeting.id}) ${parsed.op} "${label}"`);
+            }
+            answer(res, 200, { ok: true });
         } catch {
             answer(res, 400, { ok: false, error: 'body must be JSON' });
         }

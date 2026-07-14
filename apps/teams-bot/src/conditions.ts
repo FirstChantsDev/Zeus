@@ -11,7 +11,7 @@
 export const conditions: Condition[] = [];
 
 /** Maximum conditions the owner can brief the agent with */
-export const MAX_CONDITIONS = 3;
+export const MAX_CONDITIONS = 5;
 
 /**
  * Replaces the conditions with the owner's typed brief. Mutates the
