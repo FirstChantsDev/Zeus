@@ -20,6 +20,9 @@
 # persisted meeting records — contain meeting content, never commit them
 records/
 
+# the owner's Microsoft sign-in token cache — a secret, never commit it
+calendar-token.json
+
 # next.js
 **/*/.next/
 **/out/

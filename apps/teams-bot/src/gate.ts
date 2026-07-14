@@ -1,7 +1,9 @@
 /**
  * Zeus prototype launcher.
  *
- * Usage:  npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>
+ * Usage:  npx tsx apps/teams-bot/src/gate.ts [teams-meeting-url]
+ *         (the link is optional since Phase 10 — pick a meeting from the
+ *          connected calendar, or paste a link, on the briefing screen)
  *
  * Phase 3 flow: starts the cockpit at http://localhost:4300 and WAITS.
  * The owner types her brief there (meeting name, 1-3 conditions, optional
@@ -18,6 +20,7 @@ import { ChatProcedure } from './procedures/chat-procedure';
 import { CaptionsProcedure } from './procedures/captions-procedure';
 import { Nudger, LineDecision } from './lib/Nudger';
 import { CockpitServer, TranscriptRecord } from './lib/CockpitServer';
+import { CalendarConnector } from './lib/CalendarConnector';
 import { MeetingRecord } from './lib/MeetingRecord';
 import { conditions, applyBrief } from './conditions';
 
@@ -39,10 +42,13 @@ const greetingFor = (ownerName: string) => ownerName
     ? `Hi, I'm ${ownerName}'s meeting assistant. I'll help keep us on track.`
     : `Hi, I'm the meeting assistant. I'll help keep us on track.`;
 
-const meetingUrl = process.argv[2];
-if (!meetingUrl) {
-    console.error('Usage: npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>');
-    process.exit(1);
+// Phase 10: the launch-argument URL is now OPTIONAL. With the calendar
+// connected the owner picks a meeting on the briefing screen instead;
+// pasting a link into the form works too. The argument stays as the
+// original hands-on path and always wins as the fallback.
+const meetingUrlArg = process.argv[2] ?? '';
+if (!meetingUrlArg) {
+    console.log('No meeting link on the command line — pick one from your calendar (or paste it) on the briefing screen.');
 }
 
 const main = async () => {
@@ -131,6 +137,10 @@ const main = async () => {
     // Phase 5: the owner's name from the brief, for the greeting.
     let ownerName = '';
 
+    // Phase 10: where the agent actually goes — resolved at brief time
+    // (calendar pick > pasted link > launch argument).
+    let activeMeetingUrl = meetingUrlArg;
+
     // Everything the agent says — self-driven nudges and owner steers alike —
     // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
@@ -143,7 +153,11 @@ const main = async () => {
         botId,
         conditions,
         port: COCKPIT_PORT,
-        meetingUrl, // Phase 5: the cockpit's Join call button opens this link
+        meetingUrl: meetingUrlArg, // may be '' — a calendar pick or pasted link fills it at brief time
+        // Phase 10: the owner's Outlook calendar (read-only). Unconfigured
+        // (no MS_CLIENT_ID/MS_CLIENT_SECRET in .env) it reports so and the
+        // briefing screen simply doesn't show any calendar UI.
+        calendar: new CalendarConnector(),
 
         // Phase 3: the briefing screen submitted — fill the shared conditions
         // array with the owner's typed labels and let the join flow proceed.
@@ -152,6 +166,7 @@ const main = async () => {
             nudger?.setContext(brief.context);
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
+            activeMeetingUrl = brief.meetingUrl; // Phase 10: calendar pick / pasted link / launch arg
             wasBriefed = true;
             record.briefed(brief);             // the audit trail starts here
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
@@ -251,7 +266,7 @@ const main = async () => {
     const join = new JoinProcedure({ botId, page });
     chat = new ChatProcedure({ botId, page });
 
-    await join.startMeetingLauncherFlow({ meetingUrl });
+    await join.startMeetingLauncherFlow({ meetingUrl: activeMeetingUrl });
     await join.joinMeetingLobbyFlow();
 
     console.log('\n=== Zeus bot: join clicked. Watching status (Ctrl+C here to quit)... ===\n');

@@ -4,6 +4,7 @@ import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
 import { listRecords, readRecord, computeMetrics } from './MeetingRecord';
+import { CalendarLike } from './CalendarConnector';
 
 /**
  * CockpitServer is the owner's private window into the running agent.
@@ -42,6 +43,9 @@ export type Brief = {
     lengthMinutes: number;
     /** Phase 5: the owner's name, so the agent can flag when the room needs them ('' if not given) */
     ownerName: string;
+    /** Phase 10: the meeting link to join — from a calendar pick, a pasted
+     *  link in the form, or (fallback) the URL the bot was launched with. */
+    meetingUrl: string;
 };
 
 /** A live board change made from the cockpit (edit an existing condition, or add one) */
@@ -76,7 +80,11 @@ export class CockpitServer {
     private readonly logger: Logger;
     private readonly startedAt = new Date().toISOString();
     /** Phase 5: the Teams link the bot was launched with — the Join call button opens it */
-    private readonly meetingUrl: string;
+    /** Phase 10: no longer readonly — a calendar pick or pasted link at
+     *  brief time replaces the (now optional) launch-argument URL. */
+    private meetingUrl: string;
+    /** Phase 10: the owner's Outlook calendar, when configured (read-only) */
+    private readonly calendar: CalendarLike | null;
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
     /** Called ONCE with the owner's brief when POST /setup accepts it */
@@ -109,10 +117,12 @@ export class CockpitServer {
         onSetup: (brief: Brief) => void,
         onShutdown: () => void,
         onConditionsChanged?: (change: ConditionChange) => void,
+        calendar?: CalendarLike | null,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
         this.meetingUrl = args.meetingUrl;
+        this.calendar = args.calendar ?? null;
         this.onCommand = args.onCommand;
         this.onSetup = args.onSetup;
         this.onShutdown = args.onShutdown;
@@ -204,6 +214,59 @@ export class CockpitServer {
                 this._handleSetup(req, res);
             } else if (url === '/conditions' && req.method === 'POST') {
                 this._handleConditions(req, res);
+            } else if (url === '/calendar/status') {
+                // Phase 10: {configured, connected, account} — drives which
+                // calendar UI the briefing screen shows (or none at all).
+                void (async () => {
+                    const status = this.calendar
+                        ? await this.calendar.status().catch(() => ({ configured: true, connected: false, account: null }))
+                        : { configured: false, connected: false, account: null };
+                    res.writeHead(200, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify(status));
+                })();
+            } else if (url === '/calendar/auth') {
+                // "Connect calendar" → bounce to Microsoft's own sign-in page.
+                void (async () => {
+                    try {
+                        const signInUrl = await this.calendar!.authUrl();
+                        res.writeHead(302, { location: signInUrl });
+                        res.end();
+                    } catch (error) {
+                        this.logger.error({ message: 'Calendar auth URL failed', data: error });
+                        res.writeHead(500, { 'content-type': 'text/plain' });
+                        res.end('Calendar is not configured — set MS_CLIENT_ID and MS_CLIENT_SECRET in .env');
+                    }
+                })();
+            } else if (url === '/auth/callback') {
+                // Microsoft sends the owner back here with a one-time code.
+                void (async () => {
+                    try {
+                        const code = new URL(req.url ?? '/', 'http://localhost').searchParams.get('code') ?? '';
+                        const account = await this.calendar!.handleCallback(code);
+                        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+                        res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${account.replace(/</g, '&lt;')}</b> — taking you back…</p></body>`);
+                    } catch (error) {
+                        this.logger.error({ message: 'Calendar sign-in failed', data: error });
+                        res.writeHead(500, { 'content-type': 'text/plain' });
+                        res.end('Calendar sign-in failed — check the terminal log, then try Connect calendar again.');
+                    }
+                })();
+            } else if (url === '/calendar/meetings') {
+                // The pick-list: the owner's next two weeks of meetings.
+                void (async () => {
+                    try {
+                        const meetings = await this.calendar!.upcomingMeetings();
+                        // The join links stay server-side knowledge as far as the
+                        // owner is concerned — the page gets them only to post
+                        // back on /setup, and never displays them.
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ meetings }));
+                    } catch (error) {
+                        this.logger.error({ message: 'Calendar fetch failed', data: error });
+                        res.writeHead(409, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: 'Calendar not connected — click Connect calendar on the briefing screen.' }));
+                    }
+                })();
             } else if (url === '/history') {
                 const entries = listRecords();
                 res.writeHead(200, { 'content-type': 'application/json' });
@@ -254,7 +317,7 @@ export class CockpitServer {
                 return;
             }
             try {
-                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown, ownerName?: unknown };
+                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown };
                 const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
                     .filter((label): label is string => typeof label === 'string')
                     .map((label) => label.trim())
@@ -276,12 +339,28 @@ export class CockpitServer {
                 // Phase 5: the owner's name — optional, '' when left blank.
                 const ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
 
+                // Phase 10: the meeting link — a calendar pick or a pasted
+                // link wins; otherwise fall back to the URL the bot was
+                // launched with. Without any of the three there is nowhere
+                // to send the agent.
+                const briefUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
+                if (briefUrl && !briefUrl.includes('teams.')) {
+                    answer(400, { ok: false, error: 'That does not look like a Teams meeting link.' });
+                    return;
+                }
+                const meetingUrl = briefUrl || this.meetingUrl;
+                if (!meetingUrl) {
+                    answer(400, { ok: false, error: 'Pick a meeting from your calendar or paste its Teams link — the agent needs to know where to go.' });
+                    return;
+                }
+                this.meetingUrl = meetingUrl; // the Join call button uses this too
+
                 this.briefed = true;
                 this.briefedAt = new Date().toISOString();
                 this.meetingName = meetingName;
                 this.scheduledMinutes = lengthMinutes;
                 this.ownerName = ownerName;
-                this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName }); // populates the shared conditions array
+                this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl }); // populates the shared conditions array
                 answer(200, { ok: true });
             } catch {
                 answer(400, { ok: false, error: 'body must be JSON' });

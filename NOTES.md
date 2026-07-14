@@ -79,10 +79,12 @@ goal is being ignored, and reporting everything to a private local cockpit.
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):
 
    ```
-   npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>
+   npx tsx apps/teams-bot/src/gate.ts [teams-meeting-url]
    ```
 
-   The terminal says it's waiting for your brief. No browser window opens yet.
+   The terminal says it's waiting for your brief. No browser window opens
+   yet. The link is optional since Phase 10 — with the calendar connected
+   you pick the meeting on the briefing screen (or paste a link there).
 2. **Open http://localhost:4300.** You get the briefing screen.
 3. **Brief it.** Type a meeting name, a scheduled length in minutes (use
    something short like 5 if you want to see the urgency escalate during a
@@ -155,6 +157,20 @@ goal is being ignored, and reporting everything to a private local cockpit.
     quotes, and the full audit trail. Records survive restarts; the full
     transcript is deliberately NOT stored (evidence quotes carry the
     load-bearing words).
+
+- **Phase 10 — the Outlook calendar (read-only).** The owner never pastes a
+  meeting link again: a **"Connect calendar"** button on the briefing screen
+  runs the standard Microsoft sign-in (via Microsoft's own auth library,
+  @azure/msal-node — no hand-rolled OAuth), and after one consent the form
+  shows the next two weeks of meetings as a pick-list. Picking one
+  auto-fills the join link (never displayed), the meeting title, and the
+  scheduled duration — which feeds the existing time-awareness/urgency
+  logic. Events without a Teams link are greyed out. The launch-argument
+  URL is now optional (`npx tsx apps/teams-bot/src/gate.ts` alone works);
+  manual link pasting remains as the always-available fallback. Setup and
+  operations: see "Outlook calendar" section below. Local cockpit only for
+  now — the hosted hub keeps manual entry (multi-user token storage is the
+  parked future phase).
 
 - **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
   or deploy setup touched — purely cockpit.html CSS plus two tiny render
@@ -238,6 +254,51 @@ goal is being ignored, and reporting everything to a private local cockpit.
 - `apps/teams-bot/src/cockpit.html` — the whole UI, briefing screen and live
   cockpit in one page; design lifted from the committed reference mock
   `gate-command-centre-phase2.html`.
+
+## Outlook calendar (Microsoft Graph) — setup & operations
+
+**Scope (deliberate):** single owner, one Microsoft account, delegated
+`Calendars.Read` only — read-only, no email, nothing else. Tested against a
+personal Microsoft account. The sanctioned Graph API path; the browser
+join flow is untouched.
+
+**One-time Entra app registration** (portal clicks, ~5 minutes):
+1. Go to **entra.microsoft.com** → sign in → **App registrations** →
+   **New registration**.
+2. Name: `Zeus Meeting Agent`. Supported account types: **"Accounts in any
+   organizational directory and personal Microsoft accounts"**. Redirect
+   URI: platform **Web**, value `http://localhost:4300/auth/callback`.
+   Register.
+3. On the app's **Overview** page, copy **Application (client) ID** →
+   `MS_CLIENT_ID` in `.env`.
+4. **Certificates & secrets** → **New client secret** → any description,
+   pick an expiry → copy the **Value** column IMMEDIATELY (it is shown
+   once) → `MS_CLIENT_SECRET` in `.env`.
+5. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Delegated** → tick **Calendars.Read** → Add. (The default `User.Read`
+   can stay.) No admin consent needed for a personal account.
+6. `.env` at the repo root (already gitignored) gains:
+   `MS_CLIENT_ID=...`, `MS_CLIENT_SECRET=...`
+   (optional `MS_REDIRECT_URI` if the cockpit isn't on localhost:4300).
+
+**The token — the one piece of state that outlives the process.** MSAL's
+token cache (access + refresh token) is persisted to **one plain file**,
+`calendar-token.json` at the repo root (`ZEUS_CAL_TOKEN_FILE` overrides),
+mode 600, gitignored. Deliberately a file, not a database. **If it's
+deleted, nothing breaks** — the briefing screen shows "Connect calendar"
+again and one sign-in restores it. That is the entire reconnect procedure;
+it's also the fix for any token weirdness.
+
+**Secrets hygiene:** the client ID/secret and the token file are
+server-side only — never in front-end code, never committed. If the
+secret or token ever appears anywhere else (a log, a commit, a screen
+share), rotate it: delete the client secret in Entra, create a new one,
+update `.env`, delete `calendar-token.json`, reconnect.
+
+**Future path (parked):** multi-user = per-account token storage keyed to
+each owner; corporate tenants may require admin consent for even this
+read-only scope — build against a real tenant when that day comes. The
+hosted hub gets the calendar then too.
 
 ## Meeting records — scope, sensitivity, where they live
 

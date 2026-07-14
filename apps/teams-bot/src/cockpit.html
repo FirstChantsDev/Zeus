@@ -82,6 +82,26 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
 .brief-error{margin-top:12px;font-size:12px;color:var(--red);text-align:center;line-height:1.5;display:none;}
 .brief-error.show{display:block;}
+/* Phase 10: pick the meeting from the connected Outlook calendar */
+.cal-connect{
+  width:100%;background:none;border:1px solid var(--jade-bd);border-radius:10px;
+  padding:10px;color:var(--jade);font-family:var(--head);font-weight:600;font-size:13px;cursor:pointer;
+}
+.cal-connect:hover{background:var(--jade-bg);}
+.cal-list{display:flex;flex-direction:column;gap:6px;max-height:216px;overflow-y:auto;}
+.cal-item{
+  display:flex;gap:10px;align-items:center;background:var(--s2);border:1px solid var(--line2);
+  border-radius:10px;padding:9px 12px;cursor:pointer;font-size:12.5px;
+}
+.cal-item:hover{border-color:var(--jade-bd);}
+.cal-item.selected{border-color:var(--jade-bd);background:var(--jade-bg);}
+.cal-item.nolink{opacity:.42;cursor:not-allowed;}
+.cal-item .cal-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cal-item .cal-when{font-family:var(--mono);font-size:11px;color:var(--t2);white-space:nowrap;}
+.cal-note{font-size:11.5px;color:var(--t3);margin-top:7px;line-height:1.5;}
+.cal-note .clear{color:var(--red);cursor:pointer;}
+.cal-hint{font-size:11.5px;color:var(--t3);margin-top:7px;line-height:1.5;}
+.cal-account{font-family:var(--mono);font-size:10.5px;color:var(--t3);margin-top:7px;letter-spacing:.3px;}
 /* Back to the homepage without submitting — only shown when the briefing
    is a sub-view of the all-agents homepage. */
 .brief-back{
@@ -421,6 +441,18 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
+    <!-- Phase 10: the connected Outlook calendar (read-only). Hidden when no
+         Entra app is configured; shows Connect first, then the pick-list.
+         Picking a meeting fills the link (never shown), name and length. -->
+    <div id="calSection" style="display:none">
+      <div class="f-label">From your calendar</div>
+      <div id="calConnect" style="display:none">
+        <button class="cal-connect" onclick="location.href='/calendar/auth'">Connect calendar</button>
+        <div class="cal-hint">Read-only access to your Outlook calendar. Sign in once — after that the agent fills the meeting link, title and length for you.</div>
+      </div>
+      <div id="calList" style="display:none"></div>
+    </div>
+
     <div class="f-label">Meeting</div>
     <input class="f-input" id="meetName" placeholder='e.g. "Spring launch — campaign kickoff"'>
 
@@ -675,16 +707,68 @@ function briefError(msg){
   el.textContent = msg;
   el.classList.toggle('show', Boolean(msg));
 }
+// ══ CALENDAR (Phase 10) — pick a meeting instead of pasting a link ══
+let calMeetings = [];
+let calSelected = null;   // index into calMeetings, or null
+let calAccount = null;
+async function initCalendar(){
+  try{
+    const s = await (await fetch('/calendar/status')).json();
+    if(!s.configured) return; // no Entra app in .env — section stays hidden
+    document.getElementById('calSection').style.display = '';
+    if(!s.connected){
+      document.getElementById('calConnect').style.display = '';
+      return;
+    }
+    calAccount = s.account;
+    const r = await fetch('/calendar/meetings');
+    if(!r.ok){ document.getElementById('calConnect').style.display = ''; return; }
+    calMeetings = (await r.json()).meetings || [];
+    renderCalList();
+  }catch(e){ /* the calendar is a convenience — the form works without it */ }
+}
+const calWhen = (iso, mins) =>
+  new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + mins + 'm';
+function renderCalList(){
+  const box = document.getElementById('calList');
+  box.style.display = '';
+  const rows = calMeetings.length
+    ? calMeetings.map((m, i) => `
+      <div class="cal-item ${m.joinUrl ? '' : 'nolink'} ${calSelected === i ? 'selected' : ''}"
+           ${m.joinUrl ? `onclick="pickCalMeeting(${i})"` : 'title="This event has no Teams link"'}>
+        <span class="cal-sub">${esc(m.subject)}</span><span class="cal-when">${calWhen(m.start, m.durationMinutes)}</span>
+      </div>`).join('')
+    : '<div class="cal-hint">Nothing with a Teams link in the next two weeks — paste a link below instead.</div>';
+  box.innerHTML = `<div class="cal-list">${rows}</div>
+    ${calSelected !== null ? `<div class="cal-note">Using the calendar's join link for “${esc(calMeetings[calSelected].subject)}” — nothing to paste. <span class="clear" onclick="pickCalMeeting(null)">clear</span></div>` : ''}
+    ${calAccount ? `<div class="cal-account">connected: ${esc(calAccount)} · read-only</div>` : ''}`;
+}
+function pickCalMeeting(i){
+  calSelected = i;
+  if(i !== null){
+    const m = calMeetings[i];
+    document.getElementById('meetName').value = m.subject;       // auto-fill title
+    document.getElementById('meetLen').value = m.durationMinutes; // feeds time-awareness
+    document.getElementById('meetLink').value = '';               // calendar link wins
+  }
+  renderCalList();
+}
+
 async function sendAgentIn(){
   const labels = [...document.querySelectorAll('#condInputs .f-input')]
     .map((i) => i.value.trim()).filter(Boolean);
   if(!labels.length){ briefError('Give the agent at least one condition to drive.'); return; }
-  // Phase 6: on the hosted cockpit the meeting link is typed here.
+  // Where the agent goes: calendar pick first, then a pasted link, then
+  // (locally) the URL the bot was launched with.
   let meetingUrl;
-  if(document.getElementById('linkField').style.display !== 'none'){
+  if(calSelected !== null){
+    meetingUrl = calMeetings[calSelected].joinUrl; // never shown to the owner
+  } else if(document.getElementById('linkField').style.display !== 'none'){
     meetingUrl = document.getElementById('meetLink').value.trim();
     if(!meetingUrl || !meetingUrl.includes('teams.')){
-      briefError('Paste the Teams meeting link so the agent knows where to go.');
+      briefError(document.getElementById('calSection').style.display !== 'none'
+        ? 'Pick a meeting from your calendar, or paste its Teams link.'
+        : 'Paste the Teams meeting link so the agent knows where to go.');
       return;
     }
   }
@@ -1142,6 +1226,7 @@ async function poll(){
   await detectDashboard();
   poll();
   setInterval(poll, POLL_MS);
+  initCalendar(); // Phase 10 — no-op unless the Entra app is configured
 })();
 
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
