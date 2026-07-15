@@ -471,8 +471,11 @@ const server = http.createServer(async (req, res) => {
 
     // The front door: access code first, cockpit after.
     if (url === '/' || url === '/index.html') {
+        // no-store: phones must always fetch the CURRENT page — a cached
+        // copy from before a redeploy looks exactly like "the fix didn't
+        // work" (no chat, old layout) with nothing wrong server-side.
         if (!isAuthed(req)) {
-            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
             res.end(LOGIN_PAGE);
             return;
         }
@@ -482,7 +485,7 @@ const server = http.createServer(async (req, res) => {
                 res.end('cockpit.html is missing');
                 return;
             }
-            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
             res.end(html);
         });
         return;

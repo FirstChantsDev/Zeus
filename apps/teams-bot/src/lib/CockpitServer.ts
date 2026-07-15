@@ -638,7 +638,9 @@ export class CockpitServer {
                 res.end('cockpit.html is missing');
                 return;
             }
-            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            // no-store: a phone must never show a cached page from before
+            // an update — that reads as "the fix didn't work".
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
             res.end(html);
         });
     }
