@@ -48,12 +48,8 @@ ENV ZEUS_BROWSER_CHANNEL=bundled
 # The cockpit lives on this port inside the container.
 EXPOSE 4300
 
-# xvfb-run gives the "headed" browser its virtual screen.
-# Two modes, one image:
-#   HUB_URL set   → cloud mode: poll the hosted cockpit for briefs (Milestone 3)
-#   HUB_URL empty → local mode: join $MEETING_URL, cockpit on port 4300 (Milestone 2)
-CMD if [ -n "$HUB_URL" ]; then \
-        xvfb-run --auto-servernum -- npx tsx deploy/bot/src/cloud-gate.ts; \
-    else \
-        xvfb-run --auto-servernum -- npx tsx apps/teams-bot/src/gate.ts "$MEETING_URL"; \
-    fi
+# One start file, no shell required: Railway runs start commands in exec
+# form (no /bin/sh), so the HUB_URL branching lives in deploy/start.js
+# (plain Node) instead of shell if/else. start.js also wraps the browser
+# in xvfb-run for its virtual screen.
+CMD ["node", "deploy/start.js"]
