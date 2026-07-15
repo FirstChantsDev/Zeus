@@ -853,9 +853,48 @@ function toggleBriefMode(){
     : 'Prefer to talk it through? Brief by chat →';
   if(briefChatMode && !bcStarted){
     bcStarted = true;
-    bcAddMsg('agent', 'Tell me about the meeting. What needs to get decided?');
+    bcIntro();
   }
   if(briefChatMode) document.getElementById('bcInput').focus();
+}
+
+// The chat's opening moves. A fresh page = a fresh conversation (the
+// server forgets the old thread — otherwise a reload, e.g. the Outlook
+// sign-in round-trip, leaves the page blank while the server remembers).
+// Then: connect-the-calendar comes FIRST when it isn't connected yet;
+// when it is, say what the agent can actually see.
+async function bcIntro(){
+  try{ await fetch('/brief-chat/reset', { method: 'POST' }); }catch(e){ /* older server — harmless */ }
+  let calLine = null, needsConnect = false;
+  try{
+    const s = await (await fetch('/calendar/status')).json();
+    if(s.configured && !s.connected){
+      needsConnect = true;
+    } else if(s.connected){
+      try{
+        const meetings = ((await (await fetch('/calendar/meetings')).json()).meetings) || [];
+        const linked = meetings.filter((m) => m.joinUrl).length;
+        calLine = linked
+          ? `Calendar connected (${s.account}) — I can see ${linked} upcoming Teams meeting${linked === 1 ? '' : 's'}, so just describe the one you mean.`
+          : `Calendar connected (${s.account}) — but I see no Teams meetings in the next two weeks. If yours is on a different account, paste its link instead.`;
+      }catch(e){
+        calLine = 'Calendar connected, but I could not read it just now — you can still paste the meeting link.';
+      }
+    }
+  }catch(e){ /* no calendar plumbing at all (hosted hub) — say nothing */ }
+  if(needsConnect){
+    bcAddMsg('agent', "First things first — connect your Outlook calendar (read-only) and you'll never paste a meeting link: describe the meeting and I'll find it.");
+    bcAddActions(`
+      <button onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
+      <button class="alt" onclick="bcSkipConnect()">Skip — I'll paste the link</button>`);
+    return; // the greeting follows their choice (or the reload after sign-in)
+  }
+  if(calLine) bcAddMsg('agent', calLine);
+  bcAddMsg('agent', 'Tell me about the meeting. What needs to get decided?');
+}
+function bcSkipConnect(){
+  bcClearActions();
+  bcAddMsg('agent', 'Tell me about the meeting. What needs to get decided?');
 }
 function bcAddMsg(from, text){
   const thread = document.getElementById('bcThread');

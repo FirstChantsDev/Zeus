@@ -161,7 +161,7 @@ const main = async () => {
         // Phase 10 M3: chat-mode briefing — the model collects the brief
         // conversationally and matches it against the calendar meetings.
         onBriefChat: nudger
-            ? (history, meetings) => nudger.briefChat({ history, meetings })
+            ? (history, meetings, calendarConnected) => nudger.briefChat({ history, meetings, calendarConnected })
             : null,
 
         // Phase 3: the briefing screen submitted — fill the shared conditions

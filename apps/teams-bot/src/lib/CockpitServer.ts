@@ -11,6 +11,7 @@ import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
 export type BriefChatHandler = (
     history: Array<{ from: 'owner' | 'agent', text: string }>,
     meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+    calendarConnected: boolean,
 ) => Promise<{
     reply: string,
     proposeMeeting: number | null,
@@ -237,6 +238,13 @@ export class CockpitServer {
                 this._handleSetup(req, res);
             } else if (url === '/brief-chat' && req.method === 'POST') {
                 this._handleBriefChat(req, res);
+            } else if (url === '/brief-chat/reset' && req.method === 'POST') {
+                // A freshly-loaded page starts a fresh conversation — without
+                // this, the page's empty thread and the server's remembered
+                // one drift apart after a reload (e.g. the OAuth round-trip).
+                this.chatHistory.length = 0;
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
             } else if (url === '/conditions' && req.method === 'POST') {
                 this._handleConditions(req, res);
             } else if (url === '/calendar/status') {
@@ -442,19 +450,26 @@ export class CockpitServer {
                 // Refresh the calendar view each turn (it may have just been
                 // connected in another tab). URLs stay in this.chatMeetings —
                 // the model and the page only ever see index + metadata.
+                let calendarConnected = false;
                 if (this.calendar) {
                     try {
                         const status = await this.calendar.status();
+                        calendarConnected = status.connected;
                         if (status.connected) {
                             this.chatMeetings = await this.calendar.upcomingMeetings();
                         }
-                    } catch { /* calendar is a convenience — chat works without it */ }
+                    } catch (error) {
+                        // The convenience failing must not kill the chat — but
+                        // say WHY in the terminal, or this is undebuggable.
+                        console.error('BRIEF-CHAT >>> calendar fetch failed:', error instanceof Error ? error.message : error);
+                    }
                 }
                 const meetingsMeta = this.chatMeetings.map((m, index) => ({
                     index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl),
                 }));
+                console.log(`BRIEF-CHAT >>> calendar ${calendarConnected ? 'connected' : 'not connected'}, ${meetingsMeta.length} meeting(s) in view (${meetingsMeta.filter((m) => m.hasTeamsLink).length} with a Teams link)`);
 
-                const result = await this.onBriefChat(this.chatHistory, meetingsMeta);
+                const result = await this.onBriefChat(this.chatHistory, meetingsMeta, calendarConnected);
                 if (!result) {
                     const reply = 'Sorry — I tripped over myself there. Say that again?';
                     this.chatHistory.push({ from: 'agent', text: reply });

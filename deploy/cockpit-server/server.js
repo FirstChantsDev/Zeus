@@ -665,6 +665,12 @@ const server = http.createServer(async (req, res) => {
     // Phase 9: the chat-mode briefing (hub edition — no calendar, so the
     // conversation always ends with a pasted link). A finished brief goes
     // through the same rules as /setup: max meetings, link required.
+    if (url === '/brief-chat/reset' && req.method === 'POST') {
+        // A freshly-loaded page starts a fresh conversation.
+        chatSessions.delete(parseCookies(req).zeus_session || '');
+        answer(res, 200, { ok: true });
+        return;
+    }
     if (url === '/brief-chat' && req.method === 'POST') {
         const token = parseCookies(req).zeus_session || '';
         if (!ANTHROPIC_API_KEY) {

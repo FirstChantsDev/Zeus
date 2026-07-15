@@ -382,6 +382,8 @@ export class Nudger {
     public async briefChat(args: {
         history: Array<{ from: 'owner' | 'agent', text: string }>,
         meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+        /** Distinguishes "calendar not connected" from "connected but empty" in the prompt */
+        calendarConnected?: boolean,
     }): Promise<{
         reply: string,
         proposeMeeting: number | null,
@@ -403,7 +405,9 @@ export class Nudger {
                 'The owner\'s upcoming meetings (their calendar is connected):',
                 ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
             ]
-            : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
+            : args.calendarConnected
+                ? ['The owner\'s calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting ("your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead") and take a pasted link.']
+                : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
 
         const system = [
             'You are Zeus bot\'s briefing assistant. Your owner — a busy person, often on their phone — is',
