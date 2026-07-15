@@ -74,9 +74,10 @@ const fileCachePlugin: ICachePlugin = {
 };
 
 export class CalendarConnector implements CalendarLike {
-    private readonly clientId = process.env.MS_CLIENT_ID ?? '';
-    private readonly clientSecret = process.env.MS_CLIENT_SECRET ?? '';
-    private readonly redirectUri = process.env.MS_REDIRECT_URI || 'http://localhost:4300/auth/callback';
+    // Both spellings accepted — MS_* and MICROSOFT_* — so the .env just works.
+    private readonly clientId = process.env.MS_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID || '';
+    private readonly clientSecret = process.env.MS_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET || '';
+    private readonly redirectUri = process.env.MS_REDIRECT_URI || process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4300/auth/callback';
     private readonly msal: ConfidentialClientApplication | null;
 
     constructor() {
