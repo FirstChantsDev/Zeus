@@ -171,15 +171,39 @@ goal is being ignored, and reporting everything to a private local cockpit.
   operations: see "Outlook calendar" section below. Local cockpit only for
   now — the hosted hub keeps manual entry (multi-user token storage is the
   parked future phase).
-  *Brief by chat:* the briefing screen also has a conversational mode
-  ("Prefer to talk it through?"). One API call per message: the agent
-  collects the conditions in chat and matches what you say against the
-  upcoming calendar meetings — a clear match is proposed by name and time
-  with a one-tap "✓ Yes" confirm (plus "Pick a different one"); when
-  nothing matches confidently it shows the tappable list instead of
-  guessing. The model and the page only ever see meetings by index —
-  join links never leave the server. A confirmed chat brief flows
-  through the same validation as the form.
+  *Brief by chat:* the briefing screen also has a conversational mode.
+  One API call per message: the agent collects the conditions in chat and
+  matches what you say against the upcoming calendar meetings — a clear
+  match is proposed by name and time with a one-tap "✓ Yes" confirm (plus
+  "Pick a different one"); when nothing matches confidently it shows the
+  tappable list instead of guessing. The model and the page only ever see
+  meetings by index — join links never leave the server. A confirmed chat
+  brief flows through the same validation as the form.
+
+- **Phase 9 — voice-first conversational briefing (landed after Phase 10;
+  the numbering is the owner's).** The chat mode became the FRONT DOOR:
+  when the server has a chat brain, opening the briefing (locally, or via
+  "Add agent" on the hosted homepage) starts in chat, with the classic
+  form one tap away ("← Back to the form" — kept deliberately, against
+  the original brief, because Phase 10's calendar pick-list lives there
+  and it's the no-API-key fallback). Three upgrades:
+  1. *Tight interviewing + condition chips.* The model asks at most 1–2
+     follow-up questions, then proposes 2–3 concrete outcome-framed
+     conditions rendered as editable chips (amber) — edit inline, remove,
+     add up to the cap, then "Confirm conditions ✓" turns them jade and
+     the conversation moves on to the meeting (calendar match locally,
+     pasted link on the hub).
+  2. *Voice input, browser-native.* A mic button next to the chat input
+     uses the Web Speech API built into iOS Safari / Android Chrome — no
+     library, no external speech service, nothing new server-side. Shown
+     only on touch devices that support it; hidden gracefully elsewhere.
+  3. *The hub got its own chat brain.* `deploy/cockpit-server/server.js`
+     now answers `/brief-chat` itself (same conversation design, plain
+     JS, no calendar — it asks for a pasted link) so the phone flow works
+     on the hosted homepage. Needs `ANTHROPIC_API_KEY` set on the
+     cockpit Railway service — without it the page quietly stays on the
+     form. A finished chat brief passes the same max-meetings/link rules
+     as `/setup`.
 
 - **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
   or deploy setup touched — purely cockpit.html CSS plus two tiny render

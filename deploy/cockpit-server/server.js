@@ -32,6 +32,9 @@ const MAX_CONDITIONS = 5;
 const MAX_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
 // The shared secret the cloud bot presents on /bot/* calls.
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
+// Phase 9: the hub's own key for the chat-mode briefing (one call per
+// owner message). Server-side only; without it the page shows the form.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 // The one cockpit page, shared with the local app.
 const COCKPIT_PAGE = path.join(__dirname, '..', '..', 'apps', 'teams-bot', 'src', 'cockpit.html');
@@ -204,6 +207,7 @@ const buildStateJson = (meeting) => {
         ownerName: meeting.ownerName,
         mentions: [...meeting.mentions].reverse(),
         meetingUrl: meeting.meetingUrl,
+        chatBriefing: Boolean(ANTHROPIC_API_KEY),
     };
 };
 
@@ -223,6 +227,7 @@ const emptyStateJson = () => ({
     ownerName: '',
     mentions: [],
     meetingUrl: '',
+    chatBriefing: Boolean(ANTHROPIC_API_KEY),
 });
 
 /** The overseer rollup — one row per running meeting (used by the summary view). */
@@ -315,6 +320,77 @@ const runDemoMeeting = (meeting) => {
             c2.note = 'Close — waiting on one confirmation.';
             c2.why = 'Jordan says it is nearly there; one confirmation outstanding before it can close.';
         });
+    }
+};
+
+/**
+ * ================================================
+ * Phase 9: the chat-mode briefing brain (hub edition).
+ * Same conversation design as the local Nudger.briefChat, in plain JS.
+ * The hub has no calendar, so the model always asks for a pasted link.
+ * One in-memory conversation per signed-in browser session.
+ * ================================================
+ */
+const chatSessions = new Map(); // session token -> [{from, text}, ...]
+
+const briefChatCall = async (history) => {
+    const system = [
+        "You are Zeus bot's briefing assistant. Your owner — a busy person, often on their phone — is",
+        'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
+        'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
+        '',
+        'The flow, in order:',
+        '1. UNDERSTAND THE SITUATION. Ask AT MOST 1-2 follow-up questions across the WHOLE conversation,',
+        '   and only if the answer would materially change the conditions (e.g. "Who holds the budget',
+        '   decision?"). If their first message is enough, skip questions entirely.',
+        '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions — things that',
+        '   must be TRUE by the end of the meeting, framed as outcomes.',
+        '   Good: "Event budget confirmed with a number" / "Launch date agreed".',
+        '   Bad: "Discuss the budget" / "Talk about the timeline".',
+        '   The owner sees them as editable cards with a confirm button — invite tweaks. When their next',
+        '   message starts "Confirmed conditions:", those exact conditions are final — do not re-propose.',
+        '3. THE MEETING LINK. Ask them to paste it ("Last thing — paste the meeting link and I\'ll send',
+        '   the agent in."). Meeting length: default 30 minutes unless they say otherwise.',
+        '4. Their name and extra context are optional — fold at most ONE ask for them into another',
+        '   question; never spend a whole turn on them.',
+        '',
+        'Reply with ONLY strict JSON on one line, exactly this shape:',
+        '{"reply": "...", "proposeConditions": ["..."]|null,',
+        ' "brief": null | {"meetingUrl": "<pasted link>", "meetingName": "...", "lengthMinutes": <n>,',
+        '   "ownerName": "...", "conditions": ["..."], "context": "..."}}',
+        'Set "brief" ONLY once you have the pasted link AND the owner has confirmed the conditions.',
+        'Its reply is still shown — make it the send-off ("Sending the agent in now.").',
+    ].join('\n');
+    const conversation = history.map((m) => `${m.from === 'owner' ? 'Owner' : 'You'}: ${m.text}`).join('\n');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: 'claude-opus-4-8',
+            max_tokens: 600,
+            system,
+            messages: [{ role: 'user', content: `Conversation so far:\n${conversation}` }],
+        }),
+    });
+    if (!response.ok) {
+        console.error(`brief-chat: Anthropic answered ${response.status}`);
+        return null;
+    }
+    const data = await response.json();
+    const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    try {
+        const parsed = JSON.parse(text.slice(start, end + 1));
+        if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
+        return parsed;
+    } catch {
+        return null;
     }
 };
 
@@ -583,6 +659,81 @@ const server = http.createServer(async (req, res) => {
         } catch {
             answer(res, 400, { ok: false, error: 'body must be JSON' });
         }
+        return;
+    }
+
+    // Phase 9: the chat-mode briefing (hub edition — no calendar, so the
+    // conversation always ends with a pasted link). A finished brief goes
+    // through the same rules as /setup: max meetings, link required.
+    if (url === '/brief-chat' && req.method === 'POST') {
+        const token = parseCookies(req).zeus_session || '';
+        if (!ANTHROPIC_API_KEY) {
+            answer(res, 200, { reply: 'Chat briefing is not set up on this server — use the form.', propose: null, showList: false, meetings: [], briefed: false });
+            return;
+        }
+        let text = '';
+        try { text = String(JSON.parse(await readBody(req)).text || '').trim(); } catch { /* empty check below */ }
+        if (!text) {
+            answer(res, 400, { ok: false, error: 'text required' });
+            return;
+        }
+        const history = chatSessions.get(token) || [];
+        history.push({ from: 'owner', text });
+        chatSessions.set(token, history);
+        let result = null;
+        try { result = await briefChatCall(history); } catch (error) { console.error('brief-chat failed:', error); }
+        if (!result) {
+            const reply = 'Sorry — I tripped over myself there. Say that again?';
+            history.push({ from: 'agent', text: reply });
+            answer(res, 200, { reply, propose: null, showList: false, meetings: [], briefed: false });
+            return;
+        }
+        history.push({ from: 'agent', text: result.reply });
+
+        let briefedNow = false;
+        let briefError = null;
+        let meetingId = null;
+        if (result.brief && typeof result.brief === 'object') {
+            const b = result.brief;
+            const meetingUrl = typeof b.meetingUrl === 'string' ? b.meetingUrl.trim() : '';
+            const labels = (Array.isArray(b.conditions) ? b.conditions : [])
+                .filter((l) => typeof l === 'string').map((l) => l.trim()).filter(Boolean);
+            if (meetings.size >= MAX_MEETINGS) {
+                briefError = `${MAX_MEETINGS} meetings are already running — try again when one finishes.`;
+            } else if (!DEMO_MODE && (!meetingUrl || !meetingUrl.includes('teams.'))) {
+                briefError = 'That link does not look like a Teams meeting link — paste it again?';
+            } else if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
+                briefError = `I need 1 to ${MAX_CONDITIONS} conditions before I go in.`;
+            } else {
+                const rawLength = Number(b.lengthMinutes);
+                const meeting = createMeeting({
+                    meetingName: (typeof b.meetingName === 'string' && b.meetingName.trim()) ? b.meetingName.trim() : 'Untitled meeting',
+                    labels,
+                    context: typeof b.context === 'string' ? b.context.trim() : '',
+                    lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
+                    ownerName: typeof b.ownerName === 'string' ? b.ownerName.trim() : '',
+                    meetingUrl,
+                });
+                console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
+                if (DEMO_MODE) runDemoMeeting(meeting);
+                briefedNow = true;
+                meetingId = meeting.id;
+                chatSessions.delete(token); // fresh conversation for the next brief
+            }
+            if (briefError) history.push({ from: 'agent', text: `Hmm — ${briefError}` });
+        }
+        answer(res, 200, {
+            reply: result.reply,
+            propose: null,
+            showList: false,
+            proposeConditions: Array.isArray(result.proposeConditions) && result.proposeConditions.length
+                ? result.proposeConditions.filter((c) => typeof c === 'string' && c.trim()).map((c) => c.trim())
+                : null,
+            meetings: [],
+            briefed: briefedNow,
+            meetingId,
+            error: briefError,
+        });
         return;
     }
 

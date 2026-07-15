@@ -386,6 +386,8 @@ export class Nudger {
         reply: string,
         proposeMeeting: number | null,
         showList: boolean,
+        /** Phase 9: proposed conditions, rendered as editable chips the owner confirms */
+        proposeConditions: string[] | null,
         brief: {
             meetingIndex: number | null,
             meetingUrl: string | null,
@@ -404,20 +406,35 @@ export class Nudger {
             : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
 
         const system = [
-            'You are Zeus bot. Your owner is briefing you, by chat, for a meeting you will attend and drive',
-            'for them. Collect the brief briskly and warmly — 1-2 short sentences per turn, one question at',
-            'a time. You need:',
-            '1. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list, propose',
-            '   it by setting proposeMeeting to its index and asking for confirmation in your reply, naming',
-            '   it with its day and time (e.g. "I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 —',
-            '   right?"). NEVER guess between several plausible matches and never invent meetings — if',
-            '   nothing matches confidently, set showList true and ask them to tap one. A pasted Teams link',
-            '   also works. Meetings marked [NO Teams link] cannot be chosen — say why if they ask for one.',
-            '   When the owner confirms your proposal (yes / that one / correct), the meeting is resolved.',
-            '2. THE CONDITIONS this meeting must settle — 1 to 5, in the owner\'s own words.',
-            '3. Optionally: their name (so you can flag when the room needs them) and any extra context.',
-            '   The scheduled length comes from the calendar automatically; for a pasted link ask once or',
-            '   default to 30.',
+            'You are Zeus bot\'s briefing assistant. Your owner — a busy person, often on their phone — is',
+            'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
+            'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
+            '',
+            'The flow, in order:',
+            '1. UNDERSTAND THE SITUATION. Ask AT MOST 1-2 follow-up questions across the WHOLE conversation,',
+            '   and only if the answer would materially change the conditions (e.g. "Who holds the budget',
+            '   decision?" or "Is there a figure already in play?"). If their first message is enough, skip',
+            '   questions entirely.',
+            '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions — things that',
+            '   must be TRUE by the end of the meeting, framed as outcomes.',
+            '   Good: "Event budget confirmed with a number" / "Launch date agreed" / "Owner assigned for follow-ups".',
+            '   Bad: "Discuss the budget" / "Talk about the timeline".',
+            '   The owner sees them as editable cards with a confirm button — your reply should invite',
+            '   tweaks ("Here\'s what I\'ll drive the room to close — edit anything"). When their next',
+            '   message starts "Confirmed conditions:", those exact conditions are final — do not re-propose.',
+            '3. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list below,',
+            '   set proposeMeeting to its index and ask for confirmation, naming it with its day and time',
+            '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 — right?"). NEVER guess between',
+            '   several plausible matches and never invent meetings — if nothing matches confidently, set',
+            '   showList true and ask them to tap one. A pasted Teams link also works; without a calendar,',
+            '   ask them to paste the link ("Last thing — paste the meeting link and I\'ll send the agent',
+            '   in."). Meetings marked [NO Teams link] cannot be chosen. When the owner confirms your',
+            '   proposal (yes / that one / correct), the meeting is resolved.',
+            '   You may resolve the meeting before or after the conditions — take whichever the owner gives',
+            '   first, but never skip the condition-confirm step.',
+            '4. Their name and extra context are optional — fold at most ONE ask for them into another',
+            '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
+            '   pasted link default to 30 unless they say otherwise.',
             '',
             ...calendarLines,
             '',
@@ -425,12 +442,13 @@ export class Nudger {
             '',
             'Reply with ONLY strict JSON on one line, exactly this shape:',
             '{"reply": "...", "proposeMeeting": <calendar index>|null, "showList": true|false,',
+            ' "proposeConditions": ["..."]|null,',
             ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
             '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
             '   "context": "..."}}',
-            'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND you have at',
-            'least one condition and have given the owner a chance to add their name/context. Its reply is',
-            'still shown — make it the send-off ("Locked in — heading into <meeting> with those 3 conditions.").',
+            'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
+            'has confirmed the conditions. Its reply is still shown — make it the send-off ("Sending the',
+            'agent in now. You\'ll see it on your board.").',
         ].join('\n');
 
         const conversation = args.history.map((m) => `${m.from === 'owner' ? 'Owner' : 'You'}: ${m.text}`).join('\n');
@@ -467,7 +485,7 @@ export class Nudger {
                 return null;
             }
             const parsed = JSON.parse(cleaned) as {
-                reply?: unknown, proposeMeeting?: unknown, showList?: unknown,
+                reply?: unknown, proposeMeeting?: unknown, showList?: unknown, proposeConditions?: unknown,
                 brief?: {
                     meetingIndex?: unknown, meetingUrl?: unknown, meetingName?: unknown,
                     lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown,
@@ -487,10 +505,14 @@ export class Nudger {
                     context: typeof parsed.brief.context === 'string' ? parsed.brief.context.trim() : '',
                 }
                 : null;
+            const proposeConditions = Array.isArray(parsed.proposeConditions)
+                ? parsed.proposeConditions.filter((c): c is string => typeof c === 'string' && Boolean(c.trim())).map((c) => c.trim())
+                : null;
             return {
                 reply: parsed.reply.trim(),
                 proposeMeeting: typeof parsed.proposeMeeting === 'number' ? parsed.proposeMeeting : null,
                 showList: parsed.showList === true,
+                proposeConditions: proposeConditions && proposeConditions.length ? proposeConditions : null,
                 brief,
             };
         } catch (error) {

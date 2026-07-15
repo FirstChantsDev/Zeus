@@ -122,12 +122,40 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bc-actions button.alt{border-color:var(--line2);color:var(--t2);}
 .bc-list{display:flex;flex-direction:column;gap:6px;align-self:stretch;}
 .bc-row{display:flex;gap:9px;}
-.bc-row input{flex:1;}
+.bc-row input{flex:1;min-width:0;}
 .bc-row button{
   flex:0 0 auto;background:var(--jade);border:none;border-radius:10px;padding:0 18px;
   font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;
 }
 .bc-row button:disabled{opacity:.5;}
+/* Phase 9: browser-native voice input (Web Speech API) — mobile only */
+.bc-mic{
+  flex:0 0 46px !important;height:46px;background:var(--s3) !important;color:var(--jade) !important;
+  border:1px solid var(--jade-bd) !important;border-radius:12px;font-size:18px;position:relative;padding:0 !important;
+}
+.bc-mic.on{background:var(--jade) !important;color:#08110d !important;}
+.bc-mic.on::after{content:'';position:absolute;inset:-5px;border-radius:16px;border:2px solid var(--jade);animation:micring 1.1s ease infinite;}
+@keyframes micring{0%{opacity:.7;transform:scale(.95);}100%{opacity:0;transform:scale(1.18);}}
+.bc-listen-hint{font-family:var(--mono);font-size:10.5px;color:var(--jade);letter-spacing:.6px;text-align:center;margin-bottom:6px;display:none;}
+.bc-listen-hint.on{display:block;}
+/* Phase 9: proposed conditions as editable chips — amber until confirmed, jade after */
+.bc-chips{align-self:stretch;display:flex;flex-direction:column;gap:8px;}
+.bchip{display:flex;align-items:center;gap:9px;border:1px solid var(--amber-bd);background:var(--amber-bg);border-radius:13px;padding:11px 12px;}
+.bchip.ok{border-color:var(--jade-bd);background:var(--jade-bg);}
+.bchip .n{font-family:var(--mono);font-size:10px;color:var(--amber);flex:0 0 auto;}
+.bchip.ok .n{color:var(--jade);}
+.bchip input{flex:1;background:none;border:none;outline:none;color:var(--t1);font-size:13.5px;font-weight:500;min-width:0;}
+.bchip .x{flex:0 0 auto;background:none;border:none;color:var(--t3);font-size:17px;cursor:pointer;padding:4px;line-height:1;}
+.bc-chip-actions{display:flex;gap:8px;margin-top:2px;}
+.bc-chip-actions .ghost{flex:1;background:none;border:1px dashed var(--line2);border-radius:12px;padding:11px;color:var(--t2);font-size:12.5px;cursor:pointer;}
+.bc-chip-actions .ghost:hover{border-color:var(--jade-bd);color:var(--jade);}
+.bc-chip-actions .solid{flex:1.4;background:var(--jade);border:none;border-radius:12px;padding:11px;color:#08110d;font-weight:600;font-size:13.5px;cursor:pointer;font-family:var(--head);}
+@media (max-width:640px){
+  .bc-thread{max-height:56vh;}
+  .bc-row input{font-size:16px;height:46px;} /* 16px stops iPhone zoom */
+  .bc-row button{min-height:46px;}
+  .brief-mode-toggle{padding:12px 0;} /* thumb-sized */
+}
 /* Back to the homepage without submitting — only shown when the briefing
    is a sub-view of the all-agents homepage. */
 .brief-back{
@@ -467,7 +495,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
-    <span class="brief-mode-toggle" id="briefModeToggle" onclick="toggleBriefMode()">Prefer to talk it through? Brief by chat →</span>
+    <span class="brief-mode-toggle" id="briefModeToggle" style="display:none" onclick="toggleBriefMode()">Prefer to talk it through? Brief by chat →</span>
 
     <div id="briefFormView">
     <!-- Phase 10: the connected Outlook calendar (read-only). Hidden when no
@@ -519,8 +547,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
          the meeting it thinks you mean, with a one-tap confirm. -->
     <div id="briefChatView">
       <div class="bc-thread" id="bcThread"></div>
+      <div class="bc-listen-hint" id="bcHint">LISTENING — TAP MIC TO STOP</div>
       <div class="bc-row">
-        <input class="f-input" id="bcInput" placeholder='e.g. "the marketing launch meeting tomorrow — make sure the budget gets signed off"'>
+        <button class="bc-mic" id="bcMic" style="display:none" onclick="bcMicTap()" title="Speak instead of typing">🎙</button>
+        <input class="f-input" id="bcInput" placeholder="Type or tap the mic…">
         <button id="bcSend" onclick="bcSend()">Send</button>
       </div>
     </div>
@@ -663,6 +693,19 @@ function openBriefing(){
   briefError('');
   document.getElementById('dashboard').classList.remove('show');
   document.getElementById('briefing').classList.remove('gone');
+  // Phase 9: chat is the front door on the homepage flow too, when the
+  // hub has a chat brain. One /state peek tells us.
+  if(chatAvailable){
+    if(!briefChatMode) toggleBriefMode();
+  } else {
+    fetch('/state').then((r) => r.json()).then((s) => {
+      if(s.chatBriefing){
+        chatAvailable = true;
+        document.getElementById('briefModeToggle').style.display = '';
+        if(!briefChatMode) toggleBriefMode();
+      }
+    }).catch(() => { /* form it is */ });
+  }
 }
 function closeBriefing(){
   document.getElementById('briefing').classList.add('gone');
@@ -796,9 +839,11 @@ function pickCalMeeting(i){
   renderCalList();
 }
 
-// ══ BRIEF BY CHAT (Phase 10 M3) ═══════════════════════════
+// ══ BRIEF BY CHAT (Phase 9/10) ════════════════════════════
 let briefChatMode = false;
 let bcStarted = false;
+let chatAvailable = false;  // the server has a chat brain (API key present)
+let chatAutoOpened = false; // chat-as-front-door applied once
 function toggleBriefMode(){
   briefChatMode = !briefChatMode;
   document.getElementById('briefFormView').style.display = briefChatMode ? 'none' : '';
@@ -808,7 +853,7 @@ function toggleBriefMode(){
     : 'Prefer to talk it through? Brief by chat →';
   if(briefChatMode && !bcStarted){
     bcStarted = true;
-    bcAddMsg('agent', "Which meeting am I going into, and what must it settle before it ends? If your calendar's connected you can just describe the meeting — I'll find it.");
+    bcAddMsg('agent', 'Tell me about the meeting. What needs to get decided?');
   }
   if(briefChatMode) document.getElementById('bcInput').focus();
 }
@@ -831,7 +876,81 @@ function bcAddActions(html){
   thread.scrollTop = thread.scrollHeight;
 }
 function bcClearActions(){
-  document.querySelectorAll('#bcThread .bc-actions, #bcThread .bc-list').forEach((el) => el.remove());
+  // Confirmed (jade) chips stay in the thread as the record; unconfirmed
+  // proposals vanish when the owner goes a different way instead.
+  document.querySelectorAll('#bcThread .bc-actions, #bcThread .bc-list, #bcThread .bc-chips:not(.confirmed)').forEach((el) => el.remove());
+}
+
+// ── Phase 9: the condition chips — the moment chat becomes structured ──
+function renderCondChips(labels){
+  const thread = document.getElementById('bcThread');
+  const wrap = document.createElement('div');
+  wrap.className = 'bc-chips';
+  labels.slice(0, MAX_CONDITIONS).forEach((label, i) => wrap.appendChild(makeCondChip(label, i)));
+  const actions = document.createElement('div');
+  actions.className = 'bc-chip-actions';
+  actions.innerHTML = '<button class="ghost" onclick="bcAddChip(this)">＋ Add</button><button class="solid" onclick="bcConfirmChips(this)">Confirm conditions ✓</button>';
+  wrap.appendChild(actions);
+  thread.appendChild(wrap);
+  thread.scrollTop = thread.scrollHeight;
+}
+function makeCondChip(label, i){
+  const chip = document.createElement('div');
+  chip.className = 'bchip';
+  chip.innerHTML = `<span class="n">${i + 1}</span><input maxlength="200"><button class="x" onclick="this.parentElement.remove()">×</button>`;
+  chip.querySelector('input').value = label;
+  return chip;
+}
+function bcAddChip(btn){
+  const wrap = btn.closest('.bc-chips');
+  const count = wrap.querySelectorAll('.bchip').length;
+  if(count >= MAX_CONDITIONS) return;
+  const chip = makeCondChip('', count);
+  wrap.insertBefore(chip, wrap.querySelector('.bc-chip-actions'));
+  chip.querySelector('input').focus();
+}
+function bcConfirmChips(btn){
+  const wrap = btn.closest('.bc-chips');
+  const labels = [...wrap.querySelectorAll('.bchip input')].map((i) => i.value.trim()).filter(Boolean).slice(0, MAX_CONDITIONS);
+  if(!labels.length) return;
+  wrap.classList.add('confirmed');
+  wrap.querySelectorAll('.bchip').forEach((chip, i) => {
+    chip.classList.add('ok');
+    chip.querySelector('.n').textContent = i + 1;
+    chip.querySelector('input').disabled = true;
+    chip.querySelector('.x')?.remove();
+  });
+  wrap.querySelector('.bc-chip-actions').remove();
+  bcSend('Confirmed conditions: ' + labels.map((l, i) => `${i + 1}) ${l}`).join(' '));
+}
+
+// ── Phase 9: voice input — the browser's OWN speech recognition (Web
+// Speech API), no external service, no library, no audio leaves the
+// normal browser pipeline. Mobile only; hidden when unsupported. ──
+const BcSR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let bcRec = null, bcMicOn = false;
+if(BcSR && matchMedia('(pointer: coarse)').matches){
+  document.getElementById('bcMic').style.display = '';
+}
+function bcMicTap(){
+  if(bcMicOn){ try{ bcRec.stop(); }catch(e){} return; }
+  try{
+    bcRec = new BcSR();
+    bcRec.lang = navigator.language || 'en-GB';
+    bcRec.interimResults = true;
+    const input = document.getElementById('bcInput');
+    bcRec.onresult = (e) => { input.value = [...e.results].map((r) => r[0].transcript).join(''); };
+    bcRec.onend = () => {
+      bcMicOn = false;
+      document.getElementById('bcMic').classList.remove('on');
+      document.getElementById('bcHint').classList.remove('on');
+    };
+    bcRec.onerror = bcRec.onend;
+    bcMicOn = true;
+    document.getElementById('bcMic').classList.add('on');
+    document.getElementById('bcHint').classList.add('on');
+    bcRec.start();
+  }catch(e){ /* unsupported after all — type instead */ }
 }
 async function bcSend(presetText){
   const input = document.getElementById('bcInput');
@@ -867,8 +986,20 @@ async function bcSend(presetText){
       thread.appendChild(list);
       thread.scrollTop = thread.scrollHeight;
     }
-    // Brief accepted server-side: the poll sees briefed=true and fades the
-    // overlay to the live cockpit exactly like the form path.
+    // Phase 9: proposed conditions arrive as editable chips with a confirm.
+    if(answer.proposeConditions && answer.proposeConditions.length){
+      renderCondChips(answer.proposeConditions);
+    }
+    // Brief accepted server-side. Homepage flow: back to the all-agents
+    // view (the new card appears on the next poll). Single-meeting flow:
+    // the poll sees briefed=true and fades the overlay, same as the form.
+    if(answer.briefed){
+      if(dashboardMode){
+        setTimeout(() => { closeBriefing(); poll(); }, 1600); // let the send-off land
+      } else if(answer.meetingId){
+        adoptMeeting(answer.meetingId);
+      }
+    }
   }catch(e){
     thinking.textContent = 'Could not reach the agent — is the bot running?';
   }
@@ -1309,6 +1440,17 @@ async function poll(){
       return;
     }
     const state = await response.json();
+    // Phase 9: chat is the front door when the server has a chat brain.
+    // The form stays one tap away (it carries the calendar pick-list and
+    // works without an API key).
+    if(state.chatBriefing){
+      chatAvailable = true;
+      document.getElementById('briefModeToggle').style.display = '';
+      if(!state.briefed && !briefed && !chatAutoOpened){
+        chatAutoOpened = true;
+        if(!briefChatMode) toggleBriefMode();
+      }
+    }
     // /?new keeps the briefing screen up regardless of other meetings.
     if(forceNew){
       renderHeader(state);

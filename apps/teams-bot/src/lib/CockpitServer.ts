@@ -15,6 +15,7 @@ export type BriefChatHandler = (
     reply: string,
     proposeMeeting: number | null,
     showList: boolean,
+    proposeConditions: string[] | null,
     brief: {
         meetingIndex: number | null, meetingUrl: string | null, meetingName: string,
         lengthMinutes: number, ownerName: string, conditions: string[], context: string,
@@ -492,6 +493,8 @@ export class CockpitServer {
                     reply: result.reply,
                     propose: proposed,
                     showList: result.showList,
+                    // Phase 9: proposed conditions render as editable chips
+                    proposeConditions: result.proposeConditions,
                     meetings: result.showList ? meetingsMeta : [],
                     briefed: briefedNow,
                     error: briefError,
@@ -687,6 +690,8 @@ export class CockpitServer {
             mentions: [...this.mentions].reverse(),
             // Phase 5: lets the owner join the meeting as themselves.
             meetingUrl: this.meetingUrl,
+            // Phase 9: chat briefing is the front door when a brain exists.
+            chatBriefing: Boolean(this.onBriefChat),
             // Local bot only: tells the page to show the Kill bot button.
             // The hosted cockpit server never sets this — the cloud bot has
             // its own automatic wrap-up and the Railway Stop button.
