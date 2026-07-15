@@ -838,5 +838,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Zeus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS})`);
+    // The chat-briefing state is in this line ON PURPOSE: "the chat is not
+    // appearing" is answered by the first line of the deploy logs.
+    const chat = ANTHROPIC_API_KEY ? 'ON' : 'OFF — set ANTHROPIC_API_KEY on this service to enable it';
+    console.log(`Zeus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS}, chat briefing: ${chat})`);
 });

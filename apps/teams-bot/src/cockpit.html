@@ -496,6 +496,9 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
     <span class="brief-mode-toggle" id="briefModeToggle" style="display:none" onclick="toggleBriefMode()">Prefer to talk it through? Brief by chat →</span>
+    <!-- Shown instead of the toggle when this server has no chat brain, so
+         "where is the chat?" is answered on the page instead of silently. -->
+    <div class="brief-note" id="chatOffNote" style="display:none;text-align:left;margin-top:14px">Brief by chat is off — this server has no ANTHROPIC_API_KEY. The form below does everything the chat does.</div>
 
     <div id="briefFormView">
     <!-- Phase 10: the connected Outlook calendar (read-only). Hidden when no
@@ -699,12 +702,23 @@ function openBriefing(){
     if(!briefChatMode) toggleBriefMode();
   } else {
     fetch('/state').then((r) => r.json()).then((s) => {
-      if(s.chatBriefing){
-        chatAvailable = true;
-        document.getElementById('briefModeToggle').style.display = '';
-        if(!briefChatMode) toggleBriefMode();
-      }
+      syncChatAvailability(s);
+      if(chatAvailable && !briefChatMode) toggleBriefMode();
     }).catch(() => { /* form it is */ });
+  }
+}
+
+// One place decides what the briefing screen says about chat: the toggle
+// when the server has a brain, the why-not note when it doesn't. Without
+// the note, a hub missing its ANTHROPIC_API_KEY just showed the form and
+// left the owner wondering where the chat went (the original mobile bug).
+function syncChatAvailability(state){
+  if(state.chatBriefing){
+    chatAvailable = true;
+    document.getElementById('briefModeToggle').style.display = '';
+    document.getElementById('chatOffNote').style.display = 'none';
+  } else if(!briefed){
+    document.getElementById('chatOffNote').style.display = '';
   }
 }
 function closeBriefing(){
@@ -1456,6 +1470,17 @@ async function steer(){
 document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') steer(); });
 
 // ══ THE POLL ══════════════════════════════════════════════
+// A 401 means the hub no longer knows this session (the server restarted,
+// or the 12-hour cookie expired). Phones hit this constantly: Safari
+// restores a days-old tab and the page used to keep polling into the void,
+// showing a dead briefing form instead of the chat — or anything. Reload
+// once: the server answers with the access-code screen.
+let authReloaded = false;
+function authExpired(){
+  if(authReloaded) return;
+  authReloaded = true;
+  location.reload();
+}
 async function poll(){
   // Killed from this page: the process is gone on purpose — freeze the
   // header on AGENT SHUT DOWN instead of flipping to "cockpit offline".
@@ -1464,12 +1489,14 @@ async function poll(){
   if(dashboardMode){
     try{
       const r = await fetch('/summary');
+      if(r.status === 401){ authExpired(); return; }
       if(r.ok) renderDashboard(await r.json());
     }catch(e){ /* transient — next poll retries */ }
     return;
   }
   try{
     const response = await fetch(stateUrl);
+    if(response.status === 401){ authExpired(); return; }
     // Phase 7c: a per-meeting view whose meeting has ended.
     if(meetingParam && response.status === 404){
       const badge = document.getElementById('liveBadge');
@@ -1482,13 +1509,10 @@ async function poll(){
     // Phase 9: chat is the front door when the server has a chat brain.
     // The form stays one tap away (it carries the calendar pick-list and
     // works without an API key).
-    if(state.chatBriefing){
-      chatAvailable = true;
-      document.getElementById('briefModeToggle').style.display = '';
-      if(!state.briefed && !briefed && !chatAutoOpened){
-        chatAutoOpened = true;
-        if(!briefChatMode) toggleBriefMode();
-      }
+    syncChatAvailability(state);
+    if(state.chatBriefing && !state.briefed && !briefed && !chatAutoOpened){
+      chatAutoOpened = true;
+      if(!briefChatMode) toggleBriefMode();
     }
     // /?new keeps the briefing screen up regardless of other meetings.
     if(forceNew){
@@ -1532,6 +1556,12 @@ async function poll(){
   setInterval(poll, POLL_MS);
   initCalendar(); // Phase 10 — no-op unless the Entra app is configured
 })();
+// Phones park pages for days: Safari restores the tab from its cache with
+// the old DOM and a possibly-dead session. Poll the moment the page comes
+// back so it catches up (or hits the 401 → access-code reload) right away,
+// not on the interval's schedule.
+window.addEventListener('pageshow', (e) => { if(e.persisted) poll(); });
+document.addEventListener('visibilitychange', () => { if(!document.hidden) poll(); });
 
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
 let scheduledMinutes = 30;

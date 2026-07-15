@@ -238,9 +238,19 @@ goal is being ignored, and reporting everything to a private local cockpit.
   `npx @railway/cli up --service bot`. Both start via `node deploy/start.js`
   (Railway runs Dockerfile start commands WITHOUT a shell — no `if`).
 - **Secrets live as Railway service variables, never in code:** cockpit has
-  `ACCESS_CODE`, `BOT_TOKEN`, `DEMO_MODE=0`; bot has `ANTHROPIC_API_KEY`,
-  `BOT_TOKEN` (same value), `HUB_URL`, `MAX_DAILY_DECISIONS`,
-  `RAILWAY_DOCKERFILE_PATH=deploy/bot/Dockerfile`.
+  `ACCESS_CODE`, `BOT_TOKEN`, `DEMO_MODE=0`, **and `ANTHROPIC_API_KEY`**
+  (Phase 9: the hub's own chat-briefing brain — without it the cockpit URL
+  shows only the form, no chat, and its startup log says so); bot has
+  `ANTHROPIC_API_KEY`, `BOT_TOKEN` (same value), `HUB_URL`,
+  `MAX_DAILY_DECISIONS`, `RAILWAY_DOCKERFILE_PATH=deploy/bot/Dockerfile`.
+- **"The chat is not appearing on the cockpit URL":** three causes, in
+  order of likelihood. (1) The cockpit service has no `ANTHROPIC_API_KEY` —
+  the briefing screen now says so on the page, and the fix is the variable
+  above plus a redeploy. (2) The deployed cockpit predates Phase 9 —
+  redeploy (`npx @railway/cli up --service cockpit`). (3) A phone restored
+  a days-old tab whose session had died (sessions are in-memory, so every
+  redeploy logs everyone out) — the page now reloads itself to the
+  access-code screen instead of silently showing a dead form.
 - **Usage cap:** the bot makes at most `MAX_DAILY_DECISIONS` (500) paid API
   calls per UTC day, then goes quiet until tomorrow.
 - **Kill switch:** Railway dashboard → bot service → Settings → remove the
