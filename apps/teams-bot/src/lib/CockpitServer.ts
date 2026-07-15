@@ -4,7 +4,22 @@ import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
 import { listRecords, readRecord, computeMetrics } from './MeetingRecord';
-import { CalendarLike } from './CalendarConnector';
+import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
+
+/** Phase 10 M3: one turn of the chat-mode briefing, answered by the model
+ *  (wired to Nudger.briefChat in gate.ts; null when there's no API key). */
+export type BriefChatHandler = (
+    history: Array<{ from: 'owner' | 'agent', text: string }>,
+    meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+) => Promise<{
+    reply: string,
+    proposeMeeting: number | null,
+    showList: boolean,
+    brief: {
+        meetingIndex: number | null, meetingUrl: string | null, meetingName: string,
+        lengthMinutes: number, ownerName: string, conditions: string[], context: string,
+    } | null,
+} | null>;
 
 /**
  * CockpitServer is the owner's private window into the running agent.
@@ -85,6 +100,11 @@ export class CockpitServer {
     private meetingUrl: string;
     /** Phase 10: the owner's Outlook calendar, when configured (read-only) */
     private readonly calendar: CalendarLike | null;
+    /** Phase 10 M3: the chat-mode briefing brain (null without an API key) */
+    private readonly onBriefChat: BriefChatHandler | null;
+    /** The chat briefing so far, and the last calendar fetch (URLs stay here, server-side) */
+    private readonly chatHistory: Array<{ from: 'owner' | 'agent', text: string }> = [];
+    private chatMeetings: UpcomingMeeting[] = [];
     /** Called with the owner's instruction the moment POST /command receives one */
     private readonly onCommand: (instruction: string) => void;
     /** Called ONCE with the owner's brief when POST /setup accepts it */
@@ -118,11 +138,13 @@ export class CockpitServer {
         onShutdown: () => void,
         onConditionsChanged?: (change: ConditionChange) => void,
         calendar?: CalendarLike | null,
+        onBriefChat?: BriefChatHandler | null,
     }) {
         this.conditions = args.conditions;
         this.port = args.port;
         this.meetingUrl = args.meetingUrl;
         this.calendar = args.calendar ?? null;
+        this.onBriefChat = args.onBriefChat ?? null;
         this.onCommand = args.onCommand;
         this.onSetup = args.onSetup;
         this.onShutdown = args.onShutdown;
@@ -212,6 +234,8 @@ export class CockpitServer {
                 this._handleCommand(req, res);
             } else if (url === '/setup' && req.method === 'POST') {
                 this._handleSetup(req, res);
+            } else if (url === '/brief-chat' && req.method === 'POST') {
+                this._handleBriefChat(req, res);
             } else if (url === '/conditions' && req.method === 'POST') {
                 this._handleConditions(req, res);
             } else if (url === '/calendar/status') {
@@ -312,59 +336,167 @@ export class CockpitServer {
                 res.writeHead(code, { 'content-type': 'application/json' });
                 res.end(JSON.stringify(payload));
             };
-            if (this.briefed) {
-                answer(409, { ok: false, error: 'Agent is already briefed — restart the bot to brief it again.' });
-                return;
-            }
             try {
-                const parsed = JSON.parse(body) as { meetingName?: unknown, conditions?: unknown, context?: unknown, lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown };
-                const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
-                    .filter((label): label is string => typeof label === 'string')
-                    .map((label) => label.trim())
-                    .filter(Boolean);
-                if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
-                    answer(400, { ok: false, error: `Give the agent 1 to ${MAX_CONDITIONS} conditions.` });
-                    return;
+                const result = this._acceptBrief(JSON.parse(body) as Record<string, unknown>);
+                if (result.ok) {
+                    answer(200, { ok: true });
+                } else {
+                    answer(result.status, { ok: false, error: result.error });
                 }
-                const meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim())
-                    ? parsed.meetingName.trim()
-                    : 'Untitled meeting';
-                const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
-                // Phase 4: scheduled length in minutes — default 30, clamped to something sane.
-                const rawLength = Number(parsed.lengthMinutes);
-                const lengthMinutes = Number.isFinite(rawLength) && rawLength > 0
-                    ? Math.min(480, Math.max(1, Math.round(rawLength)))
-                    : 30;
-
-                // Phase 5: the owner's name — optional, '' when left blank.
-                const ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
-
-                // Phase 10: the meeting link — a calendar pick or a pasted
-                // link wins; otherwise fall back to the URL the bot was
-                // launched with. Without any of the three there is nowhere
-                // to send the agent.
-                const briefUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
-                if (briefUrl && !briefUrl.includes('teams.')) {
-                    answer(400, { ok: false, error: 'That does not look like a Teams meeting link.' });
-                    return;
-                }
-                const meetingUrl = briefUrl || this.meetingUrl;
-                if (!meetingUrl) {
-                    answer(400, { ok: false, error: 'Pick a meeting from your calendar or paste its Teams link — the agent needs to know where to go.' });
-                    return;
-                }
-                this.meetingUrl = meetingUrl; // the Join call button uses this too
-
-                this.briefed = true;
-                this.briefedAt = new Date().toISOString();
-                this.meetingName = meetingName;
-                this.scheduledMinutes = lengthMinutes;
-                this.ownerName = ownerName;
-                this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl }); // populates the shared conditions array
-                answer(200, { ok: true });
             } catch {
                 answer(400, { ok: false, error: 'body must be JSON' });
             }
+        });
+    }
+
+    /**
+     * ONE brief-acceptance path, shared by the classic form (/setup) and
+     * the chat-mode briefing (/brief-chat): validates, records, fires onSetup.
+     */
+    private _acceptBrief(parsed: {
+        meetingName?: unknown, conditions?: unknown, context?: unknown,
+        lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
+    }): { ok: true } | { ok: false, status: number, error: string } {
+        if (this.briefed) {
+            return { ok: false, status: 409, error: 'Agent is already briefed — restart the bot to brief it again.' };
+        }
+        const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
+            .filter((label): label is string => typeof label === 'string')
+            .map((label) => label.trim())
+            .filter(Boolean);
+        if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
+            return { ok: false, status: 400, error: `Give the agent 1 to ${MAX_CONDITIONS} conditions.` };
+        }
+        const meetingName = (typeof parsed.meetingName === 'string' && parsed.meetingName.trim())
+            ? parsed.meetingName.trim()
+            : 'Untitled meeting';
+        const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
+        // Phase 4: scheduled length in minutes — default 30, clamped to something sane.
+        const rawLength = Number(parsed.lengthMinutes);
+        const lengthMinutes = Number.isFinite(rawLength) && rawLength > 0
+            ? Math.min(480, Math.max(1, Math.round(rawLength)))
+            : 30;
+
+        // Phase 5: the owner's name — optional, '' when left blank.
+        const ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
+
+        // Phase 10: the meeting link — a calendar pick or a pasted link
+        // wins; otherwise fall back to the URL the bot was launched with.
+        // Without any of the three there is nowhere to send the agent.
+        const briefUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
+        if (briefUrl && !briefUrl.includes('teams.')) {
+            return { ok: false, status: 400, error: 'That does not look like a Teams meeting link.' };
+        }
+        const meetingUrl = briefUrl || this.meetingUrl;
+        if (!meetingUrl) {
+            return { ok: false, status: 400, error: 'Pick a meeting from your calendar or paste its Teams link — the agent needs to know where to go.' };
+        }
+        this.meetingUrl = meetingUrl; // the Join call button uses this too
+
+        this.briefed = true;
+        this.briefedAt = new Date().toISOString();
+        this.meetingName = meetingName;
+        this.scheduledMinutes = lengthMinutes;
+        this.ownerName = ownerName;
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl }); // populates the shared conditions array
+        return { ok: true };
+    }
+
+    /**
+     * Phase 10 Milestone 3 — chat-mode briefing. Each owner message goes to
+     * the model along with the upcoming calendar meetings (by index — join
+     * links never leave the server); the model chats back, proposes a
+     * matching meeting for one-tap confirmation, offers the tappable list
+     * when unsure, and finally returns the assembled brief, which flows
+     * through the same acceptance path as the form.
+     */
+    private _handleBriefChat(req: http.IncomingMessage, res: http.ServerResponse) {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            void (async () => {
+                const answer = (code: number, payload: object) => {
+                    res.writeHead(code, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify(payload));
+                };
+                if (this.briefed) {
+                    answer(409, { ok: false, error: 'Agent is already briefed.' });
+                    return;
+                }
+                if (!this.onBriefChat) {
+                    answer(200, { reply: 'Chat briefing needs an ANTHROPIC_API_KEY in .env — use the form for now.', propose: null, showList: false, meetings: [], briefed: false });
+                    return;
+                }
+                let text = '';
+                try {
+                    const parsed = JSON.parse(body) as { text?: unknown };
+                    text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+                } catch { /* falls through to the empty-text check */ }
+                if (!text) {
+                    answer(400, { ok: false, error: 'text required' });
+                    return;
+                }
+                this.chatHistory.push({ from: 'owner', text });
+
+                // Refresh the calendar view each turn (it may have just been
+                // connected in another tab). URLs stay in this.chatMeetings —
+                // the model and the page only ever see index + metadata.
+                if (this.calendar) {
+                    try {
+                        const status = await this.calendar.status();
+                        if (status.connected) {
+                            this.chatMeetings = await this.calendar.upcomingMeetings();
+                        }
+                    } catch { /* calendar is a convenience — chat works without it */ }
+                }
+                const meetingsMeta = this.chatMeetings.map((m, index) => ({
+                    index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl),
+                }));
+
+                const result = await this.onBriefChat(this.chatHistory, meetingsMeta);
+                if (!result) {
+                    const reply = 'Sorry — I tripped over myself there. Say that again?';
+                    this.chatHistory.push({ from: 'agent', text: reply });
+                    answer(200, { reply, propose: null, showList: false, meetings: [], briefed: false });
+                    return;
+                }
+                this.chatHistory.push({ from: 'agent', text: result.reply });
+
+                // The model returned a finished brief: resolve the join link
+                // server-side (calendar index > pasted link > launch arg) and
+                // run it through the same validation as the form.
+                let briefedNow = false;
+                let briefError: string | null = null;
+                if (result.brief) {
+                    const picked = result.brief.meetingIndex !== null ? this.chatMeetings[result.brief.meetingIndex] : undefined;
+                    const accepted = this._acceptBrief({
+                        meetingName: result.brief.meetingName || picked?.subject,
+                        conditions: result.brief.conditions,
+                        context: result.brief.context,
+                        lengthMinutes: picked?.durationMinutes ?? result.brief.lengthMinutes,
+                        ownerName: result.brief.ownerName,
+                        meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
+                    });
+                    if (accepted.ok) {
+                        briefedNow = true;
+                    } else {
+                        briefError = accepted.error;
+                        this.chatHistory.push({ from: 'agent', text: `Hmm — ${accepted.error}` });
+                    }
+                }
+
+                const proposed = (result.proposeMeeting !== null && meetingsMeta[result.proposeMeeting])
+                    ? meetingsMeta[result.proposeMeeting]
+                    : null;
+                answer(200, {
+                    reply: result.reply,
+                    propose: proposed,
+                    showList: result.showList,
+                    meetings: result.showList ? meetingsMeta : [],
+                    briefed: briefedNow,
+                    error: briefError,
+                });
+            })();
         });
     }
 

@@ -158,6 +158,11 @@ const main = async () => {
         // (no MS_CLIENT_ID/MS_CLIENT_SECRET in .env) it reports so and the
         // briefing screen simply doesn't show any calendar UI.
         calendar: new CalendarConnector(),
+        // Phase 10 M3: chat-mode briefing — the model collects the brief
+        // conversationally and matches it against the calendar meetings.
+        onBriefChat: nudger
+            ? (history, meetings) => nudger.briefChat({ history, meetings })
+            : null,
 
         // Phase 3: the briefing screen submitted — fill the shared conditions
         // array with the owner's typed labels and let the join flow proceed.

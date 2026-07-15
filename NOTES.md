@@ -171,6 +171,15 @@ goal is being ignored, and reporting everything to a private local cockpit.
   operations: see "Outlook calendar" section below. Local cockpit only for
   now — the hosted hub keeps manual entry (multi-user token storage is the
   parked future phase).
+  *Brief by chat:* the briefing screen also has a conversational mode
+  ("Prefer to talk it through?"). One API call per message: the agent
+  collects the conditions in chat and matches what you say against the
+  upcoming calendar meetings — a clear match is proposed by name and time
+  with a one-tap "✓ Yes" confirm (plus "Pick a different one"); when
+  nothing matches confidently it shows the tappable list instead of
+  guessing. The model and the page only ever see meetings by index —
+  join links never leave the server. A confirmed chat brief flows
+  through the same validation as the form.
 
 - **Phase 7a — UI polish + mobile (front-end only).** No bot logic, endpoints,
   or deploy setup touched — purely cockpit.html CSS plus two tiny render

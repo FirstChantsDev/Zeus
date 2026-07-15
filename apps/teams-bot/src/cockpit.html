@@ -102,6 +102,32 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .cal-note .clear{color:var(--red);cursor:pointer;}
 .cal-hint{font-size:11.5px;color:var(--t3);margin-top:7px;line-height:1.5;}
 .cal-account{font-family:var(--mono);font-size:10.5px;color:var(--t3);margin-top:7px;letter-spacing:.3px;}
+/* Phase 10 M3: brief-by-chat — the conversational alternative to the form */
+.brief-mode-toggle{font-size:12px;color:var(--t2);cursor:pointer;display:inline-block;margin-top:14px;}
+.brief-mode-toggle:hover{color:var(--jade);}
+#briefChatView{display:none;}
+.bc-thread{
+  display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto;
+  padding:4px 2px;margin:14px 0 10px;
+}
+.bc-msg{max-width:86%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;}
+.bc-msg.agent{align-self:flex-start;background:var(--s2);border:1px solid var(--line);border-bottom-left-radius:4px;}
+.bc-msg.owner{align-self:flex-end;background:var(--jade-bg);border:1px solid var(--jade-bd);border-bottom-right-radius:4px;}
+.bc-actions{display:flex;gap:8px;flex-wrap:wrap;align-self:flex-start;}
+.bc-actions button{
+  background:none;border:1px solid var(--jade-bd);border-radius:999px;padding:7px 14px;
+  color:var(--jade);font-size:12.5px;cursor:pointer;font-family:var(--head);font-weight:600;
+}
+.bc-actions button:hover{background:var(--jade-bg);}
+.bc-actions button.alt{border-color:var(--line2);color:var(--t2);}
+.bc-list{display:flex;flex-direction:column;gap:6px;align-self:stretch;}
+.bc-row{display:flex;gap:9px;}
+.bc-row input{flex:1;}
+.bc-row button{
+  flex:0 0 auto;background:var(--jade);border:none;border-radius:10px;padding:0 18px;
+  font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;
+}
+.bc-row button:disabled{opacity:.5;}
 /* Back to the homepage without submitting — only shown when the briefing
    is a sub-view of the all-agents homepage. */
 .brief-back{
@@ -441,6 +467,9 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
+    <span class="brief-mode-toggle" id="briefModeToggle" onclick="toggleBriefMode()">Prefer to talk it through? Brief by chat →</span>
+
+    <div id="briefFormView">
     <!-- Phase 10: the connected Outlook calendar (read-only). Hidden when no
          Entra app is configured; shows Connect first, then the pick-list.
          Picking a meeting fills the link (never shown), name and length. -->
@@ -483,6 +512,19 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 
     <button class="brief-go" id="briefGo" onclick="sendAgentIn()">Send agent into the meeting →</button>
     <div class="brief-error" id="briefError"></div>
+    </div><!-- /briefFormView -->
+
+    <!-- Phase 10 M3: the chat-mode briefing — same outcome, conversational.
+         The agent matches what you say against your calendar and proposes
+         the meeting it thinks you mean, with a one-tap confirm. -->
+    <div id="briefChatView">
+      <div class="bc-thread" id="bcThread"></div>
+      <div class="bc-row">
+        <input class="f-input" id="bcInput" placeholder='e.g. "the marketing launch meeting tomorrow — make sure the budget gets signed off"'>
+        <button id="bcSend" onclick="bcSend()">Send</button>
+      </div>
+    </div>
+
     <div class="brief-note">The agent joins as a participant. Your cockpit — and every steer you make — stays private to you.</div>
     <div class="brief-note"><a href="#" onclick="openHistory();return false;" style="color:var(--t2)">View past meetings →</a></div>
   </div>
@@ -753,6 +795,87 @@ function pickCalMeeting(i){
   }
   renderCalList();
 }
+
+// ══ BRIEF BY CHAT (Phase 10 M3) ═══════════════════════════
+let briefChatMode = false;
+let bcStarted = false;
+function toggleBriefMode(){
+  briefChatMode = !briefChatMode;
+  document.getElementById('briefFormView').style.display = briefChatMode ? 'none' : '';
+  document.getElementById('briefChatView').style.display = briefChatMode ? 'block' : 'none';
+  document.getElementById('briefModeToggle').textContent = briefChatMode
+    ? '← Back to the form'
+    : 'Prefer to talk it through? Brief by chat →';
+  if(briefChatMode && !bcStarted){
+    bcStarted = true;
+    bcAddMsg('agent', "Which meeting am I going into, and what must it settle before it ends? If your calendar's connected you can just describe the meeting — I'll find it.");
+  }
+  if(briefChatMode) document.getElementById('bcInput').focus();
+}
+function bcAddMsg(from, text){
+  const thread = document.getElementById('bcThread');
+  const div = document.createElement('div');
+  div.className = 'bc-msg ' + from;
+  div.textContent = text;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+  return div;
+}
+// One-tap confirm / pick-list actions under the agent's last message.
+function bcAddActions(html){
+  const thread = document.getElementById('bcThread');
+  const div = document.createElement('div');
+  div.className = 'bc-actions';
+  div.innerHTML = html;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+function bcClearActions(){
+  document.querySelectorAll('#bcThread .bc-actions, #bcThread .bc-list').forEach((el) => el.remove());
+}
+async function bcSend(presetText){
+  const input = document.getElementById('bcInput');
+  const text = (presetText ?? input.value).trim();
+  if(!text) return;
+  bcClearActions();
+  bcAddMsg('owner', text);
+  input.value = '';
+  const send = document.getElementById('bcSend');
+  send.disabled = true;
+  const thinking = bcAddMsg('agent', '…');
+  try{
+    const r = await fetch('/brief-chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    const answer = await r.json();
+    thinking.textContent = answer.reply || answer.error || 'Something went wrong — try again.';
+    if(answer.error){ bcAddMsg('agent', answer.error); }
+    // The agent proposes a specific calendar meeting → one tap to confirm.
+    if(answer.propose){
+      bcAddActions(`
+        <button onclick="bcSend('Yes — that one.')">✓ Yes, ${esc(answer.propose.subject)}</button>
+        <button class="alt" onclick="bcSend('Show me the list, please.')">Pick a different one</button>`);
+    }
+    // Not confident → the tappable list (join links never come to the page).
+    if(answer.showList && answer.meetings && answer.meetings.length){
+      const thread = document.getElementById('bcThread');
+      const list = document.createElement('div');
+      list.className = 'bc-list';
+      list.innerHTML = answer.meetings.map((m) => `
+        <div class="cal-item ${m.hasTeamsLink ? '' : 'nolink'}"
+             ${m.hasTeamsLink ? `onclick="bcSend('I pick number ${m.index}: ${esc(m.subject).replace(/'/g, '\\u0027')}')"` : 'title="No Teams link on this event"'}>
+          <span class="cal-sub">${esc(m.subject)}</span><span class="cal-when">${calWhen(m.start, m.durationMinutes)}</span>
+        </div>`).join('');
+      thread.appendChild(list);
+      thread.scrollTop = thread.scrollHeight;
+    }
+    // Brief accepted server-side: the poll sees briefed=true and fades the
+    // overlay to the live cockpit exactly like the form path.
+  }catch(e){
+    thinking.textContent = 'Could not reach the agent — is the bot running?';
+  }
+  send.disabled = false;
+  document.getElementById('bcInput').focus();
+}
+document.getElementById('bcInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') bcSend(); });
 
 async function sendAgentIn(){
   const labels = [...document.querySelectorAll('#condInputs .f-input')]

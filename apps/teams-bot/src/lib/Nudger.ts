@@ -370,6 +370,136 @@ export class Nudger {
     }
 
     /**
+     * Phase 10 Milestone 3 — chat-mode briefing. One API call per owner
+     * message: the model collects the brief conversationally and, when the
+     * calendar is connected, matches what the owner says against their
+     * upcoming meetings. It NEVER sees join links — meetings are passed by
+     * index (subject, time, duration, hasTeamsLink) and the server maps a
+     * chosen index back to the real URL.
+     *
+     * Returns null on any failure so the UI can say "try again".
+     */
+    public async briefChat(args: {
+        history: Array<{ from: 'owner' | 'agent', text: string }>,
+        meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+    }): Promise<{
+        reply: string,
+        proposeMeeting: number | null,
+        showList: boolean,
+        brief: {
+            meetingIndex: number | null,
+            meetingUrl: string | null,
+            meetingName: string,
+            lengthMinutes: number,
+            ownerName: string,
+            conditions: string[],
+            context: string,
+        } | null,
+    } | null> {
+        const calendarLines = args.meetings.length
+            ? [
+                'The owner\'s upcoming meetings (their calendar is connected):',
+                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+            ]
+            : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
+
+        const system = [
+            'You are Zeus bot. Your owner is briefing you, by chat, for a meeting you will attend and drive',
+            'for them. Collect the brief briskly and warmly — 1-2 short sentences per turn, one question at',
+            'a time. You need:',
+            '1. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list, propose',
+            '   it by setting proposeMeeting to its index and asking for confirmation in your reply, naming',
+            '   it with its day and time (e.g. "I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 —',
+            '   right?"). NEVER guess between several plausible matches and never invent meetings — if',
+            '   nothing matches confidently, set showList true and ask them to tap one. A pasted Teams link',
+            '   also works. Meetings marked [NO Teams link] cannot be chosen — say why if they ask for one.',
+            '   When the owner confirms your proposal (yes / that one / correct), the meeting is resolved.',
+            '2. THE CONDITIONS this meeting must settle — 1 to 5, in the owner\'s own words.',
+            '3. Optionally: their name (so you can flag when the room needs them) and any extra context.',
+            '   The scheduled length comes from the calendar automatically; for a pasted link ask once or',
+            '   default to 30.',
+            '',
+            ...calendarLines,
+            '',
+            `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
+            '',
+            'Reply with ONLY strict JSON on one line, exactly this shape:',
+            '{"reply": "...", "proposeMeeting": <calendar index>|null, "showList": true|false,',
+            ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
+            '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
+            '   "context": "..."}}',
+            'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND you have at',
+            'least one condition and have given the owner a chance to add their name/context. Its reply is',
+            'still shown — make it the send-off ("Locked in — heading into <meeting> with those 3 conditions.").',
+        ].join('\n');
+
+        const conversation = args.history.map((m) => `${m.from === 'owner' ? 'Owner' : 'You'}: ${m.text}`).join('\n');
+
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'claude-opus-4-8',
+                    max_tokens: 600,
+                    system,
+                    messages: [{ role: 'user', content: `Conversation so far:\n${conversation}` }],
+                }),
+            });
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => '(no body)');
+                this.logger.error({ message: `Anthropic API error ${response.status} (brief chat)`, data: errorBody });
+                return null;
+            }
+            const data = await response.json() as { content?: Array<{ type: string, text?: string }> };
+            const text = (data.content ?? [])
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text ?? '')
+                .join('')
+                .trim();
+            const cleaned = Nudger._extractJson(text);
+            if (!cleaned) {
+                this.logger.warn({ message: 'Could not parse brief-chat JSON', data: text });
+                return null;
+            }
+            const parsed = JSON.parse(cleaned) as {
+                reply?: unknown, proposeMeeting?: unknown, showList?: unknown,
+                brief?: {
+                    meetingIndex?: unknown, meetingUrl?: unknown, meetingName?: unknown,
+                    lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown,
+                } | null,
+            };
+            if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
+            const brief = (parsed.brief && typeof parsed.brief === 'object')
+                ? {
+                    meetingIndex: typeof parsed.brief.meetingIndex === 'number' ? parsed.brief.meetingIndex : null,
+                    meetingUrl: typeof parsed.brief.meetingUrl === 'string' && parsed.brief.meetingUrl.trim() ? parsed.brief.meetingUrl.trim() : null,
+                    meetingName: typeof parsed.brief.meetingName === 'string' ? parsed.brief.meetingName.trim() : '',
+                    lengthMinutes: typeof parsed.brief.lengthMinutes === 'number' ? parsed.brief.lengthMinutes : 30,
+                    ownerName: typeof parsed.brief.ownerName === 'string' ? parsed.brief.ownerName.trim() : '',
+                    conditions: Array.isArray(parsed.brief.conditions)
+                        ? parsed.brief.conditions.filter((c): c is string => typeof c === 'string' && Boolean(c.trim())).map((c) => c.trim())
+                        : [],
+                    context: typeof parsed.brief.context === 'string' ? parsed.brief.context.trim() : '',
+                }
+                : null;
+            return {
+                reply: parsed.reply.trim(),
+                proposeMeeting: typeof parsed.proposeMeeting === 'number' ? parsed.proposeMeeting : null,
+                showList: parsed.showList === true,
+                brief,
+            };
+        } catch (error) {
+            this.logger.error({ message: 'Brief-chat call failed', data: error });
+            return null;
+        }
+    }
+
+    /**
      * ONE API call at meeting end: a short, factual plain-English summary
      * for the meeting's persisted record — what was decided, what stayed
      * open, who was involved. Never throws; null means "no summary" and
