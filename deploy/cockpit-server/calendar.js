@@ -32,7 +32,12 @@ const path = require('path');
 const GRAPH_SCOPES = ['Calendars.Read'];
 
 const tokenFile = () =>
-    process.env.ZEUS_CAL_TOKEN_FILE || path.join(process.cwd(), 'calendar-token.json');
+    process.env.ZEUS_CAL_TOKEN_FILE
+    // On Railway, RECORDS_DIR points at the mounted volume — keeping the
+    // token there means the Outlook connection survives redeploys instead
+    // of silently dropping on every deploy.
+    || (process.env.RECORDS_DIR ? path.join(process.env.RECORDS_DIR, 'calendar-token.json') : null)
+    || path.join(process.cwd(), 'calendar-token.json');
 
 let msal = null;
 try {
