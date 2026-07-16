@@ -389,6 +389,17 @@ const runDemoMeeting = (meeting) => {
             c2.why = 'Jordan says it is nearly there; one confirmation outstanding before it can close.';
         });
     }
+    // Phase 13: closed conditions stay alive — the room revises its first
+    // decision and the jade card updates in place.
+    if (c0) {
+        after(82, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} — I think we were too hasty earlier.`));
+        after(86, () => say('Maya', "Fair — let's revise it: keep it agreed, but at the higher figure we discussed.", true));
+        after(88, () => {
+            c0.note = 'Revised by Maya — still agreed, now at the higher figure.';
+            c0.why = 'The room revisited the earlier decision and agreed a revised figure; the condition stays settled with the new facts.';
+            c0.evidence = [{ speaker: 'Maya', quote: "Fair — let's revise it: keep it agreed, but at the higher figure we discussed." }];
+        });
+    }
 };
 
 /**

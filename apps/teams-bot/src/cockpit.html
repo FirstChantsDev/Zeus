@@ -1468,7 +1468,7 @@ function renderRecordDetail(rec){
   // The audit trail: every event as it happened. Speaker-seen events are
   // folded into the participants line instead of cluttering the timeline.
   const evClass = (t) => t === 'condition-closed' ? 'e-closed'
-    : (t === 'condition-edited' || t === 'condition-added') ? 'e-edit'
+    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened') ? 'e-edit'
     : t === 'owner-mentioned' ? 'e-mention' : '';
   const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>
     `<div class="hd-event ${evClass(e.type)}"><span class="e-time">${(e.at || '').slice(11, 19)}</span><span class="e-detail">${esc(e.detail || '')}</span></div>`

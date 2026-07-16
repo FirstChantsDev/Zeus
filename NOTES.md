@@ -397,6 +397,21 @@ behave exactly as before (join immediately).
   bot collected the brief, the bot keeps the old URL (known limit; the
   Join-call button stays honest because the hub updates its copy).
 
+**Living closed conditions (Phase 13).** A closed condition is no longer
+frozen: the brain re-checks EVERY condition on each decision call until
+the meeting ends. Three outcomes for a closed one: *unchanged* (nothing
+happens), *revised* — the room agreed a DIFFERENT outcome ("the budget is
+50" → "actually, make it 80"): the card stays jade/CLOSED but its note,
+why and evidence quotes update to the new agreement (audit event
+`condition-revised`, revising line marked jade in the transcript) — and
+*reopened*, ONLY when the room retracts a decision without a replacement:
+back to amber with a fresh nudge cycle (`condition-reopened`). Someone
+merely questioning a decision is not a revision until the room agrees.
+The board is final only when the meeting ends — that is what the record
+freezes. Cost note: the bot now keeps making its one-call-per-line even
+after everything is closed (that is the point — it is still watching);
+the daily decision cap bounds it as before.
+
 **Future path (parked):** multi-user = per-account token storage keyed to
 each owner; corporate tenants may require admin consent for even this
 read-only scope — build against a real tenant when that day comes.

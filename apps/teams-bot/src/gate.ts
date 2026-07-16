@@ -120,6 +120,25 @@ const main = async () => {
                 });
             }
         }
+        // Phase 13: closed conditions stay alive until the meeting ends —
+        // the room revising a decision updates the card; retracting reopens it.
+        for (const id of decision.revisedIds) {
+            if (transcriptRecord) transcriptRecord.hit = true;
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
+        for (const id of decision.reopenedIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-reopened', `Condition reopened — the room unsettled it: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null,
+                });
+            }
+        }
         // Phase 5: the room just said it needs the owner.
         if (decision.mention) {
             console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);

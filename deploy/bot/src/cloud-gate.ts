@@ -202,6 +202,24 @@ const runMeeting = async (brief: BriefFromHub) => {
                 });
             }
         }
+        // Phase 13: revised decisions update the closed card; retracted ones reopen it.
+        for (const id of decision.revisedIds) {
+            if (line) line.hit = true;
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
+        for (const id of decision.reopenedIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-reopened', `Condition reopened — the room unsettled it: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null,
+                });
+            }
+        }
         if (decision.mention) {
             console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
             mentions.push({ ...decision.mention, at: new Date().toISOString() });
