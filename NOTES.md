@@ -370,6 +370,18 @@ platform instead of **Web** — server-side code exchange then fails with a
 PKCE error; (3) the registered URI not byte-identical to
 `https://<cockpit-host>/auth/callback`.
 
+**Scheduled meetings (Phase 12).** A brief whose meeting was picked from
+the calendar carries the event's start time. If it's in the future, the
+bot (cloud and local alike) holds off and joins ~2 minutes before start
+instead of camping in an empty lobby (which used to hit the cloud bot's
+6-minute never-admitted give-up). Until then the homepage card shows a
+blue SCHEDULED pill with "starts Thu 17 Jul, 14:00", the cockpit header
+says SCHEDULED — JOINS BEFORE START with the start time in the countdown
+slot, and Kill bot cancels the wait. A waiting agent still occupies one
+of the MAX_MEETINGS slots — deliberate, so a scheduled brief can never
+be crowded out by later ones. Pasted-link briefs have no start time and
+behave exactly as before (join immediately).
+
 **Future path (parked):** multi-user = per-account token storage keyed to
 each owner; corporate tenants may require admin consent for even this
 read-only scope — build against a real tenant when that day comes.

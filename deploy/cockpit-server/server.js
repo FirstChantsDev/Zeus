@@ -146,17 +146,20 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
         briefedAt: new Date().toISOString(),
         meetingName,
-        meetingStatus: 'connecting',
+        // A calendar-picked meeting that starts later shows as scheduled
+        // until the bot takes over the status on its check-ins.
+        meetingStatus: (meetingStart && Date.parse(meetingStart) > Date.now()) ? 'scheduled' : 'connecting',
         scheduledMinutes: lengthMinutes,
         meetingJoinedAt: null,
         ownerName,
         meetingUrl,
+        meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
         context,
         conditions: labels.map((label, index) => ({ id: `c${index}`, label, status: 'open', nudges: 0 })),
         nudges: [],
@@ -212,6 +215,7 @@ const buildStateJson = (meeting) => {
         ownerName: meeting.ownerName,
         mentions: [...meeting.mentions].reverse(),
         meetingUrl: meeting.meetingUrl,
+        meetingStart: meeting.meetingStart,
         chatBriefing: Boolean(ANTHROPIC_API_KEY),
         // The hosted kill switch: POST /kill/<id> queues a shutdown the
         // cloud bot honours on its next 2s check-in.
@@ -248,6 +252,7 @@ const buildSummaryJson = () => ({
         meetingStatus: meeting.meetingStatus,
         scheduledMinutes: meeting.scheduledMinutes,
         meetingJoinedAt: meeting.meetingJoinedAt,
+        meetingStart: meeting.meetingStart,
         ownerName: meeting.ownerName,
         conditionsTotal: meeting.conditions.length,
         conditionsClosed: meeting.conditions.filter((c) => c.status === 'closed').length,
@@ -572,6 +577,7 @@ const server = http.createServer(async (req, res) => {
                         lengthMinutes: unclaimed.scheduledMinutes,
                         ownerName: unclaimed.ownerName,
                         meetingUrl: unclaimed.meetingUrl,
+                        meetingStart: unclaimed.meetingStart, // the bot holds off joining until near this
                     },
                 });
             } else {
@@ -696,9 +702,12 @@ const server = http.createServer(async (req, res) => {
                 lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                 ownerName: typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '',
                 meetingUrl,
+                meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
             });
             console.log(`BRIEFED >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')}${DEMO_MODE ? ' (demo meeting starting)' : ''} (${meetings.size}/${MAX_MEETINGS} running)`);
-            if (DEMO_MODE) {
+            // A future-start brief stays "scheduled" — the demo playback
+            // would contradict the card, so it only runs for now-meetings.
+            if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') {
                 runDemoMeeting(meeting);
             }
             answer(res, 200, { ok: true, meetingId: meeting.id });
@@ -793,9 +802,10 @@ const server = http.createServer(async (req, res) => {
                     lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                     ownerName: typeof b.ownerName === 'string' ? b.ownerName.trim() : '',
                     meetingUrl,
+                    meetingStart: (picked && picked.start) || null,
                 });
                 console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
-                if (DEMO_MODE) runDemoMeeting(meeting);
+                if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') runDemoMeeting(meeting);
                 briefedNow = true;
                 meetingId = meeting.id;
                 chatSessions.delete(token); // fresh conversation for the next brief

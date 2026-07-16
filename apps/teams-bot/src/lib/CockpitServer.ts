@@ -63,6 +63,9 @@ export type Brief = {
     /** Phase 10: the meeting link to join — from a calendar pick, a pasted
      *  link in the form, or (fallback) the URL the bot was launched with. */
     meetingUrl: string;
+    /** Phase 12: ISO start time from the calendar pick — null when unknown.
+     *  A future start makes the bot WAIT and join ~2 min before. */
+    meetingStart: string | null;
 };
 
 /** A live board change made from the cockpit (edit an existing condition, or add one) */
@@ -117,10 +120,12 @@ export class CockpitServer {
      *  so the caller can audit-log the change and re-judge the transcript. */
     private readonly onConditionsChanged: (change: ConditionChange) => void;
 
-    private meetingStatus: 'connecting' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
+    private meetingStatus: 'connecting' | 'scheduled' | 'lobby' | 'in-meeting' | 'unknown' = 'connecting';
     private briefed = false;
     private briefedAt: string | null = null;
     private meetingName: string | null = null;
+    /** Phase 12: the picked meeting's ISO start — the page shows "starts …" until then */
+    private meetingStart: string | null = null;
     /** Phase 4: scheduled length from the brief, and when the bot got into the room */
     private scheduledMinutes = 30;
     private meetingJoinedAt: string | null = null;
@@ -195,8 +200,8 @@ export class CockpitServer {
         this.mentions.push({ ...mention, at: new Date().toISOString() });
     }
 
-    /** Lets the cockpit header show where the agent is (lobby / in meeting) */
-    public setMeetingStatus(status: 'connecting' | 'lobby' | 'in-meeting' | 'unknown') {
+    /** Lets the cockpit header show where the agent is (scheduled / lobby / in meeting) */
+    public setMeetingStatus(status: 'connecting' | 'scheduled' | 'lobby' | 'in-meeting' | 'unknown') {
         // Phase 4: the meeting clock starts the first time the bot is in the room.
         if (status === 'in-meeting' && !this.meetingJoinedAt) {
             this.meetingJoinedAt = new Date().toISOString();
@@ -365,6 +370,7 @@ export class CockpitServer {
     private _acceptBrief(parsed: {
         meetingName?: unknown, conditions?: unknown, context?: unknown,
         lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
+        meetingStart?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
             return { ok: false, status: 409, error: 'Agent is already briefed — restart the bot to brief it again.' };
@@ -402,12 +408,19 @@ export class CockpitServer {
         }
         this.meetingUrl = meetingUrl; // the Join call button uses this too
 
+        // Phase 12: the picked meeting's start time — lets the bot wait for
+        // a later meeting instead of sitting in an empty lobby.
+        const meetingStart = (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart)))
+            ? parsed.meetingStart
+            : null;
+        this.meetingStart = meetingStart;
+
         this.briefed = true;
         this.briefedAt = new Date().toISOString();
         this.meetingName = meetingName;
         this.scheduledMinutes = lengthMinutes;
         this.ownerName = ownerName;
-        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl }); // populates the shared conditions array
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart }); // populates the shared conditions array
         return { ok: true };
     }
 
@@ -492,6 +505,7 @@ export class CockpitServer {
                         lengthMinutes: picked?.durationMinutes ?? result.brief.lengthMinutes,
                         ownerName: result.brief.ownerName,
                         meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
+                        meetingStart: picked?.start,
                     });
                     if (accepted.ok) {
                         briefedNow = true;
@@ -707,6 +721,8 @@ export class CockpitServer {
             mentions: [...this.mentions].reverse(),
             // Phase 5: lets the owner join the meeting as themselves.
             meetingUrl: this.meetingUrl,
+            // Phase 12: "starts …" on the cockpit until the bot heads in.
+            meetingStart: this.meetingStart,
             // Phase 9: chat briefing is the front door when a brain exists.
             chatBriefing: Boolean(this.onBriefChat),
             // Local bot only: tells the page to show the Kill bot button.

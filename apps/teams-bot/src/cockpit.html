@@ -201,6 +201,12 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .flag.mention{color:var(--att);border-color:var(--att-bd);background:var(--att-bg);}
 .flag.ok{color:var(--t3);border-color:var(--line2);}
 .dash-empty{color:var(--t3);font-size:13px;padding:8px 2px;}
+/* The homepage's History button sits with the add-agent action. */
+#dashHist{margin-left:auto;}
+.dash-head .dash-new{margin-left:0;}
+/* Outlook on the homepage: connect once, then a quiet status line. */
+.dash-cal{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.3px;}
+.dash-cal .cal-connect{width:auto;padding:9px 14px;font-size:12.5px;}
 /* The zero-state: centred, calm, one obvious action */
 .dash-empty-state{
   grid-column:1 / -1;display:flex;flex-direction:column;align-items:center;
@@ -484,7 +490,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .meeting-name{order:10;flex-basis:55%;flex-grow:1;font-family:var(--mono);font-size:12px;color:var(--t3);max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .countdown{order:11;margin-left:auto;}
   .clock{display:none;}
-  .hist-btn{display:none;}   /* history stays reachable from the briefing screen */
+  header .hist-btn{display:none;}   /* history lives on the homepage instead */
   .owner{display:none;}
   /* Conditions read as the page itself, not a boxed panel. */
   body.mob-live #conditions{background:none;border:none;}
@@ -515,8 +521,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     position:fixed;left:0;right:0;bottom:0;z-index:60;flex-direction:column;
     background:var(--s1);border:1px solid var(--line2);border-bottom:none;
     border-radius:20px 20px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);
-    max-height:82dvh;
+    max-height:82dvh;transition:transform .22s ease;
   }
+  #sheet.dragging{transition:none;}
+  #sheetGrip,#sheetPeek{touch-action:none;} /* the drag owns these — not page scroll */
   #sheet.open{height:78dvh;}
   #sheetGrip{padding:10px 0 4px;display:flex;justify-content:center;cursor:pointer;flex:0 0 auto;}
   .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--s3);}
@@ -555,6 +563,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .mob-pill.live{color:var(--jade);border-color:var(--jade-bd);}
   .mob-pill.lobby{color:var(--amber);border-color:var(--amber-bd);}
   .mob-pill.needs{color:var(--red);border-color:var(--red-bd);}
+  .mob-pill.sched{color:var(--att);border-color:var(--att-bd);}
   .dot-row{display:flex;gap:9px;}
   .dot-row:empty{display:none;}
   .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
@@ -662,8 +671,11 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="dash-title">All running agents</div>
       <div class="dash-sub" id="dashCount"></div>
     </div>
+    <button class="hist-btn" id="dashHist" onclick="openHistory()" title="Past meetings — summaries, final boards, and the full audit trail">History</button>
     <button class="dash-new" id="dashNew" onclick="openBriefing()">+ Add agent to a meeting</button>
   </div>
+  <!-- Outlook, right on the homepage: connect once, then a quiet status line. -->
+  <div class="dash-cal" id="dashCal" style="display:none"></div>
   <div class="dash-grid" id="dashGrid"></div>
 </div>
 
@@ -722,8 +734,8 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
      bar live in this sheet; #feed / #transcript / .steer-bar are MOVED here
      (same nodes, listeners intact) so both layouts share one render path. -->
 <div id="sheet">
-  <div id="sheetGrip" onclick="toggleSheet()"><div class="grip-bar"></div></div>
-  <div id="sheetPeek" onclick="toggleSheet()">
+  <div id="sheetGrip"><div class="grip-bar"></div></div>
+  <div id="sheetPeek">
     <span class="peek-text" id="peekText">Agent is listening…</span>
     <span class="peek-count" id="peekCount"></span>
   </div>
@@ -795,7 +807,23 @@ async function detectDashboard(){
     document.getElementById('briefing').classList.add('gone');
     document.getElementById('dashboard').classList.add('show');
     renderDashboard(sum);
+    renderDashCalendar();
   }catch(e){ /* local — stay in single-meeting mode */ }
+}
+
+// The homepage's Outlook line: a Connect button until the calendar is
+// linked, then the same quiet "connected" status the chat shows.
+async function renderDashCalendar(){
+  try{
+    const s = await (await fetch('/calendar/status')).json();
+    const el = document.getElementById('dashCal');
+    if(!s.configured){ el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = s.connected
+      ? `<span>Outlook connected: ${esc(s.account)} · read-only</span>`
+      : `<button class="cal-connect" onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
+         <span>one sign-in — then briefs pick meetings straight from your calendar</span>`;
+  }catch(e){ /* no calendar plumbing on this server — say nothing */ }
 }
 
 // The briefing screen as a sub-view of the homepage: opened by the
@@ -854,7 +882,10 @@ function renderDashboard(sum){
     return;
   }
   grid.innerHTML = sum.meetings.map((m) => {
-    // Time remaining against the scheduled length (amber under a third, red over).
+    // Scheduled for later (calendar pick): the card says when instead of
+    // pretending to join. Otherwise: time remaining against the length.
+    const scheduled = m.meetingStatus === 'scheduled'
+      || (!m.meetingJoinedAt && m.meetingStart && Date.parse(m.meetingStart) > Date.now());
     let time = 'joining…', timeClass = '';
     if(m.meetingJoinedAt){
       const totalSecs = m.scheduledMinutes * 60;
@@ -866,6 +897,8 @@ function renderDashboard(sum){
         time = `${mmss(-remaining)} over`;
         timeClass = 'cd-over';
       }
+    } else if(scheduled){
+      time = `starts ${whenShort(m.meetingStart)}`;
     }
     const statusDot = m.meetingStatus === 'in-meeting'
       ? '<span class="live"><span class="live-dot"></span></span>'
@@ -878,6 +911,7 @@ function renderDashboard(sum){
     // Phone card extras (hidden on desktop): the status pill and one dot
     // per condition — jade closed, red needs-you, amber open.
     const pill = m.needsYou ? '<span class="mob-pill needs">NEEDS YOU</span>'
+      : scheduled ? '<span class="mob-pill sched">SCHEDULED</span>'
       : m.meetingStatus === 'in-meeting' ? '<span class="mob-pill live">LIVE</span>'
       : '<span class="mob-pill lobby">JOINING</span>';
     const dots = (m.conditionStates || []).map((s) => `<span class="dot ${esc(s)}"></span>`).join('');
@@ -1211,6 +1245,9 @@ async function sendAgentIn(){
         lengthMinutes: parseInt(document.getElementById('meetLen').value, 10) || 30,
         ownerName: document.getElementById('ownerName').value.trim(),
         meetingUrl, // undefined locally — the bot already knows the link
+        // A calendar pick carries its start time: a future meeting shows
+        // as SCHEDULED and the bot waits instead of camping in the lobby.
+        meetingStart: calSelected !== null ? calMeetings[calSelected].start : undefined,
       }),
     });
     if(response.ok){
@@ -1255,6 +1292,7 @@ function renderHeader(state){
   if(!state.briefed){ badge.className='live warn'; text.textContent='AWAITING YOUR BRIEF'; }
   else if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
   else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
+  else if(state.meetingStatus === 'scheduled'){ badge.className='live warn'; text.textContent='SCHEDULED — JOINS BEFORE START'; }
   else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
   if(state.meetingName){ document.getElementById('hdrMeet').textContent = state.meetingName; }
   // Phase 5: the cockpit belongs to whoever briefed the agent.
@@ -1649,6 +1687,7 @@ async function poll(){
     // moment the bot actually got into the meeting.
     scheduledMinutes = state.scheduledMinutes || 30;
     meetingJoinedAt = state.meetingJoinedAt ? new Date(state.meetingJoinedAt) : null;
+    meetingStartIso = state.meetingStart || null; // "starts …" until the bot heads in
     // Keep the page and the bot agreeing on whether the brief happened —
     // covers a refresh mid-meeting (skip the form) without ever bringing
     // the overlay back once it has faded.
@@ -1726,6 +1765,51 @@ syncSheetLayout();
 function toggleSheet(){
   document.getElementById('sheet').classList.toggle('open');
 }
+// Drag the sheet like a native drawer: the grip/peek area follows the
+// finger — release past the threshold to open or close, else it snaps
+// back. A tap (no real movement) still just toggles.
+(() => {
+  const sheet = document.getElementById('sheet');
+  const zones = [document.getElementById('sheetGrip'), document.getElementById('sheetPeek')];
+  let startY = null, delta = 0, wasOpen = false, moved = false, suppressClick = false;
+  const onStart = (e) => {
+    startY = e.touches[0].clientY;
+    delta = 0;
+    moved = false;
+    wasOpen = sheet.classList.contains('open');
+    sheet.classList.add('dragging');
+  };
+  const onMove = (e) => {
+    if(startY === null) return;
+    delta = e.touches[0].clientY - startY;
+    if(Math.abs(delta) > 8) moved = true;
+    // Open: follow the finger downward. Closed: give a little upward pull
+    // (the sheet has no height to reveal yet), then opening does the rest.
+    sheet.style.transform = wasOpen
+      ? `translateY(${Math.max(0, delta)}px)`
+      : `translateY(${Math.min(0, Math.max(-46, delta))}px)`;
+    if(moved) e.preventDefault(); // this drag is ours, not the page's scroll
+  };
+  const onEnd = () => {
+    if(startY === null) return;
+    sheet.classList.remove('dragging');
+    sheet.style.transform = '';
+    if(moved){
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 400);
+      if(wasOpen && delta > 90) sheet.classList.remove('open');
+      if(!wasOpen && delta < -36) sheet.classList.add('open');
+    }
+    startY = null;
+  };
+  for(const zone of zones){
+    zone.addEventListener('touchstart', onStart, { passive: true });
+    zone.addEventListener('touchmove', onMove, { passive: false });
+    zone.addEventListener('touchend', onEnd);
+    zone.addEventListener('touchcancel', onEnd);
+    zone.addEventListener('click', () => { if(!suppressClick) toggleSheet(); });
+  }
+})();
 function sheetTab(which){
   document.getElementById('feed').style.display = which === 'activity' ? '' : 'none';
   document.getElementById('transcript').style.display = which === 'transcript' ? '' : 'none';
@@ -1742,12 +1826,16 @@ function sheetTab(which){
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
 let scheduledMinutes = 30;
 let meetingJoinedAt = null; // set from /state once the bot is in the room
+let meetingStartIso = null; // the picked meeting's start — shown until joined
 
 const mmss = (secs) => {
   const m = String(Math.floor(secs / 60)).padStart(2, '0');
   const s = String(secs % 60).padStart(2, '0');
   return `${m}:${s}`;
 };
+
+// "Thu 17 Jul, 14:05" — for scheduled meetings on cards and in the header.
+const whenShort = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 setInterval(() => {
   if(startedAt){
@@ -1757,7 +1845,13 @@ setInterval(() => {
   // third remains, red once the meeting runs over.
   const cd = document.getElementById('countdown');
   if(!meetingJoinedAt){
-    cd.textContent = '';
+    // Not in yet: a future calendar meeting shows WHEN instead of nothing.
+    if(meetingStartIso && Date.parse(meetingStartIso) > Date.now()){
+      cd.className = 'countdown';
+      cd.textContent = `starts ${whenShort(meetingStartIso)}`;
+    } else {
+      cd.textContent = '';
+    }
     return;
   }
   const totalSecs = scheduledMinutes * 60;

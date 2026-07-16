@@ -141,6 +141,10 @@ const main = async () => {
     // (calendar pick > pasted link > launch argument).
     let activeMeetingUrl = meetingUrlArg;
 
+    // Phase 12: a calendar-picked meeting that starts later — the bot waits
+    // and joins ~2 minutes before, instead of idling in an empty lobby.
+    let scheduledStartIso: string | null = null;
+
     // Everything the agent says — self-driven nudges and owner steers alike —
     // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
@@ -172,6 +176,7 @@ const main = async () => {
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
             activeMeetingUrl = brief.meetingUrl; // Phase 10: calendar pick / pasted link / launch arg
+            scheduledStartIso = brief.meetingStart; // Phase 12: null unless picked from the calendar
             wasBriefed = true;
             record.briefed(brief);             // the audit trail starts here
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
@@ -246,6 +251,18 @@ const main = async () => {
     // Phase 3 sequencing: brief first, THEN the agent walks in.
     console.log(`\n=== Zeus: waiting for your brief. Open http://localhost:${COCKPIT_PORT}, type your conditions, and send the agent in. ===\n`);
     await briefed;
+
+    // Phase 12: hold for a future start (Kill bot / Ctrl+C work throughout).
+    const JOIN_EARLY_MS = 2 * 60000;
+    const startMs = scheduledStartIso ? Date.parse(scheduledStartIso) : NaN;
+    if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
+        cockpit.setMeetingStatus('scheduled');
+        console.log(`\n=== Meeting starts ${scheduledStartIso} — waiting, the agent joins ~2 minutes before. ===\n`);
+        while (startMs - Date.now() > JOIN_EARLY_MS) {
+            await new Promise((resolve) => setTimeout(resolve, 15000));
+        }
+        cockpit.setMeetingStatus('connecting');
+    }
 
     console.log('\n=== Zeus bot: brief received — opening the meeting link... ===\n');
     // Which browser to drive. Locally this stays installed Google Chrome

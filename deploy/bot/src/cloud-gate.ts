@@ -60,7 +60,12 @@ type BriefFromHub = {
     lengthMinutes: number;
     ownerName: string;
     meetingUrl: string;
+    /** ISO start time from the calendar pick — null when unknown (pasted link) */
+    meetingStart?: string | null;
 };
+
+/** How long before the scheduled start the bot actually heads for the lobby */
+const JOIN_EARLY_MS = 2 * 60000;
 
 /**
  * ================================================
@@ -249,6 +254,29 @@ const runMeeting = async (brief: BriefFromHub) => {
     };
 
     try {
+        // A calendar-picked meeting that starts later: hold here (status
+        // "scheduled" on the cockpit) and join ~2 minutes before start.
+        // The Kill bot button works throughout the wait.
+        const startMs = brief.meetingStart ? Date.parse(brief.meetingStart) : NaN;
+        if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
+            console.log(`=== Meeting ${brief.meetingId} starts ${brief.meetingStart} — holding, joining ~2 min before. ===`);
+            let killedWhileWaiting = false;
+            while (startMs - Date.now() > JOIN_EARLY_MS) {
+                const { kill } = await hub.pushState(brief.meetingId, { meetingStatus: 'scheduled', meetingJoinedAt: null, conditions, nudges, transcript, mentions });
+                if (kill) {
+                    killedWhileWaiting = true;
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
+            if (killedWhileWaiting) {
+                endReason = 'shut down from the cockpit before the scheduled start';
+                record.log('meeting-ended', 'The owner pressed Kill bot before the scheduled start — the agent never joined.', {});
+                return; // the finally block still persists the record and frees the hub drawer
+            }
+            console.log(`=== Meeting ${brief.meetingId} is about to start — joining now. ===`);
+        }
+
         browser = await chromium.launch({
             headless: false, // headed on the container's virtual screen (xvfb)
             args: [
