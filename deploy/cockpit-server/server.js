@@ -21,6 +21,10 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+// Phase 10 on the hub: the owner's Outlook calendar (read-only, single
+// owner). Reports configured:false when MS_CLIENT_ID/SECRET are absent —
+// then nothing changes anywhere.
+const calendar = require('./calendar');
 
 const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
@@ -326,14 +330,26 @@ const runDemoMeeting = (meeting) => {
 /**
  * ================================================
  * Phase 9: the chat-mode briefing brain (hub edition).
- * Same conversation design as the local Nudger.briefChat, in plain JS.
- * The hub has no calendar, so the model always asks for a pasted link.
+ * Same conversation design as the local Nudger.briefChat, in plain JS —
+ * and, now the hub has the calendar too, the SAME calendar-aware prompt:
+ * the model matches what the owner says against their upcoming meetings
+ * (by index — join links never leave the server) and only falls back to
+ * a pasted link when there is no calendar to read.
  * One in-memory conversation per signed-in browser session.
  * ================================================
  */
-const chatSessions = new Map(); // session token -> [{from, text}, ...]
+const chatSessions = new Map(); // session token -> { history: [{from, text}], meetings: [UpcomingMeeting] }
 
-const briefChatCall = async (history) => {
+const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
+    const calendarLines = meetingsMeta.length
+        ? [
+            "The owner's upcoming meetings (their calendar is connected):",
+            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+        ]
+        : calendarConnected
+            ? ["The owner's calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting (\"your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead\") and take a pasted link."]
+            : ["The owner's calendar is NOT connected — they must paste a Teams meeting link in the chat."];
+
     const system = [
         "You are Zeus bot's briefing assistant. Your owner — a busy person, often on their phone — is",
         'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
@@ -342,24 +358,42 @@ const briefChatCall = async (history) => {
         'The flow, in order:',
         '1. UNDERSTAND THE SITUATION. Ask AT MOST 1-2 follow-up questions across the WHOLE conversation,',
         '   and only if the answer would materially change the conditions (e.g. "Who holds the budget',
-        '   decision?"). If their first message is enough, skip questions entirely.',
+        '   decision?" or "Is there a figure already in play?"). If their first message is enough, skip',
+        '   questions entirely.',
         '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions — things that',
         '   must be TRUE by the end of the meeting, framed as outcomes.',
-        '   Good: "Event budget confirmed with a number" / "Launch date agreed".',
+        '   Good: "Event budget confirmed with a number" / "Launch date agreed" / "Owner assigned for follow-ups".',
         '   Bad: "Discuss the budget" / "Talk about the timeline".',
-        '   The owner sees them as editable cards with a confirm button — invite tweaks. When their next',
+        "   The owner sees them as editable cards with a confirm button — your reply should invite",
+        '   tweaks ("Here\'s what I\'ll drive the room to close — edit anything"). When their next',
         '   message starts "Confirmed conditions:", those exact conditions are final — do not re-propose.',
-        '3. THE MEETING LINK. Ask them to paste it ("Last thing — paste the meeting link and I\'ll send',
-        '   the agent in."). Meeting length: default 30 minutes unless they say otherwise.',
+        '3. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list below,',
+        '   set proposeMeeting to its index and ask for confirmation, naming it with its day and time',
+        '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 — right?"). NEVER guess between',
+        '   several plausible matches and never invent meetings — if nothing matches confidently, set',
+        '   showList true and ask them to tap one. A pasted Teams link also works; without a calendar,',
+        '   ask them to paste the link ("Last thing — paste the meeting link and I\'ll send the agent',
+        '   in."). Meetings marked [NO Teams link] cannot be chosen. When the owner confirms your',
+        '   proposal (yes / that one / correct), the meeting is resolved.',
+        '   You may resolve the meeting before or after the conditions — take whichever the owner gives',
+        '   first, but never skip the condition-confirm step.',
         '4. Their name and extra context are optional — fold at most ONE ask for them into another',
-        '   question; never spend a whole turn on them.',
+        '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
+        '   pasted link default to 30 unless they say otherwise.',
+        '',
+        ...calendarLines,
+        '',
+        `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
         '',
         'Reply with ONLY strict JSON on one line, exactly this shape:',
-        '{"reply": "...", "proposeConditions": ["..."]|null,',
-        ' "brief": null | {"meetingUrl": "<pasted link>", "meetingName": "...", "lengthMinutes": <n>,',
-        '   "ownerName": "...", "conditions": ["..."], "context": "..."}}',
-        'Set "brief" ONLY once you have the pasted link AND the owner has confirmed the conditions.',
-        'Its reply is still shown — make it the send-off ("Sending the agent in now.").',
+        '{"reply": "...", "proposeMeeting": <calendar index>|null, "showList": true|false,',
+        ' "proposeConditions": ["..."]|null,',
+        ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
+        '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
+        '   "context": "..."}}',
+        'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
+        'has confirmed the conditions. Its reply is still shown — make it the send-off ("Sending the',
+        "agent in now. You'll see it on your board.\").",
     ].join('\n');
     const conversation = history.map((m) => `${m.from === 'owner' ? 'Owner' : 'You'}: ${m.text}`).join('\n');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -686,25 +720,53 @@ const server = http.createServer(async (req, res) => {
             answer(res, 400, { ok: false, error: 'text required' });
             return;
         }
-        const history = chatSessions.get(token) || [];
-        history.push({ from: 'owner', text });
-        chatSessions.set(token, history);
+        const session = chatSessions.get(token) || { history: [], meetings: [] };
+        session.history.push({ from: 'owner', text });
+        chatSessions.set(token, session);
+
+        // Refresh the calendar view each turn (it may have just been
+        // connected in another tab). Join URLs stay in session.meetings —
+        // the model and the page only ever see index + metadata.
+        let calendarConnected = false;
+        try {
+            const calStatus = await calendar.status();
+            calendarConnected = calStatus.connected;
+            if (calStatus.connected) {
+                session.meetings = await calendar.upcomingMeetings();
+            }
+        } catch (error) {
+            // The convenience failing must not kill the chat — but say WHY
+            // in the log, or this is undebuggable.
+            console.error('BRIEF-CHAT >>> calendar fetch failed:', error instanceof Error ? error.message : error);
+        }
+        const meetingsMeta = session.meetings.map((m, index) => ({
+            index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl),
+        }));
+        console.log(`BRIEF-CHAT >>> calendar ${calendarConnected ? 'connected' : 'not connected'}, ${meetingsMeta.length} meeting(s) in view (${meetingsMeta.filter((m) => m.hasTeamsLink).length} with a Teams link)`);
+
         let result = null;
-        try { result = await briefChatCall(history); } catch (error) { console.error('brief-chat failed:', error); }
+        try { result = await briefChatCall(session.history, meetingsMeta, calendarConnected); } catch (error) { console.error('brief-chat failed:', error); }
         if (!result) {
             const reply = 'Sorry — I tripped over myself there. Say that again?';
-            history.push({ from: 'agent', text: reply });
+            session.history.push({ from: 'agent', text: reply });
             answer(res, 200, { reply, propose: null, showList: false, meetings: [], briefed: false });
             return;
         }
-        history.push({ from: 'agent', text: result.reply });
+        session.history.push({ from: 'agent', text: result.reply });
 
         let briefedNow = false;
         let briefError = null;
         let meetingId = null;
         if (result.brief && typeof result.brief === 'object') {
             const b = result.brief;
-            const meetingUrl = typeof b.meetingUrl === 'string' ? b.meetingUrl.trim() : '';
+            // Resolve the join link server-side: a confirmed calendar index
+            // wins (its URL never left this process), then a pasted link.
+            const picked = (typeof b.meetingIndex === 'number' && session.meetings[b.meetingIndex])
+                ? session.meetings[b.meetingIndex]
+                : undefined;
+            const meetingUrl = (picked && picked.joinUrl)
+                ? picked.joinUrl
+                : (typeof b.meetingUrl === 'string' ? b.meetingUrl.trim() : '');
             const labels = (Array.isArray(b.conditions) ? b.conditions : [])
                 .filter((l) => typeof l === 'string').map((l) => l.trim()).filter(Boolean);
             if (meetings.size >= MAX_MEETINGS) {
@@ -714,9 +776,9 @@ const server = http.createServer(async (req, res) => {
             } else if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
                 briefError = `I need 1 to ${MAX_CONDITIONS} conditions before I go in.`;
             } else {
-                const rawLength = Number(b.lengthMinutes);
+                const rawLength = Number(picked ? picked.durationMinutes : b.lengthMinutes);
                 const meeting = createMeeting({
-                    meetingName: (typeof b.meetingName === 'string' && b.meetingName.trim()) ? b.meetingName.trim() : 'Untitled meeting',
+                    meetingName: (typeof b.meetingName === 'string' && b.meetingName.trim()) ? b.meetingName.trim() : (picked ? picked.subject : 'Untitled meeting'),
                     labels,
                     context: typeof b.context === 'string' ? b.context.trim() : '',
                     lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
@@ -729,20 +791,67 @@ const server = http.createServer(async (req, res) => {
                 meetingId = meeting.id;
                 chatSessions.delete(token); // fresh conversation for the next brief
             }
-            if (briefError) history.push({ from: 'agent', text: `Hmm — ${briefError}` });
+            if (briefError) session.history.push({ from: 'agent', text: `Hmm — ${briefError}` });
         }
+        // A clear single match → the one-tap confirm; unsure → the tappable list.
+        const proposed = (typeof result.proposeMeeting === 'number' && meetingsMeta[result.proposeMeeting])
+            ? meetingsMeta[result.proposeMeeting]
+            : null;
         answer(res, 200, {
             reply: result.reply,
-            propose: null,
-            showList: false,
+            propose: proposed,
+            showList: Boolean(result.showList) && meetingsMeta.length > 0,
             proposeConditions: Array.isArray(result.proposeConditions) && result.proposeConditions.length
                 ? result.proposeConditions.filter((c) => typeof c === 'string' && c.trim()).map((c) => c.trim())
                 : null,
-            meetings: [],
+            meetings: result.showList ? meetingsMeta : [],
             briefed: briefedNow,
             meetingId,
             error: briefError,
         });
+        return;
+    }
+
+    // ── Phase 10 on the hub: the owner's Outlook calendar (read-only) ──
+    // Same endpoints and shapes as the local cockpit, so the shared page
+    // lights up the calendar UI on the hosted URL too. All behind the
+    // access code (the OAuth callback is a top-level redirect, so the
+    // SameSite=Lax session cookie rides along).
+    if (url === '/calendar/status') {
+        answer(res, 200, await calendar.status().catch(() => ({ configured: true, connected: false, account: null })));
+        return;
+    }
+    if (url === '/calendar/auth') {
+        try {
+            res.writeHead(302, { location: await calendar.authUrl(req) });
+            res.end();
+        } catch (error) {
+            console.error('Calendar auth URL failed:', error);
+            res.writeHead(500, { 'content-type': 'text/plain' });
+            res.end('Calendar is not configured — set MS_CLIENT_ID and MS_CLIENT_SECRET on the cockpit service');
+        }
+        return;
+    }
+    if (url === '/auth/callback') {
+        try {
+            const code = new URL(req.url || '/', 'http://localhost').searchParams.get('code') || '';
+            const account = await calendar.handleCallback(req, code);
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${account.replace(/</g, '&lt;')}</b> — taking you back…</p></body>`);
+        } catch (error) {
+            console.error('Calendar sign-in failed:', error);
+            res.writeHead(500, { 'content-type': 'text/plain' });
+            res.end('Calendar sign-in failed — check the deploy log, then try Connect calendar again.');
+        }
+        return;
+    }
+    if (url === '/calendar/meetings') {
+        try {
+            answer(res, 200, { meetings: await calendar.upcomingMeetings() });
+        } catch (error) {
+            console.error('Calendar fetch failed:', error);
+            answer(res, 409, { ok: false, error: 'Calendar not connected — click Connect calendar on the briefing screen.' });
+        }
         return;
     }
 

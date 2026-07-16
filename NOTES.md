@@ -338,10 +338,32 @@ secret or token ever appears anywhere else (a log, a commit, a screen
 share), rotate it: delete the client secret in Entra, create a new one,
 update `.env`, delete `calendar-token.json`, reconnect.
 
+**The hosted hub has the calendar too (still single owner).** The same
+Entra app serves both. `deploy/cockpit-server/calendar.js` is a plain-JS
+port of the local connector (same msal-node library, same one-file token
+cache); the hub answers the same `/calendar/*` endpoints, so the shared
+cockpit page lights up the pick-list and the calendar-aware chat on the
+phone. One-time setup:
+1. **Entra** (entra.microsoft.com → App registrations → Zeus Meeting
+   Agent → Authentication → Web): ADD a second redirect URI —
+   `https://cockpit-production-062b.up.railway.app/auth/callback`
+   (keep the localhost one; both live side by side).
+2. **Railway cockpit service variables:** add `MS_CLIENT_ID` and
+   `MS_CLIENT_SECRET` (same values as the local `.env`). No
+   `MS_REDIRECT_URI` needed — the hub derives it from the request host;
+   set it only to override.
+3. Redeploy the cockpit, open it, tap **Connect Outlook calendar** in the
+   chat (or "Connect calendar" on the form) and sign in once.
+Caveats: the token file (`calendar-token.json`, next to the process) is
+wiped on every redeploy unless a volume is mounted and
+`ZEUS_CAL_TOKEN_FILE` points at it — reconnecting is one sign-in, same as
+local. And it is ONE owner's calendar behind ONE access code: anyone who
+has the code sees the pick-list (titles/times, never join links) — same
+trust model as the rest of the hub.
+
 **Future path (parked):** multi-user = per-account token storage keyed to
 each owner; corporate tenants may require admin consent for even this
-read-only scope — build against a real tenant when that day comes. The
-hosted hub gets the calendar then too.
+read-only scope — build against a real tenant when that day comes.
 
 ## Meeting records — scope, sensitivity, where they live
 
