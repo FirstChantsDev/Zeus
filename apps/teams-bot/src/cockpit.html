@@ -124,8 +124,10 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bc-actions button:hover{background:var(--jade-bg);}
 .bc-actions button.alt{border-color:var(--line2);color:var(--t2);}
 .bc-list{display:flex;flex-direction:column;gap:6px;align-self:stretch;}
-.bc-row{display:flex;gap:9px;}
-.bc-row input{flex:1;min-width:0;}
+.bc-row{display:flex;gap:9px;align-items:flex-end;}
+.bc-row input,.bc-row textarea{flex:1;min-width:0;}
+/* Dictation-friendly: the box grows with what you say (capped ~5 lines). */
+.bc-row textarea{resize:none;overflow-y:auto;max-height:132px;line-height:1.45;}
 .bc-row button{
   flex:0 0 auto;background:var(--jade);border:none;border-radius:10px;padding:0 18px;
   font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;
@@ -155,7 +157,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bc-chip-actions .solid{flex:1.4;background:var(--jade);border:none;border-radius:12px;padding:11px;color:#08110d;font-weight:600;font-size:13.5px;cursor:pointer;font-family:var(--head);}
 @media (max-width:640px){
   .bc-thread{max-height:56vh;}
-  .bc-row input{font-size:16px;height:46px;} /* 16px stops iPhone zoom */
+  .bc-row input,.bc-row textarea{font-size:16px;min-height:46px;} /* 16px stops iPhone zoom */
   .bc-row button{min-height:46px;}
   .brief-mode-toggle{padding:12px 0;} /* thumb-sized */
 }
@@ -644,7 +646,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="bc-listen-hint" id="bcHint">LISTENING — TAP MIC TO STOP</div>
       <div class="bc-row">
         <button class="bc-mic" id="bcMic" style="display:none" onclick="bcMicTap()" title="Speak instead of typing">🎙</button>
-        <input class="f-input" id="bcInput" placeholder="Type or tap the mic…">
+        <textarea class="f-input" id="bcInput" rows="1" placeholder="Type or tap the mic…"></textarea>
         <button id="bcSend" onclick="bcSend()">Send</button>
       </div>
     </div>
@@ -1131,25 +1133,62 @@ function bcConfirmChips(btn){
 // ── Phase 9: voice input — the browser's OWN speech recognition (Web
 // Speech API), no external service, no library, no audio leaves the
 // normal browser pipeline. Mobile only; hidden when unsupported. ──
+// The mic runs CONTINUOUSLY until tapped off: without `continuous` the
+// browser ends recognition at the first pause, losing everything after
+// it. Android still ends sessions on longer silences — the onend hook
+// restarts recognition (keeping the text so far) until the owner stops.
 const BcSR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let bcRec = null, bcMicOn = false;
+let bcRec = null, bcMicOn = false, bcStopRequested = false, bcDictationBase = '';
 if(BcSR && matchMedia('(pointer: coarse)').matches){
   document.getElementById('bcMic').style.display = '';
 }
+// The chat box grows with what's in it (tap the mic and talk for a while —
+// a one-line box hides most of it). Capped by CSS max-height, then scrolls.
+function bcAutoGrow(){
+  const el = document.getElementById('bcInput');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 132) + 'px';
+}
+document.getElementById('bcInput').addEventListener('input', bcAutoGrow);
+function bcMicOff(){
+  bcMicOn = false;
+  document.getElementById('bcMic').classList.remove('on');
+  document.getElementById('bcHint').classList.remove('on');
+}
 function bcMicTap(){
-  if(bcMicOn){ try{ bcRec.stop(); }catch(e){} return; }
+  if(bcMicOn){
+    bcStopRequested = true;
+    try{ bcRec.stop(); }catch(e){}
+    bcMicOff();
+    return;
+  }
   try{
     bcRec = new BcSR();
     bcRec.lang = navigator.language || 'en-GB';
     bcRec.interimResults = true;
+    bcRec.continuous = true; // keep listening through pauses
+    bcStopRequested = false;
     const input = document.getElementById('bcInput');
-    bcRec.onresult = (e) => { input.value = [...e.results].map((r) => r[0].transcript).join(''); };
-    bcRec.onend = () => {
-      bcMicOn = false;
-      document.getElementById('bcMic').classList.remove('on');
-      document.getElementById('bcHint').classList.remove('on');
+    // Dictation appends to whatever is already typed.
+    bcDictationBase = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
+    bcRec.onresult = (e) => {
+      input.value = bcDictationBase + [...e.results].map((r) => r[0].transcript).join('');
+      bcAutoGrow();
     };
-    bcRec.onerror = bcRec.onend;
+    bcRec.onerror = (e) => {
+      // Real failures (mic blocked, no audio) must NOT loop the restart.
+      if(e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture'){
+        bcStopRequested = true;
+      }
+    };
+    bcRec.onend = () => {
+      if(!bcStopRequested && bcMicOn){
+        // The browser gave up on a silence — carry on where we left off.
+        bcDictationBase = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
+        try{ bcRec.start(); return; }catch(e){ /* fall through to off */ }
+      }
+      bcMicOff();
+    };
     bcMicOn = true;
     document.getElementById('bcMic').classList.add('on');
     document.getElementById('bcHint').classList.add('on');
@@ -1160,9 +1199,11 @@ async function bcSend(presetText){
   const input = document.getElementById('bcInput');
   const text = (presetText ?? input.value).trim();
   if(!text) return;
+  if(bcMicOn) bcMicTap(); // sending ends the dictation — otherwise it keeps writing into the cleared box
   bcClearActions();
   bcAddMsg('owner', text);
   input.value = '';
+  bcAutoGrow();
   const send = document.getElementById('bcSend');
   send.disabled = true;
   const thinking = bcAddMsg('agent', '…');
@@ -1210,7 +1251,10 @@ async function bcSend(presetText){
   send.disabled = false;
   document.getElementById('bcInput').focus();
 }
-document.getElementById('bcInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') bcSend(); });
+// Enter sends; Shift+Enter makes a new line in the (now multi-line) box.
+document.getElementById('bcInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); bcSend(); }
+});
 
 async function sendAgentIn(){
   const labels = [...document.querySelectorAll('#condInputs .f-input')]
