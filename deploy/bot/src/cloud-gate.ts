@@ -92,12 +92,13 @@ const hub = {
         const answer = await this.call('/bot/brief');
         return (answer && answer.brief) ? answer.brief as BriefFromHub : null;
     },
-    /** Pushes one meeting's snapshot; returns any steers and board edits queued for it on the website */
-    async pushState(meetingId: string, snapshot: object): Promise<{ steers: string[], edits: BoardEdit[] }> {
+    /** Pushes one meeting's snapshot; returns any steers, board edits and kill request queued for it on the website */
+    async pushState(meetingId: string, snapshot: object): Promise<{ steers: string[], edits: BoardEdit[], kill: boolean }> {
         const answer = await this.call(`/bot/state/${meetingId}`, { method: 'POST', body: snapshot });
         return {
             steers: (answer && Array.isArray(answer.steers)) ? answer.steers as string[] : [],
             edits: (answer && Array.isArray(answer.edits)) ? answer.edits as BoardEdit[] : [],
+            kill: Boolean(answer && answer.kill),
         };
     },
     /** Hands the finished meeting's audit record to the hub, which persists it */
@@ -288,9 +289,14 @@ const runMeeting = async (brief: BriefFromHub) => {
 
         // Push state + collect steers every 2 seconds, independent of the
         // slower status loop below.
+        let killRequested = false;
         const pusher = setInterval(() => {
             void (async () => {
-                const { steers, edits } = await hub.pushState(brief.meetingId, { meetingStatus, meetingJoinedAt, conditions, nudges, transcript, mentions });
+                const { steers, edits, kill } = await hub.pushState(brief.meetingId, { meetingStatus, meetingJoinedAt, conditions, nudges, transcript, mentions });
+                if (kill && !killRequested) {
+                    killRequested = true;
+                    console.log('KILL from hub >>> the owner pressed Kill bot — wrapping this meeting up.');
+                }
                 for (const edit of edits) {
                     applyBoardEdit(edit, chat);
                 }
@@ -320,6 +326,13 @@ const runMeeting = async (brief: BriefFromHub) => {
 
         try {
             while (true) {
+                // The cockpit's Kill bot button — checked first so it works
+                // from the lobby too, exactly like the local kill switch.
+                if (killRequested) {
+                    endReason = 'shut down from the cockpit (Kill bot)';
+                    record.log('meeting-ended', 'The owner pressed Kill bot in the cockpit — the agent left the meeting.', {});
+                    break;
+                }
                 let state = 'unknown';
                 if (await join.isInMeeting({})) {
                     state = 'in-meeting';

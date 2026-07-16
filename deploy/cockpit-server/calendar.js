@@ -75,6 +75,7 @@ const app = (msal && clientId && clientSecret)
     : null; // not configured — the UI simply never shows the calendar
 
 /** The redirect URI Microsoft sends the owner back to after sign-in. */
+let lastAuthRedirectUri = null; // what the auth URL actually used — the exchange MUST match it
 const redirectUriFor = (req) => {
     const fromEnv = process.env.MS_REDIRECT_URI || process.env.MICROSOFT_REDIRECT_URI;
     if (fromEnv) return fromEnv;
@@ -97,13 +98,18 @@ const status = async () => {
 /** Where "Connect calendar" sends the owner: Microsoft's own sign-in page */
 const authUrl = async (req) => {
     if (!app) throw new Error('Calendar is not configured (MS_CLIENT_ID / MS_CLIENT_SECRET missing).');
-    return app.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: redirectUriFor(req) });
+    lastAuthRedirectUri = redirectUriFor(req);
+    console.log(`CALENDAR AUTH >>> redirect URI in play: ${lastAuthRedirectUri}`);
+    return app.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: lastAuthRedirectUri });
 };
 
 /** Finishes the sign-in; MSAL stores the token (incl. refresh) in the file cache */
 const handleCallback = async (req, code) => {
     if (!app) throw new Error('Calendar is not configured.');
-    const result = await app.acquireTokenByCode({ code, scopes: GRAPH_SCOPES, redirectUri: redirectUriFor(req) });
+    // The exchange must present the EXACT URI the auth URL used — prefer
+    // what authUrl remembered over re-deriving from this request's headers.
+    const redirectUri = lastAuthRedirectUri || redirectUriFor(req);
+    const result = await app.acquireTokenByCode({ code, scopes: GRAPH_SCOPES, redirectUri });
     const account = (result.account && result.account.username) || '';
     console.log(`CALENDAR CONNECTED >>> ${account || '(unknown account)'}`);
     return account;

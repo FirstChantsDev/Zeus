@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zeus — Command Centre</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<!-- media="print" + onload flip = non-blocking fonts: on a slow or flaky
+     connection (phones!) a hanging stylesheet must never delay the page's
+     script — system fonts render first and the web fonts swap in. -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 button,input,textarea{font-family:inherit;}
@@ -218,6 +221,12 @@ header{
   flex:0 0 56px;display:flex;align-items:center;gap:14px;
   padding:0 22px;border-bottom:1px solid var(--line);
 }
+/* Back to the all-agents homepage from a per-meeting view (?m=…) */
+.hdr-back{
+  background:none;border:none;color:var(--t2);font-size:24px;line-height:1;
+  padding:4px 8px 6px 0;cursor:pointer;flex:0 0 auto;
+}
+.hdr-back:hover{color:var(--jade);}
 .wordmark{font-family:var(--head);font-weight:700;font-size:17px;letter-spacing:-.4px;}
 .wordmark em{font-style:normal;color:var(--jade);}
 .meeting{display:flex;align-items:center;gap:9px;margin-left:8px;padding-left:16px;border-left:1px solid var(--line2);}
@@ -439,6 +448,12 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 ::-webkit-scrollbar-thumb{background:var(--s3);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
 
+/* ══ PHONE BOTTOM SHEET + DASHBOARD EXTRAS (Phase 11) ══
+   Hidden everywhere by default; the ≤640px block below turns them on. */
+#sheet{display:none;}
+.mob-pill{display:none;}
+.dot-row{display:none;}
+
 /* ══ RESPONSIVE (Phase 7a) ══ */
 /* Tablet and down: one column — conditions, then agent activity, then
    transcript. The page scrolls as a whole; each feed keeps its own
@@ -454,31 +469,98 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .feed,.transcript{flex:0 0 auto;max-height:45vh;}
   .transcript{max-height:40vh;}
 }
-/* Phone: full-width cards, wrapping header, finger-sized targets, and
-   16px inputs (anything smaller makes iPhones zoom the whole page). */
+/* Phone: the reference-mock cockpit — compact ‹ ZEUS. • STATUS header with
+   the meeting name + countdown on a second row, conditions as the page,
+   and the feed/transcript/steer bar inside the bottom sheet. 16px inputs
+   (anything smaller makes iPhones zoom the whole page). */
 @media (max-width:640px){
-  header{flex:0 0 auto;flex-wrap:wrap;height:auto;min-height:52px;padding:10px 14px;row-gap:8px;gap:10px;}
-  .meeting{margin-left:0;padding-left:10px;min-width:0;}
-  .meeting-name{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  /* Second header row: timers left, Join call and the owner chip right.
-     The "…'s cockpit" text goes — the chip carries the identity. */
-  .clock{margin-left:0;}
-  .owner{margin-left:auto;}
-  .owner span:first-child{display:none;}
+  header{flex:0 0 auto;flex-wrap:wrap;height:auto;min-height:52px;padding:10px 14px;row-gap:6px;gap:8px;align-items:center;}
+  /* .meeting dissolves: its children lay out as header items directly. */
+  .meeting{display:contents;}
+  .live{order:1;margin-right:auto;font-size:10px;letter-spacing:.4px;}
+  .join-btn{order:2;padding:6px 11px;font-size:11.5px;}
+  .kill-btn{order:3;padding:6px 11px;font-size:11.5px;}
+  /* Row two: which meeting, and how much time is left. */
+  .meeting-name{order:10;flex-basis:55%;flex-grow:1;font-family:var(--mono);font-size:12px;color:var(--t3);max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .countdown{order:11;margin-left:auto;}
+  .clock{display:none;}
+  .hist-btn{display:none;}   /* history stays reachable from the briefing screen */
+  .owner{display:none;}
+  /* Conditions read as the page itself, not a boxed panel. */
+  body.mob-live #conditions{background:none;border:none;}
+  body.mob-live #conditions .panel-head{display:none;}
+  body.mob-live main{padding-bottom:96px;} /* room for the collapsed sheet */
   .panel-head{flex-wrap:wrap;row-gap:2px;}
-  .cond-row{grid-template-columns:1fr;padding:4px 12px 14px;}
-  .cond-meta{min-height:0;font-size:12.5px;}
+  .cond-row{grid-template-columns:1fr;padding:8px 0 14px;gap:14px;}
+  .cond{padding:17px 16px 14px;gap:10px;}
+  .cond-label{font-size:18px;letter-spacing:-.3px;}
+  .cond-meta{min-height:0;font-size:14px;}
   .nudge-text{font-size:13px;}
   .transcript{font-size:12.5px;}
   .f-input{font-size:16px;}
   .steer-bar{padding:10px 12px 12px;}
   .steer-bar input{font-size:16px;padding:11px 12px;}
   .steer-bar button{min-height:44px;padding:0 18px;}
-  .cond-expand,.mention-dismiss{width:30px;height:30px;font-size:15px;}
+  .cond-expand,.cond-edit-btn,.mention-dismiss{width:34px;height:34px;font-size:16px;border-radius:9px;}
   .cond-remove{width:38px;height:38px;}
   .brief-go{min-height:48px;}
   .mention{flex-wrap:wrap;}
-  .attention-strip{padding:10px 14px;}
+  /* The attention strip becomes a rounded card, per the mock. */
+  .attention-strip{margin:12px 14px 0;padding:14px;border:1px solid var(--att-bd);border-radius:14px;border-bottom:1px solid var(--att-bd);}
+
+  /* ── The bottom sheet ── */
+  body.mob-live #nudges,body.mob-live #transcriptPanel{display:none;}
+  body.mob-live #sheet{display:flex;}
+  #sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;flex-direction:column;
+    background:var(--s1);border:1px solid var(--line2);border-bottom:none;
+    border-radius:20px 20px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);
+    max-height:82dvh;
+  }
+  #sheet.open{height:78dvh;}
+  #sheetGrip{padding:10px 0 4px;display:flex;justify-content:center;cursor:pointer;flex:0 0 auto;}
+  .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--s3);}
+  #sheetPeek{display:flex;gap:10px;align-items:baseline;padding:2px 16px 14px;font-family:var(--mono);font-size:12px;cursor:pointer;flex:0 0 auto;}
+  .peek-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1);line-height:1.5;}
+  .peek-text .zeus-tag{color:var(--jade);}
+  .peek-count{color:var(--t3);white-space:nowrap;}
+  .sheet-tabs{display:none;gap:10px;padding:8px 16px 12px;flex:0 0 auto;}
+  .sheet-tabs button{
+    flex:1;padding:14px;border-radius:12px;border:1px solid var(--line2);background:var(--s2);
+    color:var(--t3);font-family:var(--head);font-weight:600;font-size:14.5px;cursor:pointer;
+  }
+  .sheet-tabs button.active{color:var(--t1);border-color:var(--jade-bd);background:var(--jade-bg);}
+  #sheetBody{display:none;flex:1;min-height:0;flex-direction:column;}
+  #sheetBody .feed,#sheetBody .transcript{flex:1;overflow-y:auto;max-height:none;padding:4px 16px 10px;}
+  #sheetFoot{display:none;flex:0 0 auto;padding-bottom:env(safe-area-inset-bottom);}
+  #sheet.open .sheet-tabs{display:flex;}
+  #sheet.open #sheetBody{display:flex;}
+  #sheet.open #sheetFoot{display:block;}
+
+  /* ── The dashboard, mock edition ── */
+  #dashboard{padding:0 14px 100px;}
+  .dash-title{display:none;}
+  .dash-head .dash-new{
+    position:fixed;left:14px;right:14px;bottom:16px;z-index:40;
+    padding:16px;border-radius:14px;font-size:15.5px;margin-left:0;
+  }
+  .dash-empty-state .empty-add{display:none;} /* the fixed bar is the one action */
+  .agent-card{padding:18px;gap:12px;}
+  .agent-card .live{display:none;}  /* the pill carries the status */
+  .agent-flags{display:none;min-height:0;}
+  .agent-owner{display:none;}
+  .agent-name{flex:0 1 auto;font-size:19px;}
+  .agent-top .mob-pill{margin-left:auto;}
+  .mob-pill{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:4px 11px;border-radius:999px;border:1px solid;white-space:nowrap;}
+  .mob-pill.live{color:var(--jade);border-color:var(--jade-bd);}
+  .mob-pill.lobby{color:var(--amber);border-color:var(--amber-bd);}
+  .mob-pill.needs{color:var(--red);border-color:var(--red-bd);}
+  .dot-row{display:flex;gap:9px;}
+  .dot-row:empty{display:none;}
+  .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
+  .dot.closed{background:var(--jade);}
+  .dot.open{background:var(--amber);}
+  .dot.exception{background:var(--red);}
 }
 @media (prefers-reduced-motion:reduce){
   .live-dot,.cond.exception{animation:none;}
@@ -587,6 +669,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 
 <!-- ══ COCKPIT (live) ══ -->
 <header>
+  <button class="hdr-back" id="hdrBack" style="display:none" onclick="location.href='/'" title="Back to all running agents">‹</button>
   <div class="wordmark">ZEUS<em>.</em></div>
   <div class="meeting">
     <span class="meeting-name" id="hdrMeet">Live Teams meeting</span>
@@ -634,6 +717,24 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </section>
 </main>
 
+<!-- ══ PHONE BOTTOM SHEET (Phase 11 — from the reference mocks) ══
+     On small screens the agent-activity feed, the transcript and the steer
+     bar live in this sheet; #feed / #transcript / .steer-bar are MOVED here
+     (same nodes, listeners intact) so both layouts share one render path. -->
+<div id="sheet">
+  <div id="sheetGrip" onclick="toggleSheet()"><div class="grip-bar"></div></div>
+  <div id="sheetPeek" onclick="toggleSheet()">
+    <span class="peek-text" id="peekText">Agent is listening…</span>
+    <span class="peek-count" id="peekCount"></span>
+  </div>
+  <div class="sheet-tabs">
+    <button id="tabActivity" class="active" onclick="sheetTab('activity')">Agent activity</button>
+    <button id="tabTranscript" onclick="sheetTab('transcript')">Transcript</button>
+  </div>
+  <div id="sheetBody"></div>
+  <div id="sheetFoot"></div>
+</div>
+
 <script>
 // ══ LIVE STATE ═══════════════════════════════════════════
 // The scripted demo is gone. This page now polls the bot's /state
@@ -652,14 +753,23 @@ let forceNew = pageParams.has('new');
 let stateUrl = meetingParam ? `/state/${meetingParam}` : '/state';
 let commandUrl = meetingParam ? `/command/${meetingParam}` : '/command';
 let conditionsUrl = meetingParam ? `/conditions/${meetingParam}` : '/conditions';
+// The kill switch: per-meeting on the hosted hub, /shutdown locally.
+let killUrl = meetingParam ? `/kill/${meetingParam}` : '/shutdown';
+// A per-meeting view gets a ‹ back to the all-agents homepage.
+function syncBackBtn(){
+  document.getElementById('hdrBack').style.display = meetingParam ? '' : 'none';
+}
 function adoptMeeting(id){
   meetingParam = id;
   forceNew = false;
   stateUrl = `/state/${id}`;
   commandUrl = `/command/${id}`;
   conditionsUrl = `/conditions/${id}`;
+  killUrl = `/kill/${id}`;
   history.replaceState(null, '', `/?m=${id}`);
+  syncBackBtn();
 }
+syncBackBtn();
 // A fresh-brief page on the hosted cockpit needs the link field even
 // though other meetings exist (/summary only exists on the hosted hub).
 if(forceNew){
@@ -765,10 +875,17 @@ function renderDashboard(sum){
       m.mentioned ? '<span class="flag mention">MENTIONED</span>' : '',
       (!m.needsYou && !m.mentioned) ? '<span class="flag ok">ON TRACK</span>' : '',
     ].join('');
+    // Phone card extras (hidden on desktop): the status pill and one dot
+    // per condition — jade closed, red needs-you, amber open.
+    const pill = m.needsYou ? '<span class="mob-pill needs">NEEDS YOU</span>'
+      : m.meetingStatus === 'in-meeting' ? '<span class="mob-pill live">LIVE</span>'
+      : '<span class="mob-pill lobby">JOINING</span>';
+    const dots = (m.conditionStates || []).map((s) => `<span class="dot ${esc(s)}"></span>`).join('');
     const cardClass = m.needsYou ? ' trouble' : (m.mentioned ? ' attention' : '');
     return `<div class="agent-card${cardClass}" onclick="location.href='/?m=${esc(m.id)}'">
-      <div class="agent-top">${statusDot}<span class="agent-name">${esc(m.meetingName)}</span></div>
-      <div class="agent-meta"><span class="${timeClass}">${time}</span><span class="closed-count">${m.conditionsClosed}/${m.conditionsTotal} closed</span><span>${esc(m.ownerName ? m.ownerName + "'s agent" : 'agent')}</span></div>
+      <div class="agent-top">${statusDot}<span class="agent-name">${esc(m.meetingName)}</span>${pill}</div>
+      <div class="dot-row">${dots}</div>
+      <div class="agent-meta"><span class="closed-count">${m.conditionsClosed}/${m.conditionsTotal} closed</span><span class="${timeClass}">${time}</span><span class="agent-owner">${esc(m.ownerName ? m.ownerName + "'s agent" : 'agent')}</span></div>
       <div class="agent-flags">${flags}</div>
     </div>`;
   }).join('');
@@ -1161,7 +1278,7 @@ function renderHeader(state){
 let killed = false;
 async function killBot(){
   if(!confirm('Shut the agent down? It leaves the meeting and stops making API calls.')) return;
-  try{ await fetch('/shutdown', { method: 'POST' }); }catch(e){ /* it may die mid-reply — fine */ }
+  try{ await fetch(killUrl, { method: 'POST' }); }catch(e){ /* it may die mid-reply — fine */ }
   killed = true;
   const badge = document.getElementById('liveBadge');
   const text = document.getElementById('liveText');
@@ -1414,6 +1531,13 @@ function condCardHtml(c){
 
 function renderNudges(nudges){
   const feed = document.getElementById('feed');
+  // The phone sheet's collapsed peek: the newest nudge and the count.
+  document.getElementById('peekText').textContent = nudges.length
+    ? nudges[0].text
+    : 'Agent is listening — it will speak when a condition needs a push.';
+  document.getElementById('peekCount').textContent = nudges.length
+    ? `${nudges.length} nudge${nudges.length === 1 ? '' : 's'}`
+    : '';
   if(!nudges.length){
     feed.innerHTML = '<div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div>';
     return;
@@ -1532,6 +1656,8 @@ async function poll(){
       briefed = true;
       document.getElementById('briefing').classList.add('gone');
     }
+    // Phone layout: the bottom sheet only exists on the live cockpit.
+    document.body.classList.toggle('mob-live', briefed && !dashboardMode);
     // Phase 6: if the bot doesn't already know the meeting link (hosted
     // cockpit), the briefing form asks for it. Locally it stays hidden.
     if(!state.briefed && !state.meetingUrl){
@@ -1562,6 +1688,56 @@ async function poll(){
 // not on the interval's schedule.
 window.addEventListener('pageshow', (e) => { if(e.persisted) poll(); });
 document.addEventListener('visibilitychange', () => { if(!document.hidden) poll(); });
+
+// ══ THE PHONE BOTTOM SHEET (Phase 11) ═════════════════════
+// On small screens the feed, the transcript and the steer bar MOVE into
+// the sheet (same DOM nodes — every renderer and listener keeps working);
+// on wide screens they move back into their panels. Collapsed, the sheet
+// peeks the newest nudge; open, it shows tabs and the steer bar.
+const mobileMq = matchMedia('(max-width:640px)');
+let sheetMounted = false;
+function mountSheet(){
+  if(sheetMounted) return;
+  sheetMounted = true;
+  document.getElementById('sheetBody').append(document.getElementById('feed'), document.getElementById('transcript'));
+  document.getElementById('sheetFoot').appendChild(document.querySelector('.steer-bar'));
+  sheetTab('activity');
+}
+function unmountSheet(){
+  if(!sheetMounted) return;
+  sheetMounted = false;
+  const nudgesPanel = document.getElementById('nudges');
+  const feed = document.getElementById('feed');
+  const transcript = document.getElementById('transcript');
+  feed.style.display = '';
+  transcript.style.display = '';
+  nudgesPanel.insertBefore(feed, document.getElementById('steerHint'));
+  nudgesPanel.appendChild(document.querySelector('.steer-bar'));
+  document.getElementById('transcriptPanel').appendChild(transcript);
+  document.getElementById('sheet').classList.remove('open');
+}
+function syncSheetLayout(){
+  if(mobileMq.matches) mountSheet(); else unmountSheet();
+}
+if(mobileMq.addEventListener) mobileMq.addEventListener('change', syncSheetLayout);
+else if(mobileMq.addListener) mobileMq.addListener(syncSheetLayout); // older Safari
+syncSheetLayout();
+
+function toggleSheet(){
+  document.getElementById('sheet').classList.toggle('open');
+}
+function sheetTab(which){
+  document.getElementById('feed').style.display = which === 'activity' ? '' : 'none';
+  document.getElementById('transcript').style.display = which === 'transcript' ? '' : 'none';
+  document.getElementById('tabActivity').classList.toggle('active', which === 'activity');
+  document.getElementById('tabTranscript').classList.toggle('active', which === 'transcript');
+  // Land at the useful end: newest nudge is at the top of the feed, the
+  // newest caption at the bottom of the transcript.
+  if(which === 'transcript'){
+    const t = document.getElementById('transcript');
+    t.scrollTop = t.scrollHeight;
+  }
+}
 
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
 let scheduledMinutes = 30;

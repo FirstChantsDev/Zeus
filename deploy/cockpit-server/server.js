@@ -166,6 +166,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         briefClaimed: false, // the bot has collected this brief and owns the meeting
         steerQueue: [],      // owner instructions waiting for the bot's next check-in
         editQueue: [],       // live board edits waiting for the bot's next check-in
+        killRequested: false, // the owner pressed Kill bot — the bot wraps up on its next check-in
     };
     meetings.set(id, meeting);
     return meeting;
@@ -212,6 +213,9 @@ const buildStateJson = (meeting) => {
         mentions: [...meeting.mentions].reverse(),
         meetingUrl: meeting.meetingUrl,
         chatBriefing: Boolean(ANTHROPIC_API_KEY),
+        // The hosted kill switch: POST /kill/<id> queues a shutdown the
+        // cloud bot honours on its next 2s check-in.
+        canShutdown: true,
     };
 };
 
@@ -247,6 +251,9 @@ const buildSummaryJson = () => ({
         ownerName: meeting.ownerName,
         conditionsTotal: meeting.conditions.length,
         conditionsClosed: meeting.conditions.filter((c) => c.status === 'closed').length,
+        // One dot per condition on the phone dashboard: jade closed, red
+        // needs-you (2+ nudges while open), amber still open.
+        conditionStates: meeting.conditions.map((c) => c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open')),
         needsYou: meeting.conditions.some((c) => c.status === 'open' && c.nudges >= 2),
         mentioned: meeting.mentions.length > 0,
     })),
@@ -438,7 +445,7 @@ const LOGIN_PAGE = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zeus — Command Centre</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:#0d1210;color:#eef4f0;font-family:'Inter',sans-serif;font-size:14px;}
@@ -592,7 +599,9 @@ const server = http.createServer(async (req, res) => {
                 meeting.steerQueue = [];
                 const edits = meeting.editQueue;
                 meeting.editQueue = [];
-                answer(res, 200, { ok: true, steers, edits });
+                // kill rides back on the check-in; the bot wraps the meeting
+                // up (record + reset) exactly as if the call had ended.
+                answer(res, 200, { ok: true, steers, edits, kill: Boolean(meeting.killRequested) });
             } catch {
                 answer(res, 400, { ok: false, error: 'body must be JSON' });
             }
@@ -833,15 +842,33 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     if (url === '/auth/callback') {
+        const params = new URL(req.url || '/', 'http://localhost').searchParams;
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        // The owner is on a phone — the deploy log is the WRONG place for
+        // the reason. Put Microsoft's own words on the page.
+        const failPage = (why) => {
+            res.writeHead(500, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+            res.end(`<body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;padding:24px;line-height:1.6">
+              <h2 style="color:#e86a5e">Calendar sign-in failed</h2>
+              <p style="font-family:monospace;font-size:13px;color:#e8a24a;word-break:break-word">${escapeHtml(why).slice(0, 600)}</p>
+              <p style="color:#8fa39a;font-size:14px">The usual suspects: (1) MS_CLIENT_SECRET on this service is the secret's <b>ID</b>, not its <b>Value</b> — Entra shows both columns; (2) the redirect URI is registered under the <b>SPA</b> platform instead of <b>Web</b> in the Entra app; (3) the registered URI doesn't exactly match this site's /auth/callback.</p>
+              <p><a href="/" style="color:#43c293">← Back to the cockpit</a></p>
+            </body>`);
+        };
+        // Microsoft can come back with an error instead of a code (consent
+        // declined, bad redirect URI...) — show its words, don't throw.
+        if (params.get('error')) {
+            console.error(`Calendar sign-in failed: ${params.get('error')} — ${params.get('error_description') || ''}`);
+            failPage(`${params.get('error')}: ${params.get('error_description') || '(no description from Microsoft)'}`);
+            return;
+        }
         try {
-            const code = new URL(req.url || '/', 'http://localhost').searchParams.get('code') || '';
-            const account = await calendar.handleCallback(req, code);
+            const account = await calendar.handleCallback(req, params.get('code') || '');
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${account.replace(/</g, '&lt;')}</b> — taking you back…</p></body>`);
+            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${escapeHtml(account)}</b> — taking you back…</p></body>`);
         } catch (error) {
             console.error('Calendar sign-in failed:', error);
-            res.writeHead(500, { 'content-type': 'text/plain' });
-            res.end('Calendar sign-in failed — check the deploy log, then try Connect calendar again.');
+            failPage((error && (error.errorCode ? `${error.errorCode}: ${error.errorMessage || error.message}` : error.message)) || 'unknown error');
         }
         return;
     }
@@ -918,6 +945,27 @@ const server = http.createServer(async (req, res) => {
         } catch {
             answer(res, 400, { ok: false, error: 'body must be JSON' });
         }
+        return;
+    }
+
+    // The hosted kill switch — per meeting. With a cloud bot attached the
+    // shutdown is queued for its next 2s check-in; in demo mode (no bot)
+    // the meeting's drawer is dropped on the spot.
+    const killId = idFrom(url, '/kill');
+    if ((url === '/kill' || killId) && req.method === 'POST') {
+        const meeting = killId ? meetings.get(killId) : defaultMeeting();
+        if (!meeting) {
+            answer(res, 404, { ok: false, error: 'meeting not found — it may have already ended' });
+            return;
+        }
+        if (meeting.briefClaimed) {
+            meeting.killRequested = true;
+            console.log(`KILL queued >>> (${meeting.id}) "${meeting.meetingName}" — the bot wraps up on its next check-in`);
+        } else {
+            meetings.delete(meeting.id);
+            console.log(`KILL applied (demo) >>> (${meeting.id}) "${meeting.meetingName}" removed (${meetings.size} still running)`);
+        }
+        answer(res, 200, { ok: true });
         return;
     }
 

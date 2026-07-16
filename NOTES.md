@@ -360,6 +360,15 @@ wiped on every redeploy unless a volume is mounted and
 local. And it is ONE owner's calendar behind ONE access code: anyone who
 has the code sees the pick-list (titles/times, never join links) — same
 trust model as the rest of the hub.
+**"Calendar sign-in failed" on the hosted hub:** the failure page now
+shows Microsoft's own error text (no deploy-log spelunking from a phone).
+The three causes seen in the wild: (1) `MS_CLIENT_SECRET` set to the
+secret's *ID* instead of its *Value* — Entra's secrets table shows both
+columns and the Value is only visible at creation time (make a new secret
+if it's gone); (2) the Railway redirect URI registered under the **SPA**
+platform instead of **Web** — server-side code exchange then fails with a
+PKCE error; (3) the registered URI not byte-identical to
+`https://<cockpit-host>/auth/callback`.
 
 **Future path (parked):** multi-user = per-account token storage keyed to
 each owner; corporate tenants may require admin consent for even this
