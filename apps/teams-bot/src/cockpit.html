@@ -979,8 +979,14 @@ async function initCalendar(){
     renderCalList();
   }catch(e){ /* the calendar is a convenience — the form works without it */ }
 }
-const calWhen = (iso, mins) =>
-  new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + mins + 'm';
+// A meeting happening RIGHT NOW says so — you can send the agent into a
+// call that's already in progress and it joins immediately.
+const calWhen = (iso, mins) => {
+  const startMs = Date.parse(iso);
+  const live = startMs <= Date.now() && Date.now() < startMs + mins * 60000;
+  return (live ? 'NOW · ' : '')
+    + new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + mins + 'm';
+};
 function renderCalList(){
   const box = document.getElementById('calList');
   box.style.display = '';
@@ -1313,7 +1319,9 @@ async function sendAgentIn(){
         meetingUrl, // undefined locally — the bot already knows the link
         // A calendar pick carries its start time: a future meeting shows
         // as SCHEDULED and the bot waits instead of camping in the lobby.
+        // The event id lets the agent FOLLOW the event if it gets moved.
         meetingStart: calSelected !== null ? calMeetings[calSelected].start : undefined,
+        calendarEventId: calSelected !== null ? calMeetings[calSelected].id : undefined,
       }),
     });
     if(response.ok){

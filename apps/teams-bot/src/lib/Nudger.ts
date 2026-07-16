@@ -400,10 +400,14 @@ export class Nudger {
             context: string,
         } | null,
     } | null> {
+        const inProgress = (m: { start: string, durationMinutes: number }) => {
+            const startMs = Date.parse(m.start);
+            return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
+        };
         const calendarLines = args.meetings.length
             ? [
                 'The owner\'s upcoming meetings (their calendar is connected):',
-                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
             ]
             : args.calendarConnected
                 ? ['The owner\'s calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting ("your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead") and take a pasted link.']

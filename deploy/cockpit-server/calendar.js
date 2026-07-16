@@ -155,21 +155,46 @@ const upcomingMeetings = async () => {
         throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
     }
     const data = await response.json();
-    return (data.value ?? []).map((event) => {
-        const start = event.start?.dateTime ? `${event.start.dateTime}Z`.replace(/Z+$/, 'Z') : '';
-        const end = event.end?.dateTime ? `${event.end.dateTime}Z`.replace(/Z+$/, 'Z') : '';
-        const duration = (start && end)
-            ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 60000))
-            : 30;
-        return {
-            id: event.id ?? '',
-            subject: event.subject || 'Untitled meeting',
-            start,
-            end,
-            durationMinutes: duration,
-            joinUrl: event.onlineMeeting?.joinUrl ?? null,
-        };
-    });
+    return (data.value ?? []).map((event) => toMeeting(event));
 };
 
-module.exports = { status, authUrl, handleCallback, upcomingMeetings };
+/** Graph event -> the pick-list shape (shared by the list and by-id fetches) */
+const toMeeting = (event) => {
+    const start = event.start?.dateTime ? `${event.start.dateTime}Z`.replace(/Z+$/, 'Z') : '';
+    const end = event.end?.dateTime ? `${event.end.dateTime}Z`.replace(/Z+$/, 'Z') : '';
+    const duration = (start && end)
+        ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 60000))
+        : 30;
+    return {
+        id: event.id ?? '',
+        subject: event.subject || 'Untitled meeting',
+        start,
+        end,
+        durationMinutes: duration,
+        joinUrl: event.onlineMeeting?.joinUrl ?? null,
+    };
+};
+
+/**
+ * One event by id — the live truth for a meeting a waiting agent tracks.
+ * Returns null when the event was cancelled or deleted.
+ */
+const getEvent = async (id) => {
+    const token = await accessToken();
+    if (!token) throw new Error('Calendar is not connected.');
+    const url = `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(id)}`
+        + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting';
+    const response = await fetch(url, {
+        headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+        const body = await response.text().catch(() => '(no body)');
+        throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+    }
+    const event = await response.json();
+    if (event.isCancelled) return null;
+    return toMeeting({ ...event, id });
+};
+
+module.exports = { status, authUrl, handleCallback, upcomingMeetings, getEvent };

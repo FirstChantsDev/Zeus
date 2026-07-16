@@ -97,13 +97,16 @@ const hub = {
         const answer = await this.call('/bot/brief');
         return (answer && answer.brief) ? answer.brief as BriefFromHub : null;
     },
-    /** Pushes one meeting's snapshot; returns any steers, board edits and kill request queued for it on the website */
-    async pushState(meetingId: string, snapshot: object): Promise<{ steers: string[], edits: BoardEdit[], kill: boolean }> {
+    /** Pushes one meeting's snapshot; returns steers, board edits, any kill
+     *  request, and the CURRENT calendar start (the hub tracks moved events) */
+    async pushState(meetingId: string, snapshot: object): Promise<{ steers: string[], edits: BoardEdit[], kill: boolean, killReason: string | null, meetingStart: string | null }> {
         const answer = await this.call(`/bot/state/${meetingId}`, { method: 'POST', body: snapshot });
         return {
             steers: (answer && Array.isArray(answer.steers)) ? answer.steers as string[] : [],
             edits: (answer && Array.isArray(answer.edits)) ? answer.edits as BoardEdit[] : [],
             kill: Boolean(answer && answer.kill),
+            killReason: (answer && typeof answer.killReason === 'string') ? answer.killReason : null,
+            meetingStart: (answer && typeof answer.meetingStart === 'string') ? answer.meetingStart : null,
         };
     },
     /** Hands the finished meeting's audit record to the hub, which persists it */
@@ -256,22 +259,34 @@ const runMeeting = async (brief: BriefFromHub) => {
     try {
         // A calendar-picked meeting that starts later: hold here (status
         // "scheduled" on the cockpit) and join ~2 minutes before start.
-        // The Kill bot button works throughout the wait.
-        const startMs = brief.meetingStart ? Date.parse(brief.meetingStart) : NaN;
+        // Every check-in refreshes the start from the hub, which tracks the
+        // calendar — a MOVED meeting shifts the wait (later, earlier, or
+        // "join right now"), a CANCELLED one stands the agent down, and the
+        // Kill bot button works throughout.
+        let startMs = brief.meetingStart ? Date.parse(brief.meetingStart) : NaN;
         if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
             console.log(`=== Meeting ${brief.meetingId} starts ${brief.meetingStart} — holding, joining ~2 min before. ===`);
-            let killedWhileWaiting = false;
+            let killedWhileWaiting: string | null = null;
             while (startMs - Date.now() > JOIN_EARLY_MS) {
-                const { kill } = await hub.pushState(brief.meetingId, { meetingStatus: 'scheduled', meetingJoinedAt: null, conditions, nudges, transcript, mentions });
-                if (kill) {
-                    killedWhileWaiting = true;
+                const checkin = await hub.pushState(brief.meetingId, { meetingStatus: 'scheduled', meetingJoinedAt: null, conditions, nudges, transcript, mentions });
+                if (checkin.kill) {
+                    killedWhileWaiting = checkin.killReason || 'shut down from the cockpit before the scheduled start';
                     break;
                 }
+                if (checkin.meetingStart) {
+                    const movedMs = Date.parse(checkin.meetingStart);
+                    if (Number.isFinite(movedMs) && movedMs !== startMs) {
+                        console.log(`=== Meeting ${brief.meetingId} moved: ${new Date(startMs).toISOString()} → ${checkin.meetingStart} ===`);
+                        record.log('meeting-briefed', `The calendar meeting moved to ${checkin.meetingStart} — the agent adjusted its join time.`, { movedTo: checkin.meetingStart });
+                        startMs = movedMs; // earlier (even "now") exits the loop; later keeps waiting
+                    }
+                }
+                if (startMs - Date.now() <= JOIN_EARLY_MS) break;
                 await new Promise((resolve) => setTimeout(resolve, 15000));
             }
             if (killedWhileWaiting) {
-                endReason = 'shut down from the cockpit before the scheduled start';
-                record.log('meeting-ended', 'The owner pressed Kill bot before the scheduled start — the agent never joined.', {});
+                endReason = killedWhileWaiting;
+                record.log('meeting-ended', `Stood down before the scheduled start: ${killedWhileWaiting}.`, {});
                 return; // the finally block still persists the record and frees the hub drawer
             }
             console.log(`=== Meeting ${brief.meetingId} is about to start — joining now. ===`);

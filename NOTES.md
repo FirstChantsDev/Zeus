@@ -381,6 +381,21 @@ slot, and Kill bot cancels the wait. A waiting agent still occupies one
 of the MAX_MEETINGS slots — deliberate, so a scheduled brief can never
 be crowded out by later ones. Pasted-link briefs have no start time and
 behave exactly as before (join immediately).
+- *Meetings in progress:* a calendar meeting happening right now is
+  listed with a NOW marker (pick-list and chat alike) and the agent
+  joins it immediately — its start is in the past, so there is no wait.
+- *Moved and cancelled meetings:* a calendar-picked brief also carries
+  the event id, and while the agent has NOT yet joined, the event is the
+  live source of truth. The hub re-reads it every `CAL_REFRESH_MS`
+  (default 60s; local gate does the same directly): moved later → the
+  agent waits longer; moved earlier — even "from tomorrow to right now"
+  → it joins as soon as it notices (its wait-loop check-in runs every
+  15s); cancelled/deleted → the agent stands down with "the calendar
+  meeting was cancelled or deleted" in its record, and the slot frees.
+  Once the agent is in the room, calendar changes are ignored on
+  purpose. If the join URL changes on a moved meeting after the cloud
+  bot collected the brief, the bot keeps the old URL (known limit; the
+  Join-call button stays honest because the hub updates its copy).
 
 **Future path (parked):** multi-user = per-account token storage keyed to
 each owner; corporate tenants may require admin consent for even this

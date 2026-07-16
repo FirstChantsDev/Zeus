@@ -146,7 +146,7 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
@@ -160,6 +160,8 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         ownerName,
         meetingUrl,
         meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
+        calendarEventId: calendarEventId || null, // lets the hub follow the event if it moves
+        killReason: null, // set when the hub itself stands the agent down (e.g. event cancelled)
         context,
         conditions: labels.map((label, index) => ({ id: `c${index}`, label, status: 'open', nudges: 0 })),
         nudges: [],
@@ -266,6 +268,56 @@ const buildSummaryJson = () => ({
 
 /**
  * ================================================
+ * Calendar tracking — a meeting the agent has NOT yet joined follows its
+ * calendar event: moved later → the agent waits longer; moved earlier
+ * (even to right now) → it joins sooner; cancelled → it stands down.
+ * Runs only for briefs that came from a calendar pick (calendarEventId).
+ * ================================================
+ */
+const CAL_REFRESH_MS = Number(process.env.CAL_REFRESH_MS) || 60000;
+
+const refreshCalendarMeetings = async () => {
+    for (const meeting of meetings.values()) {
+        if (!meeting.calendarEventId || meeting.meetingJoinedAt || meeting.killRequested) continue;
+        let event;
+        try {
+            event = await calendar.getEvent(meeting.calendarEventId);
+        } catch (error) {
+            // Token hiccup / Graph blip — try again next round, say why once here.
+            console.error(`CALENDAR TRACK >>> (${meeting.id}) could not re-read the event:`, error instanceof Error ? error.message : error);
+            continue;
+        }
+        if (!event) {
+            // Cancelled or deleted. A claimed meeting is stood down via the
+            // bot (proper record + reset); an unclaimed one is just dropped.
+            console.log(`CALENDAR TRACK >>> (${meeting.id}) "${meeting.meetingName}" was cancelled — standing the agent down.`);
+            if (meeting.briefClaimed) {
+                meeting.killRequested = true;
+                meeting.killReason = 'the calendar meeting was cancelled or deleted';
+            } else {
+                meetings.delete(meeting.id);
+            }
+            continue;
+        }
+        if (event.start && event.start !== meeting.meetingStart) {
+            console.log(`CALENDAR TRACK >>> (${meeting.id}) "${meeting.meetingName}" moved: ${meeting.meetingStart} → ${event.start}`);
+            meeting.meetingStart = event.start;
+            meeting.scheduledMinutes = event.durationMinutes || meeting.scheduledMinutes;
+            // Unclaimed (demo) meetings keep their own status honest; a
+            // claimed one gets its status from the bot's check-ins.
+            if (!meeting.briefClaimed) {
+                meeting.meetingStatus = Date.parse(event.start) > Date.now() + 120000 ? 'scheduled' : 'connecting';
+            }
+        }
+        if (event.joinUrl && event.joinUrl !== meeting.meetingUrl) {
+            meeting.meetingUrl = event.joinUrl; // rare, but keep the Join button honest
+        }
+    }
+};
+setInterval(() => { void refreshCalendarMeetings().catch(() => { /* next round */ }); }, CAL_REFRESH_MS);
+
+/**
+ * ================================================
  * Demo meeting — plays out against whatever conditions were typed
  * (only when DEMO_MODE=1; the production hub runs with the real bot)
  * ================================================
@@ -353,10 +405,14 @@ const runDemoMeeting = (meeting) => {
 const chatSessions = new Map(); // session token -> { history: [{from, text}], meetings: [UpcomingMeeting] }
 
 const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
+    const inProgress = (m) => {
+        const startMs = Date.parse(m.start);
+        return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
+    };
     const calendarLines = meetingsMeta.length
         ? [
             "The owner's upcoming meetings (their calendar is connected):",
-            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
         ]
         : calendarConnected
             ? ["The owner's calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting (\"your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead\") and take a pasted link."]
@@ -607,7 +663,14 @@ const server = http.createServer(async (req, res) => {
                 meeting.editQueue = [];
                 // kill rides back on the check-in; the bot wraps the meeting
                 // up (record + reset) exactly as if the call had ended.
-                answer(res, 200, { ok: true, steers, edits, kill: Boolean(meeting.killRequested) });
+                // meetingStart is the CURRENT calendar truth — a waiting bot
+                // follows it when the event gets moved.
+                answer(res, 200, {
+                    ok: true, steers, edits,
+                    kill: Boolean(meeting.killRequested),
+                    killReason: meeting.killReason,
+                    meetingStart: meeting.meetingStart,
+                });
             } catch {
                 answer(res, 400, { ok: false, error: 'body must be JSON' });
             }
@@ -703,6 +766,7 @@ const server = http.createServer(async (req, res) => {
                 ownerName: typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '',
                 meetingUrl,
                 meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
+                calendarEventId: typeof parsed.calendarEventId === 'string' ? parsed.calendarEventId : null,
             });
             console.log(`BRIEFED >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')}${DEMO_MODE ? ' (demo meeting starting)' : ''} (${meetings.size}/${MAX_MEETINGS} running)`);
             // A future-start brief stays "scheduled" — the demo playback
@@ -803,6 +867,7 @@ const server = http.createServer(async (req, res) => {
                     ownerName: typeof b.ownerName === 'string' ? b.ownerName.trim() : '',
                     meetingUrl,
                     meetingStart: (picked && picked.start) || null,
+                    calendarEventId: (picked && picked.id) || null,
                 });
                 console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
                 if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') runDemoMeeting(meeting);

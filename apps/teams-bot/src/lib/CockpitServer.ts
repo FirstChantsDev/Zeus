@@ -66,6 +66,9 @@ export type Brief = {
     /** Phase 12: ISO start time from the calendar pick — null when unknown.
      *  A future start makes the bot WAIT and join ~2 min before. */
     meetingStart: string | null;
+    /** Phase 12: the calendar event's id — lets the waiting bot follow the
+     *  event when it is moved or cancelled. Null for pasted links. */
+    calendarEventId: string | null;
 };
 
 /** A live board change made from the cockpit (edit an existing condition, or add one) */
@@ -370,7 +373,7 @@ export class CockpitServer {
     private _acceptBrief(parsed: {
         meetingName?: unknown, conditions?: unknown, context?: unknown,
         lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
-        meetingStart?: unknown,
+        meetingStart?: unknown, calendarEventId?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
             return { ok: false, status: 409, error: 'Agent is already briefed — restart the bot to brief it again.' };
@@ -414,14 +417,23 @@ export class CockpitServer {
             ? parsed.meetingStart
             : null;
         this.meetingStart = meetingStart;
+        const calendarEventId = typeof parsed.calendarEventId === 'string' && parsed.calendarEventId ? parsed.calendarEventId : null;
 
         this.briefed = true;
         this.briefedAt = new Date().toISOString();
         this.meetingName = meetingName;
         this.scheduledMinutes = lengthMinutes;
         this.ownerName = ownerName;
-        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart }); // populates the shared conditions array
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId }); // populates the shared conditions array
         return { ok: true };
+    }
+
+    /** Phase 12: a tracked calendar event moved — keep the page honest. */
+    public updateMeetingStart(iso: string | null, durationMinutes?: number) {
+        this.meetingStart = iso;
+        if (durationMinutes && durationMinutes > 0) {
+            this.scheduledMinutes = durationMinutes;
+        }
     }
 
     /**
@@ -506,6 +518,7 @@ export class CockpitServer {
                         ownerName: result.brief.ownerName,
                         meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
                         meetingStart: picked?.start,
+                        calendarEventId: picked?.id,
                     });
                     if (accepted.ok) {
                         briefedNow = true;

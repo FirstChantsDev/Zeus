@@ -48,6 +48,9 @@ export interface CalendarLike {
     authUrl(): Promise<string>;
     handleCallback(code: string): Promise<string>; // returns the signed-in account name
     upcomingMeetings(): Promise<UpcomingMeeting[]>;
+    /** One event by id — null when it was cancelled/deleted. Lets a waiting
+     *  agent follow a meeting that gets MOVED (earlier or later). */
+    getEvent(id: string): Promise<UpcomingMeeting | null>;
 }
 
 const GRAPH_SCOPES = ['Calendars.Read'];
@@ -170,20 +173,52 @@ export class CalendarConnector implements CalendarLike {
                 onlineMeeting?: { joinUrl?: string } | null,
             }>,
         };
-        return (data.value ?? []).map((event) => {
-            const start = event.start?.dateTime ? `${event.start.dateTime}Z`.replace(/Z+$/, 'Z') : '';
-            const end = event.end?.dateTime ? `${event.end.dateTime}Z`.replace(/Z+$/, 'Z') : '';
-            const duration = (start && end)
-                ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 60000))
-                : 30;
-            return {
-                id: event.id ?? '',
-                subject: event.subject || 'Untitled meeting',
-                start,
-                end,
-                durationMinutes: duration,
-                joinUrl: event.onlineMeeting?.joinUrl ?? null,
-            };
+        return (data.value ?? []).map((event) => CalendarConnector.toMeeting(event));
+    }
+
+    /**
+     * One event by id — the live truth for a meeting the agent is waiting
+     * on. Returns null when the event was cancelled or deleted (Graph
+     * answers 404, or marks it isCancelled).
+     */
+    public async getEvent(id: string): Promise<UpcomingMeeting | null> {
+        const token = await this.accessToken();
+        if (!token) throw new Error('Calendar is not connected.');
+        const url = `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(id)}`
+            + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting';
+        const response = await fetch(url, {
+            headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
         });
+        if (response.status === 404) return null;
+        if (!response.ok) {
+            const body = await response.text().catch(() => '(no body)');
+            throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+        }
+        const event = await response.json() as Record<string, unknown> & { isCancelled?: boolean };
+        if (event.isCancelled) return null;
+        return CalendarConnector.toMeeting({ ...event, id });
+    }
+
+    /** Graph event -> the pick-list shape (shared by the list and by-id fetches) */
+    private static toMeeting(event: {
+        id?: string,
+        subject?: string,
+        start?: { dateTime?: string },
+        end?: { dateTime?: string },
+        onlineMeeting?: { joinUrl?: string } | null,
+    }): UpcomingMeeting {
+        const start = event.start?.dateTime ? `${event.start.dateTime}Z`.replace(/Z+$/, 'Z') : '';
+        const end = event.end?.dateTime ? `${event.end.dateTime}Z`.replace(/Z+$/, 'Z') : '';
+        const duration = (start && end)
+            ? Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 60000))
+            : 30;
+        return {
+            id: event.id ?? '',
+            subject: event.subject || 'Untitled meeting',
+            start,
+            end,
+            durationMinutes: duration,
+            joinUrl: event.onlineMeeting?.joinUrl ?? null,
+        };
     }
 }

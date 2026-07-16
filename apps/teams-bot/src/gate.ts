@@ -143,7 +143,14 @@ const main = async () => {
 
     // Phase 12: a calendar-picked meeting that starts later — the bot waits
     // and joins ~2 minutes before, instead of idling in an empty lobby.
+    // While waiting it re-reads the event so a MOVED meeting shifts the
+    // join time and a CANCELLED one stands the agent down.
     let scheduledStartIso: string | null = null;
+    let trackedEventId: string | null = null;
+
+    // Phase 10: the owner's Outlook calendar (read-only). Unconfigured it
+    // reports so, and the briefing screen shows no calendar UI.
+    const calendar = new CalendarConnector();
 
     // Everything the agent says — self-driven nudges and owner steers alike —
     // goes through one queue, one message at a time, in order.
@@ -158,10 +165,7 @@ const main = async () => {
         conditions,
         port: COCKPIT_PORT,
         meetingUrl: meetingUrlArg, // may be '' — a calendar pick or pasted link fills it at brief time
-        // Phase 10: the owner's Outlook calendar (read-only). Unconfigured
-        // (no MS_CLIENT_ID/MS_CLIENT_SECRET in .env) it reports so and the
-        // briefing screen simply doesn't show any calendar UI.
-        calendar: new CalendarConnector(),
+        calendar,
         // Phase 10 M3: chat-mode briefing — the model collects the brief
         // conversationally and matches it against the calendar meetings.
         onBriefChat: nudger
@@ -177,6 +181,7 @@ const main = async () => {
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
             activeMeetingUrl = brief.meetingUrl; // Phase 10: calendar pick / pasted link / launch arg
             scheduledStartIso = brief.meetingStart; // Phase 12: null unless picked from the calendar
+            trackedEventId = brief.calendarEventId;
             wasBriefed = true;
             record.briefed(brief);             // the audit trail starts here
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
@@ -253,13 +258,33 @@ const main = async () => {
     await briefed;
 
     // Phase 12: hold for a future start (Kill bot / Ctrl+C work throughout).
+    // The calendar event is re-read every ~minute: moved → the join time
+    // shifts (even to "right now"); cancelled → the agent stands down.
     const JOIN_EARLY_MS = 2 * 60000;
-    const startMs = scheduledStartIso ? Date.parse(scheduledStartIso) : NaN;
+    let startMs = scheduledStartIso ? Date.parse(scheduledStartIso) : NaN;
     if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
         cockpit.setMeetingStatus('scheduled');
         console.log(`\n=== Meeting starts ${scheduledStartIso} — waiting, the agent joins ~2 minutes before. ===\n`);
+        let ticks = 0;
         while (startMs - Date.now() > JOIN_EARLY_MS) {
             await new Promise((resolve) => setTimeout(resolve, 15000));
+            if (!trackedEventId || ++ticks % 4 !== 0) continue; // re-read roughly every minute
+            try {
+                const event = await calendar.getEvent(trackedEventId);
+                if (!event) {
+                    await shutdown('the calendar meeting was cancelled or deleted before it started');
+                    return;
+                }
+                const movedMs = Date.parse(event.start);
+                if (Number.isFinite(movedMs) && movedMs !== startMs) {
+                    console.log(`=== Meeting moved: ${new Date(startMs).toISOString()} → ${event.start} — adjusting. ===`);
+                    record.log('meeting-briefed', `The calendar meeting moved to ${event.start} — the agent adjusted its join time.`, { movedTo: event.start });
+                    startMs = movedMs;
+                    cockpit.updateMeetingStart(event.start, event.durationMinutes);
+                }
+            } catch (error) {
+                console.error('Could not re-read the tracked calendar event (will retry):', error instanceof Error ? error.message : error);
+            }
         }
         cockpit.setMeetingStatus('connecting');
     }
