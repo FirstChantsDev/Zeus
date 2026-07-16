@@ -1139,6 +1139,13 @@ function bcConfirmChips(btn){
 // restarts recognition (keeping the text so far) until the owner stops.
 const BcSR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let bcRec = null, bcMicOn = false, bcStopRequested = false, bcDictationBase = '';
+// Committed (final) speech this session, and which result slots were
+// already committed. Android reports interim guesses as CUMULATIVE
+// snapshots and leaves the stale ones in the list — so only FINAL
+// results are appended (each exactly once), and of the interim guesses
+// only the newest is shown, as the live tail.
+let bcCommitted = '';
+let bcSeenFinals = new Set();
 if(BcSR && matchMedia('(pointer: coarse)').matches){
   document.getElementById('bcMic').style.display = '';
 }
@@ -1171,8 +1178,19 @@ function bcMicTap(){
     const input = document.getElementById('bcInput');
     // Dictation appends to whatever is already typed.
     bcDictationBase = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
+    bcCommitted = '';
+    bcSeenFinals = new Set();
     bcRec.onresult = (e) => {
-      input.value = bcDictationBase + [...e.results].map((r) => r[0].transcript).join('');
+      let interim = '';
+      for(let i = e.resultIndex || 0; i < e.results.length; i++){
+        const r = e.results[i];
+        if(r.isFinal){
+          if(!bcSeenFinals.has(i)){ bcSeenFinals.add(i); bcCommitted += r[0].transcript.trim() + ' '; }
+        } else {
+          interim = r[0].transcript; // cumulative on Android — the newest wins
+        }
+      }
+      input.value = (bcDictationBase + bcCommitted + interim).replace(/ {2,}/g, ' ');
       bcAutoGrow();
     };
     bcRec.onerror = (e) => {
@@ -1184,7 +1202,11 @@ function bcMicTap(){
     bcRec.onend = () => {
       if(!bcStopRequested && bcMicOn){
         // The browser gave up on a silence — carry on where we left off.
+        // Everything so far becomes the base; the NEW session starts with
+        // a clean committed buffer and fresh result indices.
         bcDictationBase = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
+        bcCommitted = '';
+        bcSeenFinals = new Set();
         try{ bcRec.start(); return; }catch(e){ /* fall through to off */ }
       }
       bcMicOff();
