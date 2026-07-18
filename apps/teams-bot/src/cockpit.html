@@ -3,60 +3,77 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zeus — Command Centre</title>
+<title>Clarus — Command Centre</title>
 <!-- media="print" + onload flip = non-blocking fonts: on a slow or flaky
      connection (phones!) a hanging stylesheet must never delay the page's
      script — system fonts render first and the web fonts swap in. -->
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 button,input,textarea{font-family:inherit;}
 
+/* ══ CLARUS DESIGN TOKENS ══════════════════════════════════
+   The single place to tweak the palette. Warm, light, editorial:
+   ink text on cream, white cards, one confident blue accent. */
 :root{
-  --ink:#0d1210;
-  --s1:#131a17;
-  --s2:#1a231f;
-  --s3:#223029;
-  --line:rgba(255,255,255,.07);
-  --line2:rgba(255,255,255,.13);
-  --t1:#eef4f0;
-  --t2:#8fa39a;
-  --t3:#57685f;
-  --jade:#43c293;
-  --jade-bg:rgba(67,194,147,.10);
-  --jade-bd:rgba(67,194,147,.32);
-  --amber:#e8a24a;
-  --amber-bg:rgba(232,162,74,.10);
-  --amber-bd:rgba(232,162,74,.32);
-  --red:#e86a5e;
-  --red-bg:rgba(232,106,94,.10);
-  --red-bd:rgba(232,106,94,.38);
-  /* Phase 5: owner-attention blue — distinct from red condition exceptions */
-  --att:#6fb1e8;
-  --att-bg:rgba(111,177,232,.10);
-  --att-bd:rgba(111,177,232,.38);
-  --head:'Bricolage Grotesque',sans-serif;
-  --body:'Inter',sans-serif;
+  /* Surfaces */
+  --bg:#faf8f3;            /* page background — cream */
+  --bg-2:#f4f1e8;          /* slightly darker section background */
+  --s1:#ffffff;            /* card / surface */
+  --s2:#fcfbf7;            /* faint card */
+  --s3:#f4f1e8;            /* chips, wells, scroll thumbs */
+  /* Borders */
+  --line:#eee9dd;          /* lighter hairline */
+  --line2:#e3ded2;         /* hairline */
+  --dash:#cfc9ba;          /* dashed / softer borders */
+  /* Text */
+  --ink:#1c1a16;           /* primary text — near-black ink */
+  --t1:#1c1a16;            /* primary text (alias) */
+  --t2:#5d5849;            /* secondary text */
+  --t3:#8a8474;            /* muted text / labels */
+  --t4:#a39d8f;            /* faint text */
+  /* The single accent — blue. The agent's presence, primary actions,
+     active states, links, progress. */
+  --blue:#2b3fc4;
+  --blue-bg:#eef0fb;       /* tint background for agent/active surfaces */
+  --blue-bd:#c7cdf0;       /* tint border */
+  --blue-2:#4a5fb0;        /* darker blue for secondary text on blue tint */
+  --blue-track:#d8ddf5;    /* progress track on blue tint */
+  /* Status colours — same meanings as always, Clarus hues */
+  --green:#1f7659;  --green-bg:#e9f4ef; --green-bd:#b7d9cb;   /* closed / done */
+  --amber:#a07826;  --amber-bg:#fdf7ea; --amber-bd:#e8c98f;   /* open / waiting (text) */
+  --amber-2:#c9932e;                                          /* open / waiting (accents) */
+  --red:#a8503a;    --red-bg:#f8ece6;  --red-bd:#dfb4a3;      /* needs you / stalled — clay */
+  /* Legacy aliases (older rules in this file still use these names):
+     the agent's colour and the owner-attention colour are both the blue. */
+  --jade:var(--blue); --jade-bg:var(--blue-bg); --jade-bd:var(--blue-bd);
+  --att:var(--blue);  --att-bg:var(--blue-bg);  --att-bd:var(--blue-bd);
+  /* Type & shape */
+  --head:'Newsreader',Georgia,serif;
+  --body:'Instrument Sans',sans-serif;
   --mono:'IBM Plex Mono',monospace;
-  --r:12px;
+  --r:14px;                /* default card corners */
+  --r-lg:18px;             /* large feature cards */
+  --shadow:0 30px 70px rgba(60,50,30,.09);  /* soft warm shadow, major cards only */
 }
 
-html,body{height:100%;background:var(--ink);color:var(--t1);font-family:var(--body);font-size:14px;}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;}
+a{color:var(--blue);}
 body{display:flex;flex-direction:column;overflow:hidden;}
 
 /* ══ BRIEFING SCREEN (Phase 3 — markup/CSS from the reference mock) ══ */
 #briefing{
-  position:fixed;inset:0;z-index:100;background:var(--ink);
+  position:fixed;inset:0;z-index:100;background:var(--bg);
   display:flex;align-items:center;justify-content:center;
   transition:opacity .6s, visibility .6s;
 }
 #briefing.gone{opacity:0;visibility:hidden;}
 .brief-card{width:min(560px,92vw);max-height:92vh;overflow-y:auto;padding:8px 4px;}
-.brief-mark{font-family:var(--head);font-weight:700;font-size:20px;letter-spacing:-.4px;margin-bottom:22px;}
-.brief-mark em{font-style:normal;color:var(--jade);}
-.brief-title{font-family:var(--head);font-weight:600;font-size:26px;letter-spacing:-.6px;line-height:1.2;margin-bottom:6px;}
+.brief-mark{font-family:var(--head);font-style:italic;font-weight:600;font-size:23px;letter-spacing:-.02em;margin-bottom:22px;}
+.brief-mark em{font-style:italic;color:var(--blue);}
+.brief-title{font-family:var(--head);font-weight:500;font-size:30px;letter-spacing:-.02em;line-height:1.15;margin-bottom:6px;}
 .brief-sub{font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:26px;}
-.f-label{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--t3);margin:18px 0 8px;text-transform:uppercase;}
+.f-label{font-family:var(--body);font-weight:600;font-size:10.5px;letter-spacing:.12em;color:var(--t3);margin:18px 0 8px;text-transform:uppercase;}
 .f-input{
   width:100%;background:var(--s2);border:1px solid var(--line2);border-radius:10px;
   padding:11px 13px;color:var(--t1);font-size:13.5px;outline:none;
@@ -76,8 +93,8 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .cond-add:hover{border-color:var(--jade-bd);color:var(--jade);}
 .cond-add.maxed{display:none;}
 .brief-go{
-  margin-top:26px;width:100%;background:var(--jade);border:none;border-radius:11px;
-  padding:13px;font-family:var(--head);font-weight:600;font-size:15px;color:#08110d;
+  margin-top:26px;width:100%;background:var(--blue);border:none;border-radius:999px;
+  padding:13px;font-family:var(--body);font-weight:600;font-size:15px;color:#fff;
   cursor:pointer;letter-spacing:-.2px;
 }
 .brief-go:hover{filter:brightness(1.07);}
@@ -87,8 +104,8 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-error.show{display:block;}
 /* Phase 10: pick the meeting from the connected Outlook calendar */
 .cal-connect{
-  width:100%;background:none;border:1px solid var(--jade-bd);border-radius:10px;
-  padding:10px;color:var(--jade);font-family:var(--head);font-weight:600;font-size:13px;cursor:pointer;
+  width:100%;background:none;border:1px solid var(--blue);border-radius:999px;
+  padding:10px;color:var(--blue);font-family:var(--body);font-weight:600;font-size:13px;cursor:pointer;
 }
 .cal-connect:hover{background:var(--jade-bg);}
 .cal-list{display:flex;flex-direction:column;gap:6px;max-height:216px;overflow-y:auto;}
@@ -118,19 +135,19 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bc-msg.owner{align-self:flex-end;background:var(--jade-bg);border:1px solid var(--jade-bd);border-bottom-right-radius:4px;}
 .bc-actions{display:flex;gap:8px;flex-wrap:wrap;align-self:flex-start;}
 .bc-actions button{
-  background:none;border:1px solid var(--jade-bd);border-radius:999px;padding:7px 14px;
-  color:var(--jade);font-size:12.5px;cursor:pointer;font-family:var(--head);font-weight:600;
+  background:none;border:1px solid var(--blue);border-radius:999px;padding:7px 14px;
+  color:var(--blue);font-size:12.5px;cursor:pointer;font-family:var(--body);font-weight:600;
 }
-.bc-actions button:hover{background:var(--jade-bg);}
-.bc-actions button.alt{border-color:var(--line2);color:var(--t2);}
+.bc-actions button:hover{background:var(--blue-bg);}
+.bc-actions button.alt{border-color:var(--dash);color:var(--t2);}
 .bc-list{display:flex;flex-direction:column;gap:6px;align-self:stretch;}
 .bc-row{display:flex;gap:9px;align-items:flex-end;}
 .bc-row input,.bc-row textarea{flex:1;min-width:0;}
 /* Dictation-friendly: the box grows with what you say (capped ~5 lines). */
 .bc-row textarea{resize:none;overflow-y:auto;max-height:132px;line-height:1.45;}
 .bc-row button{
-  flex:0 0 auto;background:var(--jade);border:none;border-radius:10px;padding:0 18px;
-  font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;
+  flex:0 0 auto;background:var(--blue);border:none;border-radius:999px;padding:0 18px;
+  font-family:var(--body);font-weight:600;font-size:13px;color:#fff;cursor:pointer;
 }
 .bc-row button:disabled{opacity:.5;}
 /* Phase 9: browser-native voice input (Web Speech API) — mobile only */
@@ -138,7 +155,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   flex:0 0 46px !important;height:46px;background:var(--s3) !important;color:var(--jade) !important;
   border:1px solid var(--jade-bd) !important;border-radius:12px;font-size:18px;position:relative;padding:0 !important;
 }
-.bc-mic.on{background:var(--jade) !important;color:#08110d !important;}
+.bc-mic.on{background:var(--jade) !important;color:#fff !important;}
 .bc-mic.on::after{content:'';position:absolute;inset:-5px;border-radius:16px;border:2px solid var(--jade);animation:micring 1.1s ease infinite;}
 @keyframes micring{0%{opacity:.7;transform:scale(.95);}100%{opacity:0;transform:scale(1.18);}}
 .bc-listen-hint{font-family:var(--mono);font-size:10.5px;color:var(--jade);letter-spacing:.6px;text-align:center;margin-bottom:6px;display:none;}
@@ -146,15 +163,15 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 /* Phase 9: proposed conditions as editable chips — amber until confirmed, jade after */
 .bc-chips{align-self:stretch;display:flex;flex-direction:column;gap:8px;}
 .bchip{display:flex;align-items:center;gap:9px;border:1px solid var(--amber-bd);background:var(--amber-bg);border-radius:13px;padding:11px 12px;}
-.bchip.ok{border-color:var(--jade-bd);background:var(--jade-bg);}
+.bchip.ok{border-color:var(--green-bd);background:var(--green-bg);}
 .bchip .n{font-family:var(--mono);font-size:10px;color:var(--amber);flex:0 0 auto;}
-.bchip.ok .n{color:var(--jade);}
+.bchip.ok .n{color:var(--green);}
 .bchip input{flex:1;background:none;border:none;outline:none;color:var(--t1);font-size:13.5px;font-weight:500;min-width:0;}
 .bchip .x{flex:0 0 auto;background:none;border:none;color:var(--t3);font-size:17px;cursor:pointer;padding:4px;line-height:1;}
 .bc-chip-actions{display:flex;gap:8px;margin-top:2px;}
 .bc-chip-actions .ghost{flex:1;background:none;border:1px dashed var(--line2);border-radius:12px;padding:11px;color:var(--t2);font-size:12.5px;cursor:pointer;}
 .bc-chip-actions .ghost:hover{border-color:var(--jade-bd);color:var(--jade);}
-.bc-chip-actions .solid{flex:1.4;background:var(--jade);border:none;border-radius:12px;padding:11px;color:#08110d;font-weight:600;font-size:13.5px;cursor:pointer;font-family:var(--head);}
+.bc-chip-actions .solid{flex:1.4;background:var(--blue);border:none;border-radius:999px;padding:11px;color:#fff;font-weight:600;font-size:13.5px;cursor:pointer;font-family:var(--body);}
 @media (max-width:640px){
   .bc-thread{max-height:56vh;}
   .bc-row input,.bc-row textarea{font-size:16px;min-height:46px;} /* 16px stops iPhone zoom */
@@ -171,14 +188,14 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-back:hover{color:var(--jade);}
 
 /* ══ OVERSEER DASHBOARD (Phase 7c) — all running agents at a glance ══ */
-#dashboard{position:fixed;inset:0;z-index:90;background:var(--ink);display:none;overflow-y:auto;padding:0 22px 24px;}
+#dashboard{position:fixed;inset:0;z-index:90;background:var(--bg);display:none;overflow-y:auto;padding:0 22px 24px;}
 #dashboard.show{display:block;}
 .dash-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap;}
 .dash-title{font-family:var(--head);font-weight:600;font-size:16px;letter-spacing:-.3px;}
 .dash-sub{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:.5px;}
 .dash-new{
-  margin-left:auto;background:var(--jade);border:none;border-radius:9px;padding:9px 16px;
-  font-family:var(--head);font-weight:600;font-size:13px;color:#08110d;cursor:pointer;white-space:nowrap;
+  margin-left:auto;background:var(--blue);border:none;border-radius:999px;padding:9px 18px;
+  font-family:var(--body);font-weight:600;font-size:13px;color:#fff;cursor:pointer;white-space:nowrap;
 }
 .dash-new:hover{filter:brightness(1.07);}
 .dash-new:disabled{opacity:.45;cursor:not-allowed;}
@@ -194,7 +211,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .agent-top{display:flex;align-items:center;gap:10px;}
 .agent-name{font-family:var(--head);font-weight:600;font-size:15px;letter-spacing:-.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .agent-meta{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--t2);flex-wrap:wrap;}
-.agent-meta .closed-count{color:var(--jade);}
+.agent-meta .closed-count{color:var(--green);}
 .agent-meta .cd-warn{color:var(--amber);}
 .agent-meta .cd-over{color:var(--red);}
 .agent-flags{display:flex;gap:8px;flex-wrap:wrap;min-height:22px;}
@@ -235,8 +252,8 @@ header{
   padding:4px 8px 6px 0;cursor:pointer;flex:0 0 auto;
 }
 .hdr-back:hover{color:var(--jade);}
-.wordmark{font-family:var(--head);font-weight:700;font-size:17px;letter-spacing:-.4px;}
-.wordmark em{font-style:normal;color:var(--jade);}
+.wordmark{font-family:var(--head);font-style:italic;font-weight:600;font-size:20px;letter-spacing:-.02em;}
+.wordmark em{font-style:italic;color:var(--blue);}
 .meeting{display:flex;align-items:center;gap:9px;margin-left:8px;padding-left:16px;border-left:1px solid var(--line2);}
 .meeting-name{font-size:13px;font-weight:500;color:var(--t2);}
 .live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--jade);letter-spacing:.5px;}
@@ -251,25 +268,25 @@ header{
 .countdown.over{color:var(--red);}
 /* Phase 5: opens the meeting link so the owner joins as themselves */
 .join-btn{
-  background:none;border:1px solid var(--jade-bd);border-radius:9px;padding:6px 13px;
-  font-family:var(--head);font-weight:600;font-size:12px;color:var(--jade);cursor:pointer;
+  background:none;border:1px solid var(--blue);border-radius:999px;padding:6px 14px;
+  font-family:var(--body);font-weight:600;font-size:12px;color:var(--blue);cursor:pointer;
   letter-spacing:-.1px;white-space:nowrap;
 }
 .join-btn:hover{background:var(--jade-bg);}
 /* The kill switch: shuts the local bot process down from the cockpit */
 .kill-btn{
-  background:none;border:1px solid var(--red-bd);border-radius:9px;padding:6px 13px;
-  font-family:var(--head);font-weight:600;font-size:12px;color:var(--red);cursor:pointer;
+  background:none;border:1px solid var(--red-bd);border-radius:999px;padding:6px 14px;
+  font-family:var(--body);font-weight:600;font-size:12px;color:var(--red);cursor:pointer;
   letter-spacing:-.1px;white-space:nowrap;
 }
 .kill-btn:hover{background:var(--red-bg);}
 /* History: opens the past-meetings view (works before and during a meeting) */
 .hist-btn{
-  background:none;border:1px solid var(--line2);border-radius:9px;padding:6px 13px;
-  font-family:var(--head);font-weight:600;font-size:12px;color:var(--t2);cursor:pointer;
+  background:none;border:1px solid var(--dash);border-radius:999px;padding:6px 14px;
+  font-family:var(--body);font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;
   letter-spacing:-.1px;white-space:nowrap;
 }
-.hist-btn:hover{color:var(--jade);border-color:var(--jade-bd);}
+.hist-btn:hover{color:var(--blue);border-color:var(--blue);}
 
 /* ══ LIVE BOARD EDITING — edit a condition / add one mid-call ══ */
 .cond-edit-btn{
@@ -286,11 +303,11 @@ header{
 .cond-editor .f-input{font-size:13px;}
 .cond-editor-row{display:flex;gap:8px;}
 .cond-save{
-  flex:1;background:var(--jade);border:none;border-radius:9px;padding:9px;
-  font-family:var(--head);font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;
+  flex:1;background:var(--blue);border:none;border-radius:999px;padding:9px;
+  font-family:var(--body);font-weight:600;font-size:12.5px;color:#fff;cursor:pointer;
 }
 .cond-cancel{
-  flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:9px;padding:9px 14px;
+  flex:0 0 auto;background:none;border:1px solid var(--dash);border-radius:999px;padding:9px 14px;
   font-size:12.5px;color:var(--t2);cursor:pointer;
 }
 .cond-cancel:hover{color:var(--red);border-color:var(--red-bd);}
@@ -298,15 +315,15 @@ header{
 .cond-editor-hint{font-size:11px;color:var(--t3);line-height:1.4;}
 
 /* ══ HISTORY — past meetings, their records, and the metrics strip ══ */
-#history{position:fixed;inset:0;z-index:120;background:var(--ink);display:none;overflow-y:auto;padding:0 22px 28px;}
+#history{position:fixed;inset:0;z-index:120;background:var(--bg);display:none;overflow-y:auto;padding:0 22px 28px;}
 #history.show{display:block;}
-.hist-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap;position:sticky;top:0;background:var(--ink);z-index:1;}
+.hist-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:1;}
 .hist-title{font-family:var(--head);font-weight:600;font-size:16px;letter-spacing:-.3px;}
 .hist-back{
-  background:none;border:1px solid var(--line2);border-radius:9px;padding:7px 14px;
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.4px;color:var(--t2);cursor:pointer;white-space:nowrap;
+  background:none;border:1px solid var(--dash);border-radius:999px;padding:7px 14px;
+  font-family:var(--body);font-weight:600;font-size:11.5px;letter-spacing:.4px;color:var(--ink);cursor:pointer;white-space:nowrap;
 }
-.hist-back:hover{color:var(--jade);border-color:var(--jade-bd);}
+.hist-back:hover{color:var(--blue);border-color:var(--blue);}
 .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
 .metric{
   background:var(--s1);border:1px solid var(--line);border-radius:var(--r);
@@ -324,7 +341,7 @@ header{
 .hist-item:hover{border-color:var(--jade-bd);}
 .hist-item .h-name{font-family:var(--head);font-weight:600;font-size:14.5px;letter-spacing:-.2px;flex:1;min-width:160px;}
 .hist-item .h-meta{font-family:var(--mono);font-size:11px;color:var(--t2);display:flex;gap:12px;flex-wrap:wrap;}
-.hist-item .h-meta .closed{color:var(--jade);}
+.hist-item .h-meta .closed{color:var(--green);}
 .hist-item .h-meta .none-closed{color:var(--amber);}
 .hist-chip{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--t3);white-space:nowrap;}
 .hist-chip.edited{color:var(--att);border-color:var(--att-bd);background:var(--att-bg);}
@@ -343,7 +360,7 @@ header{
 .hd-event{display:flex;gap:12px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5;}
 .hd-event .e-time{font-family:var(--mono);font-size:11px;color:var(--t3);flex:0 0 auto;padding-top:1px;}
 .hd-event .e-detail{color:var(--t2);}
-.hd-event.e-closed .e-detail{color:var(--jade);}
+.hd-event.e-closed .e-detail{color:var(--green);}
 .hd-event.e-edit .e-detail{color:var(--att);}
 .hd-event.e-mention .e-detail{color:var(--att);}
 @media (max-width:640px){
@@ -367,7 +384,7 @@ header{
 .mention-quote .spk{color:var(--att);}
 .mention-dismiss{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;}
 .mention-dismiss:hover{color:var(--t1);border-color:var(--att-bd);}
-@keyframes breatheBlue{0%,100%{box-shadow:inset 0 0 0 0 rgba(111,177,232,0);}50%{box-shadow:inset 0 -4px 14px -8px rgba(111,177,232,.35);}}
+@keyframes breatheBlue{0%,100%{box-shadow:inset 0 0 0 0 rgba(43,63,196,0);}50%{box-shadow:inset 0 -4px 14px -8px rgba(43,63,196,.22);}}
 
 /* ══ LAYOUT ══ */
 main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:auto 1fr;gap:14px;padding:16px 22px 18px;min-height:0;}
@@ -393,8 +410,8 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t3);}
 .cond.open{border-color:var(--amber-bd);background:linear-gradient(180deg,var(--amber-bg),var(--s2) 70%);}
 .cond.open .badge{color:var(--amber);border-color:var(--amber-bd);}
-.cond.closed{border-color:var(--jade-bd);background:linear-gradient(180deg,var(--jade-bg),var(--s2) 70%);}
-.cond.closed .badge{color:var(--jade);border-color:var(--jade-bd);}
+.cond.closed{border-color:var(--green-bd);background:linear-gradient(180deg,var(--green-bg),var(--s2) 70%);}
+.cond.closed .badge{color:var(--green);border-color:var(--green-bd);}
 /* Phase 4: the expand control + fuller "why" panel on each card */
 .cond-expand{
   flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
@@ -403,11 +420,11 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond-expand:hover{color:var(--jade);border-color:var(--jade-bd);}
 .cond-why{font-size:12px;color:var(--t2);line-height:1.5;border-top:1px solid var(--line);padding-top:8px;}
 /* Phase 5: the verbatim transcript quote(s) behind a judgement — the receipt */
-.cond-quote{font-family:var(--mono);font-size:11px;color:var(--jade);line-height:1.5;margin-top:6px;}
+.cond-quote{font-family:var(--mono);font-size:11px;color:var(--green);line-height:1.5;margin-top:6px;}
 .cond-quote .spk{color:var(--t2);}
 .cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
 .cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
-@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(232,106,94,0);}50%{box-shadow:0 0 0 5px rgba(232,106,94,.08);}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(168,80,58,0);}50%{box-shadow:0 0 0 5px rgba(168,80,58,.10);}}
 
 /* ══ NUDGE FEED ══ */
 /* Phase 7a: real top padding — the newest item used to sit clipped
@@ -418,8 +435,8 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .nudge-tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--jade);}
 .nudge-cond{font-size:11px;color:var(--t3);}
 .nudge-status{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.5px;}
-.nudge-status.landed{color:var(--jade);}
-.nudge-status.sent{color:var(--jade);}
+.nudge-status.landed{color:var(--green);}
+.nudge-status.sent{color:var(--blue);}
 .nudge-status.waiting{color:var(--amber);}
 .nudge-status.ignored{color:var(--red);}
 .nudge-text{font-size:12.5px;line-height:1.5;color:var(--t1);}
@@ -431,8 +448,8 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .transcript{flex:1;overflow-y:auto;padding:2px 16px 12px;display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:12px;line-height:1.55;}
 .tline{color:var(--t2);}
 .tline .spk{color:var(--t1);font-weight:500;}
-.tline.hit{color:var(--jade);}
-.tline.hit .spk{color:var(--jade);}
+.tline.hit{color:var(--green);}
+.tline.hit .spk{color:var(--green);}
 
 /* ══ STEERING ══ */
 #nudges{grid-row:2;}
@@ -445,15 +462,15 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .steer-bar input:focus{border-color:var(--jade-bd);}
 .steer-bar input::placeholder{color:var(--t3);}
 .steer-bar button{
-  background:var(--jade);border:none;border-radius:9px;padding:0 16px;
-  font-weight:600;font-size:12.5px;color:#08110d;cursor:pointer;white-space:nowrap;
+  background:var(--blue);border:none;border-radius:999px;padding:0 18px;
+  font-weight:600;font-size:12.5px;color:#fff;cursor:pointer;white-space:nowrap;
 }
 .steer-bar input:disabled{opacity:.45;}
 .steer-bar button:disabled{opacity:.45;cursor:not-allowed;}
 .steer-hint{font-size:11px;color:var(--t3);padding:0 16px 12px;}
 
 ::-webkit-scrollbar{width:8px;}
-::-webkit-scrollbar-thumb{background:var(--s3);border-radius:4px;}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
 
 /* ══ PHONE BOTTOM SHEET + DASHBOARD EXTRAS (Phase 11) ══
@@ -522,14 +539,14 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   #sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:60;flex-direction:column;
     background:var(--s1);border:1px solid var(--line2);border-bottom:none;
-    border-radius:20px 20px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);
+    border-radius:20px 20px 0 0;box-shadow:0 -18px 44px rgba(60,50,30,.16);
     max-height:82dvh;transition:transform .22s ease;
   }
   #sheet.dragging{transition:none;}
   #sheetGrip,#sheetPeek{touch-action:none;} /* the drag owns these — not page scroll */
   #sheet.open{height:78dvh;}
   #sheetGrip{padding:10px 0 4px;display:flex;justify-content:center;cursor:pointer;flex:0 0 auto;}
-  .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--s3);}
+  .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--dash);}
   #sheetPeek{display:flex;gap:10px;align-items:baseline;padding:2px 16px 14px;font-family:var(--mono);font-size:12px;cursor:pointer;flex:0 0 auto;}
   .peek-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1);line-height:1.5;}
   .peek-text .zeus-tag{color:var(--jade);}
@@ -565,11 +582,11 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .mob-pill.live{color:var(--jade);border-color:var(--jade-bd);}
   .mob-pill.lobby{color:var(--amber);border-color:var(--amber-bd);}
   .mob-pill.needs{color:var(--red);border-color:var(--red-bd);}
-  .mob-pill.sched{color:var(--att);border-color:var(--att-bd);}
+  .mob-pill.sched{color:var(--t3);border-color:var(--dash);}
   .dot-row{display:flex;gap:9px;}
   .dot-row:empty{display:none;}
   .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
-  .dot.closed{background:var(--jade);}
+  .dot.closed{background:var(--green);}
   .dot.open{background:var(--amber);}
   .dot.exception{background:var(--red);}
 }
@@ -584,7 +601,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 <div id="briefing">
   <div class="brief-card">
     <button class="brief-back" id="briefBack" onclick="closeBriefing()">← Back to all agents</button>
-    <div class="brief-mark">ZEUS<em>.</em></div>
+    <div class="brief-mark">Clarus<em>.</em></div>
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
@@ -668,7 +685,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 <!-- ══ OVERSEER DASHBOARD (Phase 7c) — shown on the bare URL when agents are running ══ -->
 <div id="dashboard">
   <div class="dash-head">
-    <div class="wordmark">ZEUS<em>.</em></div>
+    <div class="wordmark">Clarus<em>.</em></div>
     <div>
       <div class="dash-title">All running agents</div>
       <div class="dash-sub" id="dashCount"></div>
@@ -684,7 +701,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 <!-- ══ COCKPIT (live) ══ -->
 <header>
   <button class="hdr-back" id="hdrBack" style="display:none" onclick="location.href='/'" title="Back to all running agents">‹</button>
-  <div class="wordmark">ZEUS<em>.</em></div>
+  <div class="wordmark">Clarus<em>.</em></div>
   <div class="meeting">
     <span class="meeting-name" id="hdrMeet">Live Teams meeting</span>
     <span class="live" id="liveBadge"><span class="live-dot"></span><span id="liveText">CONNECTING…</span></span>
@@ -876,7 +893,7 @@ function renderDashboard(sum){
   if(!sum.meetings.length){
     // The zero-state a fresh visitor sees — never a blank page.
     grid.innerHTML = `<div class="dash-empty-state">
-      <div class="brief-mark">ZEUS<em>.</em></div>
+      <div class="brief-mark">Clarus<em>.</em></div>
       <div class="empty-title">No agents running</div>
       <div class="empty-sub">Add an agent to a meeting and it will appear here, live.</div>
       <button class="dash-new empty-add" onclick="openBriefing()">+ Add agent to a meeting</button>
@@ -1659,7 +1676,7 @@ function renderNudges(nudges){
   // reader is near the top, snap back to the very top after rendering.
   const nearTop = feed.scrollTop < 40;
   feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
-    <div class="nudge-head"><span class="nudge-tag">[ZEUS]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
+    <div class="nudge-head"><span class="nudge-tag">[CLARUS]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
     <div class="nudge-text">${esc(n.text)}</div>
     ${n.steered ? '<div class="steer-note">↳ shaped by your steer</div>' : ''}
   </div>`).join('');
