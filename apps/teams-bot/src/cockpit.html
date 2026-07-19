@@ -78,7 +78,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   width:100%;background:var(--s2);border:1px solid var(--line2);border-radius:10px;
   padding:11px 13px;color:var(--t1);font-size:13.5px;outline:none;
 }
-.f-input:focus{border-color:var(--jade-bd);}
+.f-input:focus{border-color:var(--blue);}
 .f-input::placeholder{color:var(--t3);}
 .cond-inputs{display:flex;flex-direction:column;gap:8px;}
 .cond-input-row{display:flex;gap:8px;align-items:center;}
@@ -370,28 +370,28 @@ header{
   .hist-btn{padding:10px 14px;}
 }
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
-.owner-chip{width:26px;height:26px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:11px;font-weight:600;color:var(--jade);}
+.owner-chip{width:26px;height:26px;border-radius:50%;background:var(--blue-bg);display:flex;align-items:center;justify-content:center;font-family:var(--body);font-size:11px;font-weight:700;color:var(--blue);}
 
 /* ══ ATTENTION STRIP (Phase 5 — the room needs the owner) ══ */
 .attention-strip{
   flex:0 0 auto;display:flex;flex-direction:column;gap:8px;
-  padding:10px 22px;border-bottom:1px solid var(--att-bd);background:var(--att-bg);
-  animation:breatheBlue 2.2s ease infinite;
+  padding:10px 22px;border-bottom:1px solid var(--blue-bd);border-left:3px solid var(--blue);
+  background:var(--blue-bg);animation:breatheBlue 2.2s ease infinite;
 }
 .mention{display:flex;align-items:center;gap:10px;}
-.mention-tag{font-family:var(--mono);font-size:10px;letter-spacing:.8px;color:var(--att);border:1px solid var(--att-bd);border-radius:999px;padding:3px 8px;white-space:nowrap;background:var(--att-bg);}
-.mention-quote{font-family:var(--mono);font-size:12px;color:var(--t1);line-height:1.5;flex:1;}
-.mention-quote .spk{color:var(--att);}
-.mention-dismiss{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;}
-.mention-dismiss:hover{color:var(--t1);border-color:var(--att-bd);}
+.mention-tag{font-family:var(--body);font-weight:700;font-size:10px;letter-spacing:.12em;color:var(--blue);white-space:nowrap;}
+.mention-quote{font-size:12.5px;color:var(--ink);line-height:1.5;flex:1;}
+.mention-quote .spk{color:var(--blue);font-weight:600;}
+.mention-dismiss{flex:0 0 auto;background:none;border:1px solid var(--blue-bd);border-radius:999px;width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;}
+.mention-dismiss:hover{color:var(--ink);border-color:var(--blue);}
 @keyframes breatheBlue{0%,100%{box-shadow:inset 0 0 0 0 rgba(43,63,196,0);}50%{box-shadow:inset 0 -4px 14px -8px rgba(43,63,196,.22);}}
 
 /* ══ LAYOUT ══ */
 main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:auto 1fr;gap:14px;padding:16px 22px 18px;min-height:0;}
-.panel{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-height:0;}
-.panel-head{flex:0 0 auto;display:flex;align-items:baseline;gap:10px;padding:13px 16px 10px;}
-.panel-title{font-family:var(--head);font-weight:600;font-size:14px;letter-spacing:-.2px;}
-.panel-sub{font-size:11.5px;color:var(--t3);}
+.panel{background:var(--s1);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0;}
+.panel-head{flex:0 0 auto;display:flex;align-items:baseline;gap:10px;padding:14px 16px 10px;}
+.panel-title{font-family:var(--body);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);}
+.panel-sub{font-size:11.5px;color:var(--t4);}
 
 /* ══ CONDITIONS ══ */
 #conditions{grid-column:1 / -1;}
@@ -404,14 +404,16 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   transition:border-color .5s, background .5s;
 }
 .cond-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.cond-label{font-family:var(--head);font-weight:600;font-size:14.5px;letter-spacing:-.2px;}
-.badge{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;}
+.cond-label{font-family:var(--body);font-weight:600;font-size:14px;letter-spacing:-.1px;}
+/* Clarus badges: small, uppercase, letter-spaced, bold, coloured by
+   state — quiet text, not filled pills. */
+.badge{font-family:var(--body);font-weight:700;font-size:10px;letter-spacing:.08em;white-space:nowrap;border:none;padding:0;background:none;}
 .cond-meta{font-size:12px;color:var(--t2);line-height:1.45;min-height:34px;}
-.cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t3);}
-.cond.open{border-color:var(--amber-bd);background:linear-gradient(180deg,var(--amber-bg),var(--s2) 70%);}
-.cond.open .badge{color:var(--amber);border-color:var(--amber-bd);}
-.cond.closed{border-color:var(--green-bd);background:linear-gradient(180deg,var(--green-bg),var(--s2) 70%);}
-.cond.closed .badge{color:var(--green);border-color:var(--green-bd);}
+.cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t4);}
+.cond.open{border-color:var(--amber-bd);background:var(--amber-bg);}
+.cond.open .badge{color:var(--amber);}
+.cond.closed{border-color:var(--green-bd);background:var(--green-bg);}
+.cond.closed .badge{color:var(--green);}
 /* Phase 4: the expand control + fuller "why" panel on each card */
 .cond-expand{
   flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
@@ -422,27 +424,29 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 /* Phase 5: the verbatim transcript quote(s) behind a judgement — the receipt */
 .cond-quote{font-family:var(--mono);font-size:11px;color:var(--green);line-height:1.5;margin-top:6px;}
 .cond-quote .spk{color:var(--t2);}
-.cond.exception{border-color:var(--red-bd);background:linear-gradient(180deg,var(--red-bg),var(--s2) 70%);animation:breathe 2.2s ease infinite;}
-.cond.exception .badge{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
+.cond.exception{border-color:var(--red-bd);background:var(--red-bg);animation:breathe 2.2s ease infinite;}
+.cond.exception .badge{color:var(--red);}
 @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(168,80,58,0);}50%{box-shadow:0 0 0 5px rgba(168,80,58,.10);}}
 
 /* ══ NUDGE FEED ══ */
 /* Phase 7a: real top padding — the newest item used to sit clipped
    against the scroll edge. */
 .feed{flex:1;overflow-y:auto;padding:8px 16px 14px;display:flex;flex-direction:column;gap:9px;}
-.nudge{border:1px solid var(--line);background:var(--s2);border-radius:10px;padding:10px 12px;}
+/* The agent's posts: quote-style — a blue left border on the blue tint,
+   not a chat bubble. Matches the Clarus reference exactly. */
+.nudge{border-left:3px solid var(--blue);background:var(--blue-bg);border-radius:0 10px 10px 0;padding:10px 13px;}
 .nudge-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
-.nudge-tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--jade);}
-.nudge-cond{font-size:11px;color:var(--t3);}
-.nudge-status{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.5px;}
+.nudge-tag{font-family:var(--body);font-weight:700;font-size:9.5px;letter-spacing:.12em;color:var(--blue);}
+.nudge-cond{font-size:11px;color:var(--blue-2);}
+.nudge-status{margin-left:auto;font-family:var(--body);font-weight:700;font-size:9.5px;letter-spacing:.08em;}
 .nudge-status.landed{color:var(--green);}
 .nudge-status.sent{color:var(--blue);}
 .nudge-status.waiting{color:var(--amber);}
 .nudge-status.ignored{color:var(--red);}
-.nudge-text{font-size:12.5px;line-height:1.5;color:var(--t1);}
-.nudge.steered{border-color:var(--jade-bd);}
-.steer-note{font-family:var(--mono);font-size:10px;color:var(--jade);margin-top:6px;}
-.feed-empty{font-size:12px;color:var(--t3);padding:8px 2px;}
+.nudge-text{font-size:12.5px;line-height:1.5;color:var(--ink);}
+.nudge.steered{border-left-color:var(--blue);}
+.steer-note{font-size:11px;color:var(--blue-2);font-style:italic;margin-top:6px;}
+.feed-empty{font-family:var(--head);font-style:italic;font-size:12.5px;color:var(--t4);padding:8px 2px;}
 
 /* ══ TRANSCRIPT ══ */
 .transcript{flex:1;overflow-y:auto;padding:2px 16px 12px;display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:12px;line-height:1.55;}
@@ -456,11 +460,11 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .right-col{grid-row:2;display:flex;flex-direction:column;gap:14px;min-height:0;}
 .steer-bar{flex:0 0 auto;display:flex;gap:8px;padding:12px 16px 14px;border-top:1px solid var(--line);}
 .steer-bar input{
-  flex:1;background:var(--s2);border:1px solid var(--line2);border-radius:9px;
-  padding:9px 12px;color:var(--t1);font-size:12.5px;outline:none;
+  flex:1;background:var(--s1);border:1px solid var(--line2);border-radius:999px;
+  padding:9px 14px;color:var(--ink);font-size:12.5px;outline:none;
 }
-.steer-bar input:focus{border-color:var(--jade-bd);}
-.steer-bar input::placeholder{color:var(--t3);}
+.steer-bar input:focus{border-color:var(--blue);}
+.steer-bar input::placeholder{color:var(--t4);}
 .steer-bar button{
   background:var(--blue);border:none;border-radius:999px;padding:0 18px;
   font-weight:600;font-size:12.5px;color:#fff;cursor:pointer;white-space:nowrap;
@@ -553,10 +557,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .peek-count{color:var(--t3);white-space:nowrap;}
   .sheet-tabs{display:none;gap:10px;padding:8px 16px 12px;flex:0 0 auto;}
   .sheet-tabs button{
-    flex:1;padding:14px;border-radius:12px;border:1px solid var(--line2);background:var(--s2);
-    color:var(--t3);font-family:var(--head);font-weight:600;font-size:14.5px;cursor:pointer;
+    flex:1;padding:14px;border-radius:999px;border:1px solid var(--line2);background:var(--s2);
+    color:var(--t3);font-family:var(--body);font-weight:600;font-size:14.5px;cursor:pointer;
   }
-  .sheet-tabs button.active{color:var(--t1);border-color:var(--jade-bd);background:var(--jade-bg);}
+  .sheet-tabs button.active{color:var(--blue);border-color:var(--blue-bd);background:var(--blue-bg);}
   #sheetBody{display:none;flex:1;min-height:0;flex-direction:column;}
   #sheetBody .feed,#sheetBody .transcript{flex:1;overflow-y:auto;max-height:none;padding:4px 16px 10px;}
   #sheetFoot{display:none;flex:0 0 auto;padding-bottom:env(safe-area-inset-bottom);}
@@ -1658,11 +1662,18 @@ function condCardHtml(c){
   }).join('');
 }
 
+// Display only: the bot marks its chat posts with a leading [ZEUS]/[CLARUS]
+// marker so the room can spot them. The cockpit shows its own CLARUS label,
+// so strip the marker from the displayed text (the data is untouched).
+function stripAgentMarker(text){
+  return String(text).replace(/^\s*\[(ZEUS|CLARUS)\]\s*/i, '');
+}
+
 function renderNudges(nudges){
   const feed = document.getElementById('feed');
   // The phone sheet's collapsed peek: the newest nudge and the count.
   document.getElementById('peekText').textContent = nudges.length
-    ? nudges[0].text
+    ? stripAgentMarker(nudges[0].text)
     : 'Agent is listening — it will speak when a condition needs a push.';
   document.getElementById('peekCount').textContent = nudges.length
     ? `${nudges.length} nudge${nudges.length === 1 ? '' : 's'}`
@@ -1676,8 +1687,8 @@ function renderNudges(nudges){
   // reader is near the top, snap back to the very top after rendering.
   const nearTop = feed.scrollTop < 40;
   feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
-    <div class="nudge-head"><span class="nudge-tag">[CLARUS]</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
-    <div class="nudge-text">${esc(n.text)}</div>
+    <div class="nudge-head"><span class="nudge-tag">CLARUS</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
+    <div class="nudge-text">${esc(stripAgentMarker(n.text))}</div>
     ${n.steered ? '<div class="steer-note">↳ shaped by your steer</div>' : ''}
   </div>`).join('');
   if(nearTop) feed.scrollTop = 0;
