@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#faf8f3">
 <title>Clarus — Command Centre</title>
 <!-- media="print" + onload flip = non-blocking fonts: on a slow or flaky
      connection (phones!) a hanging stylesheet must never delay the page's
@@ -44,10 +45,6 @@ button,input,textarea{font-family:inherit;}
   --amber:#a07826;  --amber-bg:#fdf7ea; --amber-bd:#e8c98f;   /* open / waiting (text) */
   --amber-2:#c9932e;                                          /* open / waiting (accents) */
   --red:#a8503a;    --red-bg:#f8ece6;  --red-bd:#dfb4a3;      /* needs you / stalled — clay */
-  /* Legacy aliases (older rules in this file still use these names):
-     the agent's colour and the owner-attention colour are both the blue. */
-  --jade:var(--blue); --jade-bg:var(--blue-bg); --jade-bd:var(--blue-bd);
-  --att:var(--blue);  --att-bg:var(--blue-bg);  --att-bd:var(--blue-bd);
   /* Type & shape */
   --head:'Newsreader',Georgia,serif;
   --body:'Instrument Sans',sans-serif;
@@ -82,7 +79,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .f-input::placeholder{color:var(--t3);}
 .cond-inputs{display:flex;flex-direction:column;gap:8px;}
 .cond-input-row{display:flex;gap:8px;align-items:center;}
-.cond-input-row .num{font-family:var(--mono);font-size:11px;color:var(--jade);width:18px;flex:0 0 auto;}
+.cond-input-row .num{font-family:var(--mono);font-size:11px;color:var(--blue);width:18px;flex:0 0 auto;}
 .cond-input-row .f-input{flex:1;}
 .cond-remove{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:8px;width:32px;height:32px;color:var(--t3);cursor:pointer;font-size:15px;line-height:1;}
 .cond-remove:hover{color:var(--red);border-color:var(--red-bd);}
@@ -90,7 +87,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   margin-top:8px;background:none;border:1px dashed var(--line2);border-radius:10px;
   padding:9px;width:100%;color:var(--t2);font-size:12.5px;cursor:pointer;
 }
-.cond-add:hover{border-color:var(--jade-bd);color:var(--jade);}
+.cond-add:hover{border-color:var(--blue-bd);color:var(--blue);}
 .cond-add.maxed{display:none;}
 .brief-go{
   margin-top:26px;width:100%;background:var(--blue);border:none;border-radius:999px;
@@ -107,14 +104,14 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   width:100%;background:none;border:1px solid var(--blue);border-radius:999px;
   padding:10px;color:var(--blue);font-family:var(--body);font-weight:600;font-size:13px;cursor:pointer;
 }
-.cal-connect:hover{background:var(--jade-bg);}
+.cal-connect:hover{background:var(--blue-bg);}
 .cal-list{display:flex;flex-direction:column;gap:6px;max-height:216px;overflow-y:auto;}
 .cal-item{
   display:flex;gap:10px;align-items:center;background:var(--s2);border:1px solid var(--line2);
   border-radius:10px;padding:9px 12px;cursor:pointer;font-size:12.5px;
 }
-.cal-item:hover{border-color:var(--jade-bd);}
-.cal-item.selected{border-color:var(--jade-bd);background:var(--jade-bg);}
+.cal-item:hover{border-color:var(--blue-bd);}
+.cal-item.selected{border-color:var(--blue-bd);background:var(--blue-bg);}
 .cal-item.nolink{opacity:.42;cursor:not-allowed;}
 .cal-item .cal-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .cal-item .cal-when{font-family:var(--mono);font-size:11px;color:var(--t2);white-space:nowrap;}
@@ -160,7 +157,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bc-mic.on{background:var(--blue) !important;color:#fff !important;}
 .bc-mic.on::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--blue);animation:micring 1.1s ease infinite;}
 @keyframes micring{0%{opacity:.7;transform:scale(.95);}100%{opacity:0;transform:scale(1.18);}}
-.bc-listen-hint{font-family:var(--mono);font-size:10.5px;color:var(--jade);letter-spacing:.6px;text-align:center;margin-bottom:6px;display:none;}
+.bc-listen-hint{font-family:var(--mono);font-size:10.5px;color:var(--blue);letter-spacing:.6px;text-align:center;margin-bottom:6px;display:none;}
 .bc-listen-hint.on{display:block;}
 /* Phase 9: proposed conditions as editable chips — amber until confirmed, jade after */
 .bc-chips{align-self:stretch;display:flex;flex-direction:column;gap:8px;}
@@ -172,7 +169,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .bchip .x{flex:0 0 auto;background:none;border:none;color:var(--t3);font-size:17px;cursor:pointer;padding:4px;line-height:1;}
 .bc-chip-actions{display:flex;gap:8px;margin-top:2px;}
 .bc-chip-actions .ghost{flex:1;background:none;border:1px dashed var(--line2);border-radius:12px;padding:11px;color:var(--t2);font-size:12.5px;cursor:pointer;}
-.bc-chip-actions .ghost:hover{border-color:var(--jade-bd);color:var(--jade);}
+.bc-chip-actions .ghost:hover{border-color:var(--blue-bd);color:var(--blue);}
 .bc-chip-actions .solid{flex:1.4;background:var(--blue);border:none;border-radius:999px;padding:11px;color:#fff;font-weight:600;font-size:13.5px;cursor:pointer;font-family:var(--body);}
 @media (max-width:640px){
   .bc-thread{max-height:56vh;}
@@ -254,12 +251,12 @@ header{
   background:none;border:none;color:var(--t2);font-size:24px;line-height:1;
   padding:4px 8px 6px 0;cursor:pointer;flex:0 0 auto;
 }
-.hdr-back:hover{color:var(--jade);}
+.hdr-back:hover{color:var(--blue);}
 .wordmark{font-family:var(--head);font-style:italic;font-weight:600;font-size:20px;letter-spacing:-.02em;}
 .wordmark em{font-style:italic;color:var(--blue);}
 .meeting{display:flex;align-items:center;gap:9px;margin-left:8px;padding-left:16px;border-left:1px solid var(--line2);}
 .meeting-name{font-size:13px;font-weight:500;color:var(--t2);}
-.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--jade);letter-spacing:.5px;}
+.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--blue);letter-spacing:.5px;}
 .live.warn{color:var(--amber);}
 .live.bad{color:var(--red);}
 .live-dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pulse 1.6s ease infinite;}
@@ -275,7 +272,7 @@ header{
   font-family:var(--body);font-weight:600;font-size:12px;color:var(--blue);cursor:pointer;
   letter-spacing:-.1px;white-space:nowrap;
 }
-.join-btn:hover{background:var(--jade-bg);}
+.join-btn:hover{background:var(--blue-bg);}
 /* The kill switch: shuts the local bot process down from the cockpit */
 .kill-btn{
   background:none;border:1px solid var(--red-bd);border-radius:999px;padding:6px 14px;
@@ -296,12 +293,12 @@ header{
   flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
   width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0;
 }
-.cond-edit-btn:hover{color:var(--jade);border-color:var(--jade-bd);}
+.cond-edit-btn:hover{color:var(--blue);border-color:var(--blue-bd);}
 .cond.add-card{
   border-style:dashed;background:none;display:flex;align-items:center;justify-content:center;
   color:var(--t3);font-size:12.5px;cursor:pointer;min-height:96px;
 }
-.cond.add-card:hover{border-color:var(--jade-bd);color:var(--jade);}
+.cond.add-card:hover{border-color:var(--blue-bd);color:var(--blue);}
 .cond-editor{display:flex;flex-direction:column;gap:8px;}
 .cond-editor .f-input{font-size:13px;}
 .cond-editor-row{display:flex;gap:8px;}
@@ -364,11 +361,11 @@ header{
 .hd-event .e-time{font-family:var(--mono);font-size:11px;color:var(--t3);flex:0 0 auto;padding-top:1px;}
 .hd-event .e-detail{color:var(--t2);}
 .hd-event.e-closed .e-detail{color:var(--green);}
-.hd-event.e-edit .e-detail{color:var(--att);}
-.hd-event.e-mention .e-detail{color:var(--att);}
+.hd-event.e-edit .e-detail{color:var(--blue);}
+.hd-event.e-mention .e-detail{color:var(--blue);}
 @media (max-width:640px){
   #history{padding:0 14px 20px;}
-  .metric{min-width:calc(50% - 5px);}
+  .metric{flex:1 1 calc(50% - 5px);min-width:calc(50% - 5px);}
   .hd-board{grid-template-columns:1fr;}
   .hist-btn{padding:10px 14px;}
 }
@@ -422,7 +419,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
   width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:0;
 }
-.cond-expand:hover{color:var(--jade);border-color:var(--jade-bd);}
+.cond-expand:hover{color:var(--blue);border-color:var(--blue-bd);}
 .cond-why{font-size:12px;color:var(--t2);line-height:1.5;border-top:1px solid var(--line);padding-top:8px;}
 /* Phase 5: the verbatim transcript quote(s) behind a judgement — the receipt */
 .cond-quote{font-family:var(--mono);font-size:11px;color:var(--green);line-height:1.5;margin-top:6px;}
@@ -501,7 +498,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .feed,.transcript{flex:0 0 auto;max-height:45vh;}
   .transcript{max-height:40vh;}
 }
-/* Phone: the reference-mock cockpit — compact ‹ ZEUS. • STATUS header with
+/* Phone: the reference-mock cockpit — compact ‹ Clarus. • STATUS header with
    the meeting name + countdown on a second row, conditions as the page,
    and the feed/transcript/steer bar inside the bottom sheet. 16px inputs
    (anything smaller makes iPhones zoom the whole page). */
@@ -538,7 +535,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .brief-go{min-height:48px;}
   .mention{flex-wrap:wrap;}
   /* The attention strip becomes a rounded card, per the mock. */
-  .attention-strip{margin:12px 14px 0;padding:14px;border:1px solid var(--att-bd);border-radius:14px;border-bottom:1px solid var(--att-bd);}
+  .attention-strip{margin:12px 14px 0;padding:14px;border:1px solid var(--blue-bd);border-radius:14px;border-bottom:1px solid var(--blue-bd);}
 
   /* ── The bottom sheet ── */
   body.mob-live #nudges,body.mob-live #transcriptPanel{display:none;}
@@ -556,7 +553,6 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--dash);}
   #sheetPeek{display:flex;gap:10px;align-items:baseline;padding:2px 16px 14px;font-family:var(--mono);font-size:12px;cursor:pointer;flex:0 0 auto;}
   .peek-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1);line-height:1.5;}
-  .peek-text .zeus-tag{color:var(--jade);}
   .peek-count{color:var(--t3);white-space:nowrap;}
   .sheet-tabs{display:none;gap:10px;padding:8px 16px 12px;flex:0 0 auto;}
   .sheet-tabs button{
@@ -1726,7 +1722,7 @@ async function steer(){
     });
     if(response.ok){
       input.value = '';
-      hint.innerHTML = 'Steer sent — the agent is acting on it now. <span style="color:var(--jade)">The room sees nothing of this.</span>';
+      hint.innerHTML = 'Steer sent — the agent is acting on it now. <span style="color:var(--blue)">The room sees nothing of this.</span>';
       clearTimeout(hintResetTimer);
       hintResetTimer = setTimeout(() => { hint.textContent = DEFAULT_HINT; }, 12000);
     }

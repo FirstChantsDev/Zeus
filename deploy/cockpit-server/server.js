@@ -516,27 +516,30 @@ const LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zeus — Command Centre</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<meta name="theme-color" content="#faf8f3">
+<title>Clarus — Command Centre</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Instrument+Sans:wght@400..700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
+/* Clarus design system — tokens mirror apps/teams-bot/src/cockpit.html */
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;background:#0d1210;color:#eef4f0;font-family:'Inter',sans-serif;font-size:14px;}
+html,body{height:100%;background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;font-size:14px;}
 body{display:flex;align-items:center;justify-content:center;}
-.card{width:min(400px,90vw);padding:8px;}
-.mark{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:20px;letter-spacing:-.4px;margin-bottom:22px;}
-.mark em{font-style:normal;color:#43c293;}
-h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:24px;letter-spacing:-.5px;margin-bottom:6px;}
-p{font-size:13px;color:#8fa39a;line-height:1.5;margin-bottom:22px;}
-input{width:100%;background:#1a231f;border:1px solid rgba(255,255,255,.13);border-radius:10px;padding:12px 13px;color:#eef4f0;font-size:16px;outline:none;font-family:'IBM Plex Mono',monospace;letter-spacing:2px;}
-input:focus{border-color:rgba(67,194,147,.32);}
-button{margin-top:12px;width:100%;background:#43c293;border:none;border-radius:11px;padding:13px;font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:15px;color:#08110d;cursor:pointer;}
+.card{width:min(400px,90vw);padding:28px;background:#fff;border:1px solid #e3ded2;border-radius:18px;box-shadow:0 30px 70px rgba(60,50,30,.09);}
+.mark{font-family:'Newsreader',serif;font-style:italic;font-weight:600;font-size:23px;letter-spacing:-.02em;margin-bottom:22px;}
+.mark em{color:#2b3fc4;}
+h1{font-family:'Newsreader',serif;font-weight:500;font-size:26px;letter-spacing:-.02em;margin-bottom:6px;}
+p{font-size:13px;color:#5d5849;line-height:1.5;margin-bottom:22px;}
+input{width:100%;background:#fcfbf7;border:1px solid #e3ded2;border-radius:10px;padding:12px 13px;color:#1c1a16;font-size:16px;outline:none;font-family:'IBM Plex Mono',monospace;letter-spacing:2px;}
+input:focus{border-color:#2b3fc4;}
+input::placeholder{color:#a39d8f;}
+button{margin-top:12px;width:100%;background:#2b3fc4;border:none;border-radius:999px;padding:13px;font-weight:600;font-size:15px;color:#fff;cursor:pointer;font-family:'Instrument Sans',sans-serif;}
 button:hover{filter:brightness(1.07);}
-.err{margin-top:12px;font-size:12px;color:#e86a5e;text-align:center;min-height:16px;}
+.err{margin-top:12px;font-size:12px;color:#a8503a;text-align:center;min-height:16px;}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="mark">ZEUS<em>.</em></div>
+  <div class="mark">Clarus<em>.</em></div>
   <h1>Private cockpit</h1>
   <p>Enter the access code to open the command centre.</p>
   <input id="code" type="password" placeholder="access code" autocomplete="off" autofocus>
@@ -934,11 +937,11 @@ const server = http.createServer(async (req, res) => {
         // the reason. Put Microsoft's own words on the page.
         const failPage = (why) => {
             res.writeHead(500, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-            res.end(`<body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;padding:24px;line-height:1.6">
-              <h2 style="color:#e86a5e">Calendar sign-in failed</h2>
-              <p style="font-family:monospace;font-size:13px;color:#e8a24a;word-break:break-word">${escapeHtml(why).slice(0, 600)}</p>
-              <p style="color:#8fa39a;font-size:14px">The usual suspects: (1) MS_CLIENT_SECRET on this service is the secret's <b>ID</b>, not its <b>Value</b> — Entra shows both columns; (2) the redirect URI is registered under the <b>SPA</b> platform instead of <b>Web</b> in the Entra app; (3) the registered URI doesn't exactly match this site's /auth/callback.</p>
-              <p><a href="/" style="color:#43c293">← Back to the cockpit</a></p>
+            res.end(`<body style="background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;padding:24px;line-height:1.6">
+              <h2 style="color:#a8503a">Calendar sign-in failed</h2>
+              <p style="font-family:monospace;font-size:13px;color:#a07826;word-break:break-word">${escapeHtml(why).slice(0, 600)}</p>
+              <p style="color:#5d5849;font-size:14px">The usual suspects: (1) MS_CLIENT_SECRET on this service is the secret's <b>ID</b>, not its <b>Value</b> — Entra shows both columns; (2) the redirect URI is registered under the <b>SPA</b> platform instead of <b>Web</b> in the Entra app; (3) the registered URI doesn't exactly match this site's /auth/callback.</p>
+              <p><a href="/" style="color:#2b3fc4">← Back to the cockpit</a></p>
             </body>`);
         };
         // Microsoft can come back with an error instead of a code (consent
@@ -951,7 +954,7 @@ const server = http.createServer(async (req, res) => {
         try {
             const account = await calendar.handleCallback(req, params.get('code') || '');
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${escapeHtml(account)}</b> — taking you back…</p></body>`);
+            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${escapeHtml(account)}</b> — taking you back…</p></body>`);
         } catch (error) {
             console.error('Calendar sign-in failed:', error);
             failPage((error && (error.errorCode ? `${error.errorCode}: ${error.errorMessage || error.message}` : error.message)) || 'unknown error');

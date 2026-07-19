@@ -1,6 +1,28 @@
-# Zeus — project notes (Phases 1–6)
+# Clarus (formerly Zeus) — project notes (Phases 1–6)
 
-Zeus is a meeting agent: a bot that joins a Microsoft Teams meeting as a
+## The Clarus design system (2026-07 restyle)
+
+The whole app now wears the **"Clarus"** design system from the landing
+page: warm cream background, ink text, white cards, one confident blue
+accent, Newsreader (serif, italic for product moments) + Instrument Sans.
+The product name shown in the UI is **Clarus**.
+
+- **Where the colours live:** every colour, font and shape token is a CSS
+  variable in ONE place — the `:root` block at the top of
+  `apps/teams-bot/src/cockpit.html`. Tweak a hex there and it changes
+  everywhere. Key tokens: `--bg` (cream page), `--s1` (white card),
+  `--ink` (text), `--blue` (the accent — the agent's colour), and the
+  status families `--green`/`--amber`/`--red` (closed / open / needs-you,
+  same meanings as always).
+- **Visual only.** No logic, endpoints or bot behaviour changed. The bot
+  still joins Teams as "Zeus bot" and still marks its chat posts `[ZEUS]`
+  (the cockpit hides that marker on screen and shows a CLARUS label
+  instead). Renaming the bot's in-meeting identity would be a bot-side
+  change needing a bot redeploy — deliberately not done in the restyle.
+- Functional identifiers below (env vars like `ZEUS_RECORDS_DIR`, the
+  Railway project name, the Entra app name) keep their original names.
+
+Clarus is a meeting agent: a bot that joins a Microsoft Teams meeting as a
 participant, listens to the live captions, and drives the meeting toward
 outcomes its owner (Liz) briefed it with — nudging the room in chat when a
 goal is being ignored, and reporting everything to a private local cockpit.

@@ -1,4 +1,4 @@
-# Zeus — deployment track (Phase 6)
+# Clarus (formerly Zeus) — deployment track (Phase 6)
 
 Everything in this folder is ADDITIVE. The normal local run —
 `npx tsx apps/teams-bot/src/gate.ts <teams-meeting-url>` then
