@@ -21,6 +21,13 @@ The product name shown in the UI is **Clarus**.
   change needing a bot redeploy — deliberately not done in the restyle.
 - Functional identifiers below (env vars like `ZEUS_RECORDS_DIR`, the
   Railway project name, the Entra app name) keep their original names.
+- **Briefing is chat-only now (2026-07):** the old briefing form was
+  removed — the chat gathers the meeting, conditions and context. Every
+  time the briefing screen opens (e.g. "+ Add agent" on the homepage) the
+  conversation starts from scratch: the page wipes the thread and POSTs
+  `/brief-chat/reset` so the server forgets the previous one. A server
+  without `ANTHROPIC_API_KEY` now says briefing is unavailable (the form
+  was the fallback; it no longer exists).
 
 Clarus is a meeting agent: a bot that joins a Microsoft Teams meeting as a
 participant, listens to the live captions, and drives the meeting toward

@@ -70,59 +70,28 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .brief-mark em{font-style:italic;color:var(--blue);}
 .brief-title{font-family:var(--head);font-weight:500;font-size:30px;letter-spacing:-.02em;line-height:1.15;margin-bottom:6px;}
 .brief-sub{font-size:13.5px;color:var(--t2);line-height:1.55;margin-bottom:26px;}
-.f-label{font-family:var(--body);font-weight:600;font-size:10.5px;letter-spacing:.12em;color:var(--t3);margin:18px 0 8px;text-transform:uppercase;}
 .f-input{
   width:100%;background:var(--s2);border:1px solid var(--line2);border-radius:10px;
   padding:11px 13px;color:var(--t1);font-size:13.5px;outline:none;
 }
 .f-input:focus{border-color:var(--blue);}
 .f-input::placeholder{color:var(--t3);}
-.cond-inputs{display:flex;flex-direction:column;gap:8px;}
-.cond-input-row{display:flex;gap:8px;align-items:center;}
-.cond-input-row .num{font-family:var(--mono);font-size:11px;color:var(--blue);width:18px;flex:0 0 auto;}
-.cond-input-row .f-input{flex:1;}
-.cond-remove{flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:8px;width:32px;height:32px;color:var(--t3);cursor:pointer;font-size:15px;line-height:1;}
-.cond-remove:hover{color:var(--red);border-color:var(--red-bd);}
-.cond-add{
-  margin-top:8px;background:none;border:1px dashed var(--line2);border-radius:10px;
-  padding:9px;width:100%;color:var(--t2);font-size:12.5px;cursor:pointer;
-}
-.cond-add:hover{border-color:var(--blue-bd);color:var(--blue);}
-.cond-add.maxed{display:none;}
-.brief-go{
-  margin-top:26px;width:100%;background:var(--blue);border:none;border-radius:999px;
-  padding:13px;font-family:var(--body);font-weight:600;font-size:15px;color:#fff;
-  cursor:pointer;letter-spacing:-.2px;
-}
-.brief-go:hover{filter:brightness(1.07);}
-.brief-go:disabled{opacity:.55;cursor:wait;}
 .brief-note{margin-top:12px;font-size:11.5px;color:var(--t3);text-align:center;line-height:1.5;}
-.brief-error{margin-top:12px;font-size:12px;color:var(--red);text-align:center;line-height:1.5;display:none;}
-.brief-error.show{display:block;}
 /* Phase 10: pick the meeting from the connected Outlook calendar */
 .cal-connect{
   width:100%;background:none;border:1px solid var(--blue);border-radius:999px;
   padding:10px;color:var(--blue);font-family:var(--body);font-weight:600;font-size:13px;cursor:pointer;
 }
 .cal-connect:hover{background:var(--blue-bg);}
-.cal-list{display:flex;flex-direction:column;gap:6px;max-height:216px;overflow-y:auto;}
 .cal-item{
   display:flex;gap:10px;align-items:center;background:var(--s2);border:1px solid var(--line2);
   border-radius:10px;padding:9px 12px;cursor:pointer;font-size:12.5px;
 }
 .cal-item:hover{border-color:var(--blue-bd);}
-.cal-item.selected{border-color:var(--blue-bd);background:var(--blue-bg);}
 .cal-item.nolink{opacity:.42;cursor:not-allowed;}
 .cal-item .cal-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .cal-item .cal-when{font-family:var(--mono);font-size:11px;color:var(--t2);white-space:nowrap;}
-.cal-note{font-size:11.5px;color:var(--t3);margin-top:7px;line-height:1.5;}
-.cal-note .clear{color:var(--red);cursor:pointer;}
-.cal-hint{font-size:11.5px;color:var(--t3);margin-top:7px;line-height:1.5;}
-.cal-account{font-family:var(--mono);font-size:10.5px;color:var(--t3);margin-top:7px;letter-spacing:.3px;}
-/* Phase 10 M3: brief-by-chat — the conversational alternative to the form */
-.brief-mode-toggle{font-size:12px;color:var(--blue);cursor:pointer;display:inline-block;margin-top:14px;}
-.brief-mode-toggle:hover{color:#1c2a8f;}
-#briefChatView{display:none;}
+/* Brief-by-chat — the only briefing flow */
 .bc-thread{
   display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto;
   padding:4px 2px;margin:14px 0 10px;
@@ -175,7 +144,6 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   .bc-thread{max-height:56vh;}
   .bc-row input,.bc-row textarea{font-size:16px;min-height:46px;} /* 16px stops iPhone zoom */
   .bc-row button{min-height:46px;}
-  .brief-mode-toggle{padding:12px 0;} /* thumb-sized */
 }
 /* Back to the homepage without submitting — only shown when the briefing
    is a sub-view of the all-agents homepage. */
@@ -531,8 +499,6 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .steer-bar input{font-size:16px;padding:11px 12px;}
   .steer-bar button{min-height:44px;padding:0 18px;}
   .cond-expand,.cond-edit-btn,.mention-dismiss{width:34px;height:34px;font-size:16px;border-radius:9px;}
-  .cond-remove{width:38px;height:38px;}
-  .brief-go{min-height:48px;}
   .mention{flex-wrap:wrap;}
   /* The attention strip becomes a rounded card, per the mock. */
   .attention-strip{margin:12px 14px 0;padding:14px;border:1px solid var(--blue-bd);border-radius:14px;border-bottom:1px solid var(--blue-bd);}
@@ -608,59 +574,13 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
-    <span class="brief-mode-toggle" id="briefModeToggle" style="display:none" onclick="toggleBriefMode()">Prefer to talk it through? Brief by chat →</span>
-    <!-- Shown instead of the toggle when this server has no chat brain, so
-         "where is the chat?" is answered on the page instead of silently. -->
-    <div class="brief-note" id="chatOffNote" style="display:none;text-align:left;margin-top:14px">Brief by chat is off — this server has no ANTHROPIC_API_KEY. The form below does everything the chat does.</div>
+    <!-- Shown when this server has no chat brain (no ANTHROPIC_API_KEY) —
+         chat is the only way to brief, so say why it isn't working. -->
+    <div class="brief-note" id="chatOffNote" style="display:none;text-align:left;margin-top:14px">Briefing is unavailable — this server has no ANTHROPIC_API_KEY, which the briefing chat needs. Set it and restart the server.</div>
 
-    <div id="briefFormView">
-    <!-- Phase 10: the connected Outlook calendar (read-only). Hidden when no
-         Entra app is configured; shows Connect first, then the pick-list.
-         Picking a meeting fills the link (never shown), name and length. -->
-    <div id="calSection" style="display:none">
-      <div class="f-label">From your calendar</div>
-      <div id="calConnect" style="display:none">
-        <button class="cal-connect" onclick="location.href='/calendar/auth'">Connect calendar</button>
-        <div class="cal-hint">Read-only access to your Outlook calendar. Sign in once — after that the agent fills the meeting link, title and length for you.</div>
-      </div>
-      <div id="calList" style="display:none"></div>
-    </div>
-
-    <div class="f-label">Meeting</div>
-    <input class="f-input" id="meetName" placeholder='e.g. "Spring launch — campaign kickoff"'>
-
-    <!-- Phase 6: only shown when the bot doesn't already know the link
-         (i.e. the hosted cockpit). Locally the link comes from the launch
-         command, so this stays hidden and nothing changes. -->
-    <div id="linkField" style="display:none">
-      <div class="f-label">Teams meeting link — the agent will join this call</div>
-      <input class="f-input" id="meetLink" placeholder="paste the Teams meeting link here">
-    </div>
-
-    <div class="f-label">Your name — so the agent can flag when the room needs you</div>
-    <input class="f-input" id="ownerName" placeholder='e.g. "Calvin"'>
-
-    <div class="f-label">Scheduled length (minutes)</div>
-    <input class="f-input" id="meetLen" type="number" min="1" max="480" value="30">
-
-    <div class="f-label">Conditions to close — up to five, in your own words</div>
-    <div class="cond-inputs" id="condInputs">
-      <div class="cond-input-row"><span class="num">1</span><input class="f-input" placeholder='e.g. "Budget confirmed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
-      <div class="cond-input-row"><span class="num">2</span><input class="f-input" placeholder='e.g. "Launch date locked"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
-      <div class="cond-input-row"><span class="num">3</span><input class="f-input" placeholder='e.g. "Success metric agreed"'><button class="cond-remove" onclick="rmCond(this)">×</button></div>
-    </div>
-    <button class="cond-add" id="condAdd" onclick="addCond()">+ Add condition</button>
-
-    <div class="f-label">Context for the agent — optional</div>
-    <input class="f-input" id="meetCtx" placeholder='e.g. "Maya holds the budget. Don&#39;t let creative dominate."'>
-
-    <button class="brief-go" id="briefGo" onclick="sendAgentIn()">Send agent into the meeting →</button>
-    <div class="brief-error" id="briefError"></div>
-    </div><!-- /briefFormView -->
-
-    <!-- Phase 10 M3: the chat-mode briefing — same outcome, conversational.
-         The agent matches what you say against your calendar and proposes
-         the meeting it thinks you mean, with a one-tap confirm. -->
+    <!-- The chat briefing — the only way in. The agent matches what you say
+         against your calendar and proposes the meeting it thinks you mean,
+         with a one-tap confirm. -->
     <div id="briefChatView">
       <div class="bc-thread" id="bcThread"></div>
       <div class="bc-listen-hint" id="bcHint">LISTENING — TAP MIC TO STOP</div>
@@ -804,13 +724,6 @@ function adoptMeeting(id){
   syncBackBtn();
 }
 syncBackBtn();
-// A fresh-brief page on the hosted cockpit needs the link field even
-// though other meetings exist (/summary only exists on the hosted hub).
-if(forceNew){
-  fetch('/summary').then((r) => {
-    if(r.ok) document.getElementById('linkField').style.display = '';
-  }).catch(() => { /* local — no summary, no link field */ });
-}
 
 // ══ OVERSEER DASHBOARD — the hosted homepage ═══════════════
 // On the hosted hub, the bare URL is ALWAYS the homepage: the all-agents
@@ -850,35 +763,34 @@ async function renderDashCalendar(){
 
 // The briefing screen as a sub-view of the homepage: opened by the
 // add-agent button, left by submitting (or the back control).
+// Each open is a FRESH brief: the previous conversation (e.g. the agent
+// you just sent in) must never bleed into the next one.
 function openBriefing(){
-  document.getElementById('linkField').style.display = ''; // hosted briefs carry the meeting link
   document.getElementById('briefBack').style.display = 'block'; // escape hatch back to the homepage
-  briefError('');
   document.getElementById('dashboard').classList.remove('show');
   document.getElementById('briefing').classList.remove('gone');
-  // Phase 9: chat is the front door on the homepage flow too, when the
-  // hub has a chat brain. One /state peek tells us.
   if(chatAvailable){
-    if(!briefChatMode) toggleBriefMode();
+    startBriefChat();
   } else {
     fetch('/state').then((r) => r.json()).then((s) => {
       syncChatAvailability(s);
-      if(chatAvailable && !briefChatMode) toggleBriefMode();
-    }).catch(() => { /* form it is */ });
+      if(chatAvailable) startBriefChat();
+    }).catch(() => { /* the poll will retry */ });
   }
 }
 
-// One place decides what the briefing screen says about chat: the toggle
-// when the server has a brain, the why-not note when it doesn't. Without
-// the note, a hub missing its ANTHROPIC_API_KEY just showed the form and
-// left the owner wondering where the chat went (the original mobile bug).
+// Chat is the only way to brief. When the server has no chat brain
+// (no ANTHROPIC_API_KEY), say so instead of showing a dead input.
 function syncChatAvailability(state){
   if(state.chatBriefing){
     chatAvailable = true;
-    document.getElementById('briefModeToggle').style.display = '';
     document.getElementById('chatOffNote').style.display = 'none';
+    document.getElementById('bcInput').disabled = false;
+    document.getElementById('bcSend').disabled = false;
   } else if(!briefed){
     document.getElementById('chatOffNote').style.display = '';
+    document.getElementById('bcInput').disabled = true;
+    document.getElementById('bcSend').disabled = true;
   }
 }
 function closeBriefing(){
@@ -947,58 +859,10 @@ function renderDashboard(sum){
   }).join('');
 }
 
-// ══ BRIEFING (Phase 3) ═════════════════════════════════════
-// The owner types 1-3 free-text conditions; POST /setup hands them to the
-// agent and the bot walks into the meeting. Until then the overlay stays.
+// ══ BRIEFING — chat only ═══════════════════════════════════
+// The form is gone: the chat gathers the meeting, the conditions and the
+// context, and the server accepts the brief when the owner confirms.
 const MAX_CONDITIONS = 5;
-
-function syncCondControls(){
-  const box = document.getElementById('condInputs');
-  [...box.children].forEach((row, i) => { row.querySelector('.num').textContent = i + 1; });
-  document.getElementById('condAdd').classList.toggle('maxed', box.children.length >= MAX_CONDITIONS);
-}
-syncCondControls(); // the cap lives in one place (MAX_CONDITIONS), not in the markup
-function addCond(){
-  const box = document.getElementById('condInputs');
-  if(box.children.length >= MAX_CONDITIONS) return;
-  const row = document.createElement('div');
-  row.className = 'cond-input-row';
-  row.innerHTML = `<span class="num"></span><input class="f-input" placeholder='e.g. "Owner assigned for follow-ups"'><button class="cond-remove" onclick="rmCond(this)">×</button>`;
-  box.appendChild(row);
-  syncCondControls();
-  row.querySelector('.f-input').focus();
-}
-function rmCond(btn){
-  const box = document.getElementById('condInputs');
-  if(box.children.length <= 1) return;
-  btn.parentElement.remove();
-  syncCondControls();
-}
-function briefError(msg){
-  const el = document.getElementById('briefError');
-  el.textContent = msg;
-  el.classList.toggle('show', Boolean(msg));
-}
-// ══ CALENDAR (Phase 10) — pick a meeting instead of pasting a link ══
-let calMeetings = [];
-let calSelected = null;   // index into calMeetings, or null
-let calAccount = null;
-async function initCalendar(){
-  try{
-    const s = await (await fetch('/calendar/status')).json();
-    if(!s.configured) return; // no Entra app in .env — section stays hidden
-    document.getElementById('calSection').style.display = '';
-    if(!s.connected){
-      document.getElementById('calConnect').style.display = '';
-      return;
-    }
-    calAccount = s.account;
-    const r = await fetch('/calendar/meetings');
-    if(!r.ok){ document.getElementById('calConnect').style.display = ''; return; }
-    calMeetings = (await r.json()).meetings || [];
-    renderCalList();
-  }catch(e){ /* the calendar is a convenience — the form works without it */ }
-}
 // A meeting happening RIGHT NOW says so — you can send the agent into a
 // call that's already in progress and it joins immediately.
 const calWhen = (iso, mins) => {
@@ -1007,48 +871,19 @@ const calWhen = (iso, mins) => {
   return (live ? 'NOW · ' : '')
     + new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + mins + 'm';
 };
-function renderCalList(){
-  const box = document.getElementById('calList');
-  box.style.display = '';
-  const rows = calMeetings.length
-    ? calMeetings.map((m, i) => `
-      <div class="cal-item ${m.joinUrl ? '' : 'nolink'} ${calSelected === i ? 'selected' : ''}"
-           ${m.joinUrl ? `onclick="pickCalMeeting(${i})"` : 'title="This event has no Teams link"'}>
-        <span class="cal-sub">${esc(m.subject)}</span><span class="cal-when">${calWhen(m.start, m.durationMinutes)}</span>
-      </div>`).join('')
-    : '<div class="cal-hint">Nothing with a Teams link in the next two weeks — paste a link below instead.</div>';
-  box.innerHTML = `<div class="cal-list">${rows}</div>
-    ${calSelected !== null ? `<div class="cal-note">Using the calendar's join link for “${esc(calMeetings[calSelected].subject)}” — nothing to paste. <span class="clear" onclick="pickCalMeeting(null)">clear</span></div>` : ''}
-    ${calAccount ? `<div class="cal-account">connected: ${esc(calAccount)} · read-only</div>` : ''}`;
-}
-function pickCalMeeting(i){
-  calSelected = i;
-  if(i !== null){
-    const m = calMeetings[i];
-    document.getElementById('meetName').value = m.subject;       // auto-fill title
-    document.getElementById('meetLen').value = m.durationMinutes; // feeds time-awareness
-    document.getElementById('meetLink').value = '';               // calendar link wins
-  }
-  renderCalList();
-}
-
-// ══ BRIEF BY CHAT (Phase 9/10) ════════════════════════════
-let briefChatMode = false;
+// ══ BRIEF BY CHAT — the only way to brief ═════════════════
 let bcStarted = false;
 let chatAvailable = false;  // the server has a chat brain (API key present)
-let chatAutoOpened = false; // chat-as-front-door applied once
-function toggleBriefMode(){
-  briefChatMode = !briefChatMode;
-  document.getElementById('briefFormView').style.display = briefChatMode ? 'none' : '';
-  document.getElementById('briefChatView').style.display = briefChatMode ? 'block' : 'none';
-  document.getElementById('briefModeToggle').textContent = briefChatMode
-    ? '← Back to the form'
-    : 'Prefer to talk it through? Brief by chat →';
-  if(briefChatMode && !bcStarted){
-    bcStarted = true;
-    bcIntro();
-  }
-  if(briefChatMode) document.getElementById('bcInput').focus();
+let chatAutoOpened = false; // chat auto-start applied once (single-meeting flow)
+// Start a FRESH conversation: wipe the thread on screen and tell the
+// server to forget the old one (bcIntro POSTs /brief-chat/reset first).
+// Called every time the briefing screen opens, so the previous agent's
+// brief never bleeds into the next one.
+function startBriefChat(){
+  bcStarted = true;
+  document.getElementById('bcThread').innerHTML = '';
+  bcIntro();
+  document.getElementById('bcInput').focus();
 }
 
 // The chat's opening moves. A fresh page = a fresh conversation (the
@@ -1303,76 +1138,6 @@ async function bcSend(presetText){
 document.getElementById('bcInput').addEventListener('keydown', (e) => {
   if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); bcSend(); }
 });
-
-async function sendAgentIn(){
-  const labels = [...document.querySelectorAll('#condInputs .f-input')]
-    .map((i) => i.value.trim()).filter(Boolean);
-  if(!labels.length){ briefError('Give the agent at least one condition to drive.'); return; }
-  // Where the agent goes: calendar pick first, then a pasted link, then
-  // (locally) the URL the bot was launched with.
-  let meetingUrl;
-  if(calSelected !== null){
-    meetingUrl = calMeetings[calSelected].joinUrl; // never shown to the owner
-  } else if(document.getElementById('linkField').style.display !== 'none'){
-    meetingUrl = document.getElementById('meetLink').value.trim();
-    if(!meetingUrl || !meetingUrl.includes('teams.')){
-      briefError(document.getElementById('calSection').style.display !== 'none'
-        ? 'Pick a meeting from your calendar, or paste its Teams link.'
-        : 'Paste the Teams meeting link so the agent knows where to go.');
-      return;
-    }
-  }
-  briefError('');
-  const go = document.getElementById('briefGo');
-  go.disabled = true;
-  go.textContent = 'Sending the agent in…';
-  try{
-    const response = await fetch('/setup', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({
-        meetingName: document.getElementById('meetName').value.trim(),
-        conditions: labels,
-        context: document.getElementById('meetCtx').value.trim(),
-        lengthMinutes: parseInt(document.getElementById('meetLen').value, 10) || 30,
-        ownerName: document.getElementById('ownerName').value.trim(),
-        meetingUrl, // undefined locally — the bot already knows the link
-        // A calendar pick carries its start time: a future meeting shows
-        // as SCHEDULED and the bot waits instead of camping in the lobby.
-        // The event id lets the agent FOLLOW the event if it gets moved.
-        meetingStart: calSelected !== null ? calMeetings[calSelected].start : undefined,
-        calendarEventId: calSelected !== null ? calMeetings[calSelected].id : undefined,
-      }),
-    });
-    if(response.ok){
-      const body = await response.json().catch(() => ({}));
-      // Homepage flow: back to the all-agents view — the new card
-      // appears on the next poll (~1.5s), no refresh needed.
-      if(dashboardMode){
-        document.getElementById('meetName').value = '';
-        document.getElementById('meetLink').value = '';
-        go.disabled = false;
-        go.textContent = 'Send agent into the meeting →';
-        closeBriefing();
-        poll();
-        return;
-      }
-      // Single-meeting flow (local, or /?new): adopt the new meeting's ID
-      // so this page shows ONLY that meeting from now on.
-      if(body.meetingId){ adoptMeeting(body.meetingId); }
-      briefed = true;
-      document.getElementById('briefing').classList.add('gone'); // the mock's fade to the live cockpit
-      poll(); // pull the freshly briefed state right away, no 1.5s wait
-      return;
-    }
-    const body = await response.json().catch(() => ({}));
-    briefError(body.error || 'The agent could not accept the brief.');
-  }catch(e){
-    briefError('Could not reach the agent — is the bot running?');
-  }
-  go.disabled = false;
-  go.textContent = 'Send agent into the meeting →';
-}
 
 // Escape anything that came out of the meeting before putting it in HTML.
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
@@ -1769,13 +1534,12 @@ async function poll(){
       return;
     }
     const state = await response.json();
-    // Phase 9: chat is the front door when the server has a chat brain.
-    // The form stays one tap away (it carries the calendar pick-list and
-    // works without an API key).
+    // Chat is the only briefing flow. On a fresh un-briefed page (the
+    // local single-meeting flow, or /?new) start the conversation once.
     syncChatAvailability(state);
     if(state.chatBriefing && !state.briefed && !briefed && !chatAutoOpened){
       chatAutoOpened = true;
-      if(!briefChatMode) toggleBriefMode();
+      if(!bcStarted) startBriefChat();
     }
     // /?new keeps the briefing screen up regardless of other meetings.
     if(forceNew){
@@ -1798,11 +1562,6 @@ async function poll(){
     }
     // Phone layout: the bottom sheet only exists on the live cockpit.
     document.body.classList.toggle('mob-live', briefed && !dashboardMode);
-    // Phase 6: if the bot doesn't already know the meeting link (hosted
-    // cockpit), the briefing form asks for it. Locally it stays hidden.
-    if(!state.briefed && !state.meetingUrl){
-      document.getElementById('linkField').style.display = '';
-    }
     renderHeader(state);
     renderMentions(state.mentions);
     renderConditions(state.conditions);
@@ -1820,7 +1579,6 @@ async function poll(){
   await detectDashboard();
   poll();
   setInterval(poll, POLL_MS);
-  initCalendar(); // Phase 10 — no-op unless the Entra app is configured
 })();
 // Phones park pages for days: Safari restores the tab from its cache with
 // the old DOM and a possibly-dead session. Poll the moment the page comes
