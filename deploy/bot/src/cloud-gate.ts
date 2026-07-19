@@ -1,5 +1,5 @@
 /**
- * Zeus cloud bot — Phase 6, Milestone 3.
+ * Clarus cloud bot — Phase 6, Milestone 3.
  *
  * The hosted twin of apps/teams-bot/src/gate.ts. Instead of serving its own
  * cockpit, it talks to the hosted cockpit server (the hub) over HTTPS:
@@ -535,7 +535,7 @@ const MAX_CONCURRENT_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
 let activeMeetings = 0;
 
 const main = async () => {
-    console.log(`Zeus cloud bot up — hub: ${HUB_URL}, daily decision cap (ALL meetings combined): ${MAX_DAILY_DECISIONS}, max concurrent meetings: ${MAX_CONCURRENT_MEETINGS}`);
+    console.log(`Clarus cloud bot up — hub: ${HUB_URL}, daily decision cap (ALL meetings combined): ${MAX_DAILY_DECISIONS}, max concurrent meetings: ${MAX_CONCURRENT_MEETINGS}`);
     while (true) {
         if (activeMeetings < MAX_CONCURRENT_MEETINGS) {
             const brief = await hub.getBrief();

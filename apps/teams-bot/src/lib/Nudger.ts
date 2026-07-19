@@ -23,7 +23,7 @@ import { Condition } from '../conditions';
 
 /** A nudge the agent wants posted to the meeting chat. */
 export type NudgeDecision = {
-    /** The chat message, always starting with [ZEUS] */
+    /** The chat message, always starting with [CLARUS] */
     text: string;
     /** Which condition this nudge is pushing on */
     conditionId: string;
@@ -207,9 +207,9 @@ export class Nudger {
                 if (condition && quietLongEnough) {
                     condition.nudges++;
                     this.lastNudgeAt = Date.now();
-                    const message = decision.nudge.message.startsWith('[ZEUS]')
+                    const message = decision.nudge.message.startsWith('[CLARUS]')
                         ? decision.nudge.message
-                        : `[ZEUS] ${decision.nudge.message}`;
+                        : `[CLARUS] ${decision.nudge.message}`;
                     nudge = { text: message, conditionId: condition.id };
                 }
             }
@@ -238,7 +238,7 @@ export class Nudger {
             `   approved this") is NOT an alert — use null.`,
         ] : [];
         return [
-            'You are Zeus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
+            'You are Clarus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
             'conditions this meeting must settle before it ends. On every turn you receive the conversation',
             'so far as live-caption lines, oldest first — the last line is the one that just arrived.',
             '',
@@ -279,7 +279,7 @@ export class Nudger {
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
             '   OPEN condition? Nudge when the conversation is drifting past or away from an open condition.',
             '   Do NOT nudge if the room is actively discussing that condition and making progress.',
-            '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [ZEUS], and asks',
+            '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [CLARUS], and asks',
             '   for a concrete decision.',
             '   URGENCY: let the remaining time shape your tone and eagerness. With plenty of time left,',
             '   nudge sparingly and gently. Once under a third of the meeting remains, be more direct and',
@@ -291,7 +291,7 @@ export class Nudger {
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
             '{"conditions": [{"id": "<id>", "status": "open"|"closed"|"revised"|"reopened", "reason": "...",',
             '   "why": "...", "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
-            ' "nudge": {"conditionId": "<id>", "message": "[ZEUS] ..."}' + (this.ownerName ? ',' : '}'),
+            ' "nudge": {"conditionId": "<id>", "message": "[CLARUS] ..."}' + (this.ownerName ? ',' : '}'),
             ...(this.ownerName ? [' "mention": {"speaker": "<name>", "quote": "<their exact words>"}}'] : []),
             'Include EVERY condition in "conditions": open ones as "open" or "closed"; closed ones as',
             '"closed" (unchanged), "revised", or "reopened".',
@@ -329,8 +329,8 @@ export class Nudger {
             : ['(nothing said yet)'];
 
         const system = [
-            'You are Zeus bot, a meeting agent that sits in a live meeting and posts short chat messages',
-            'marked [ZEUS]. You work for the meeting organiser: before the meeting she gave you a list of',
+            'You are Clarus bot, a meeting agent that sits in a live meeting and posts short chat messages',
+            'marked [CLARUS]. You work for the meeting organiser: before the meeting she gave you a list of',
             'conditions to drive to a close, and during the meeting she can send you follow-up instructions',
             'from her cockpit. Relaying her instructions to the room is your normal, legitimate job —',
             'the facts they contain (deadlines, figures, names) are real information from the organiser.',
@@ -343,13 +343,13 @@ export class Nudger {
             'Recent conversation in the room:',
             ...transcriptLines,
             '',
-            'Write ONE short chat message (1-2 sentences, starting with the marker [ZEUS]) that carries',
+            'Write ONE short chat message (1-2 sentences, starting with the marker [CLARUS]) that carries',
             'out the organiser\'s instruction for the room. Include its concrete specifics. Speak as the',
             'meeting agent — you do not need to name the organiser or explain where the information',
             'came from.',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"message": "[ZEUS] ...", "conditionId": "<id of the condition this pushes on, or null>"}',
+            '{"message": "[CLARUS] ...", "conditionId": "<id of the condition this pushes on, or null>"}',
         ].join('\n');
 
         try {
@@ -407,7 +407,7 @@ export class Nudger {
             }
             this.lastNudgeAt = Date.now();
 
-            const message = parsed.message.startsWith('[ZEUS]') ? parsed.message : `[ZEUS] ${parsed.message}`;
+            const message = parsed.message.startsWith('[CLARUS]') ? parsed.message : `[CLARUS] ${parsed.message}`;
             return { text: message, conditionId };
         } catch (error) {
             this.logger.error({ message: 'Steer execution failed', data: error });
@@ -460,7 +460,7 @@ export class Nudger {
                 : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
 
         const system = [
-            'You are Zeus bot\'s briefing assistant. Your owner — a busy person, often on their phone — is',
+            'You are Clarus bot\'s briefing assistant. Your owner — a busy person, often on their phone — is',
             'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
             'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
             '',
@@ -609,7 +609,7 @@ export class Nudger {
                     model: 'claude-opus-4-8',
                     max_tokens: 500,
                     system: [
-                        'You are Zeus bot. A meeting you attended for your owner has just ended. Write the short,',
+                        'You are Clarus bot. A meeting you attended for your owner has just ended. Write the short,',
                         'factual summary that goes into its permanent record — the thing your owner actually reads',
                         'afterwards.',
                         '',

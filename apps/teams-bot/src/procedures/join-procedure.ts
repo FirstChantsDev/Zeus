@@ -179,7 +179,7 @@ export class JoinProcedure {
 
             const nameInputSelector = 'input[placeholder="Type your name"]';
             await this.page.waitForSelector(nameInputSelector, { timeout: 15000 });
-            await this.page.fill(nameInputSelector, 'Zeus bot');
+            await this.page.fill(nameInputSelector, 'Clarus bot');
             this.logger.info({ message: 'Entered bot name.' });
 
             await this._ensureCameraAndMicOff();

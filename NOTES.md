@@ -14,11 +14,12 @@ The product name shown in the UI is **Clarus**.
   `--ink` (text), `--blue` (the accent — the agent's colour), and the
   status families `--green`/`--amber`/`--red` (closed / open / needs-you,
   same meanings as always).
-- **Visual only.** No logic, endpoints or bot behaviour changed. The bot
-  still joins Teams as "Zeus bot" and still marks its chat posts `[ZEUS]`
-  (the cockpit hides that marker on screen and shows a CLARUS label
-  instead). Renaming the bot's in-meeting identity would be a bot-side
-  change needing a bot redeploy — deliberately not done in the restyle.
+- **The bot is Clarus too (renamed after the restyle):** it joins Teams
+  as "Clarus bot" and marks its chat posts `[CLARUS]`. The cockpit hides
+  the marker on screen either way (it recognises old `[ZEUS]` and new
+  `[CLARUS]`), so old and new bots both display cleanly. The in-meeting
+  name only changes once the BOT is redeployed — the front-end alone
+  doesn't do it.
 - Functional identifiers below (env vars like `ZEUS_RECORDS_DIR`, the
   Railway project name, the Entra app name) keep their original names.
 - **Briefing is chat-only now (2026-07):** the old briefing form was
@@ -37,9 +38,9 @@ goal is being ignored, and reporting everything to a private local cockpit.
 ## What each phase built
 
 - **Phase 1 — the field bot.** Joins a Teams meeting from a link as
-  "Zeus bot" (camera/mic off, visible Chrome window), posts to the meeting
+  "Zeus bot" — renamed "Clarus bot" in 2026-07 (camera/mic off, visible Chrome window), posts to the meeting
   chat, turns on live captions and cleans them into one-sentence transcript
-  lines. Chat messages are marked [ZEUS].
+  lines. Chat messages are marked [ZEUS], today [CLARUS].
 - **Phase 2 — the command centre.** A tiny web server inside the same
   process serves a private cockpit at **http://localhost:4300**: condition
   cards (amber open / jade closed), the agent's nudge feed with each nudge's
@@ -121,12 +122,12 @@ goal is being ignored, and reporting everything to a private local cockpit.
    optionally a context line. Click **"Send agent into the meeting →"**.
    The screen fades to the live cockpit ("AWAITING YOUR BRIEF" flips to the
    agent's live status) and a Chrome window opens and heads for the meeting.
-4. **Admit it.** In Teams, admit "Zeus bot" from the lobby. It says hello in
+4. **Admit it.** In Teams, admit "Clarus bot" from the lobby. It says hello in
    chat, turns captions on, the cockpit transcript starts moving, and the
    countdown appears in the header next to the clock.
    Don't close the Chrome window — that window IS the bot.
 5. **What to say out loud, and what you'll see:**
-   - Talk about anything else → after a while the agent posts a [ZEUS]
+   - Talk about anything else → after a while the agent posts a [CLARUS]
      nudge about your most important open condition; it appears in the
      cockpit feed as WAITING.
    - Settle a condition ACROSS SEVERAL SENTENCES AND VOICES — e.g. one
@@ -255,7 +256,7 @@ goal is being ignored, and reporting everything to a private local cockpit.
 4. Brief the agent: paste the **Teams meeting link** into its field, add
    your name, length, and 1–5 conditions. One click on "Send agent in".
 5. Within ~10 seconds the cloud bot heads for the meeting — **admit
-   "Zeus bot"** from the lobby. It greets in chat; the website board,
+   "Clarus bot"** from the lobby. It greets in chat; the website board,
    transcript, nudges, mentions, and steering all run live.
 6. When the meeting ends, the bot notices (~90s), resets the website to a
    fresh briefing screen for the next person, and waits.

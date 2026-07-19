@@ -1,5 +1,5 @@
 /**
- * Zeus prototype launcher.
+ * Clarus prototype launcher.
  *
  * Usage:  npx tsx apps/teams-bot/src/gate.ts [teams-meeting-url]
  *         (the link is optional since Phase 10 — pick a meeting from the
@@ -8,7 +8,7 @@
  * Phase 3 flow: starts the cockpit at http://localhost:4300 and WAITS.
  * The owner types her brief there (meeting name, 1-3 conditions, optional
  * context) and clicks "Send agent into the meeting" — only then does a
- * VISIBLE Chrome window open and join the meeting as "Zeus bot" with
+ * VISIBLE Chrome window open and join the meeting as "Clarus bot" with
  * camera and mic off. The window stays open until you press Ctrl+C in
  * the terminal.
  */
@@ -85,7 +85,7 @@ const main = async () => {
     const shutdown = async (reason: string) => {
         if (shuttingDown) return; // e.g. kill button and auto-end racing
         shuttingDown = true;
-        console.log(`\n=== Zeus bot shutting down: ${reason}. No further API calls after the record is saved. ===\n`);
+        console.log(`\n=== Clarus bot shutting down: ${reason}. No further API calls after the record is saved. ===\n`);
         try {
             if (wasBriefed) {
                 const snapshot = cockpit.snapshotForRecord();
@@ -273,7 +273,7 @@ const main = async () => {
     cockpit.start();
 
     // Phase 3 sequencing: brief first, THEN the agent walks in.
-    console.log(`\n=== Zeus: waiting for your brief. Open http://localhost:${COCKPIT_PORT}, type your conditions, and send the agent in. ===\n`);
+    console.log(`\n=== Clarus: waiting for your brief. Open http://localhost:${COCKPIT_PORT}, type your conditions, and send the agent in. ===\n`);
     await briefed;
 
     // Phase 12: hold for a future start (Kill bot / Ctrl+C work throughout).
@@ -308,7 +308,7 @@ const main = async () => {
         cockpit.setMeetingStatus('connecting');
     }
 
-    console.log('\n=== Zeus bot: brief received — opening the meeting link... ===\n');
+    console.log('\n=== Clarus bot: brief received — opening the meeting link... ===\n');
     // Which browser to drive. Locally this stays installed Google Chrome
     // ('chrome') because Playwright's bundled Chromium won't start on this
     // PC. The Docker container (Phase 6) has no Chrome — it sets
@@ -335,7 +335,7 @@ const main = async () => {
     await join.startMeetingLauncherFlow({ meetingUrl: activeMeetingUrl });
     await join.joinMeetingLobbyFlow();
 
-    console.log('\n=== Zeus bot: join clicked. Watching status (Ctrl+C here to quit)... ===\n');
+    console.log('\n=== Clarus bot: join clicked. Watching status (Ctrl+C here to quit)... ===\n');
 
     let lastState = '';
     let inMeetingSince: number | null = null;
@@ -378,7 +378,7 @@ const main = async () => {
             } else if (state === 'in-meeting') {
                 inMeetingSince = Date.now();
                 record.joined(); // audit trail: the agent is in the room (first time only)
-                console.log('\n>>> STATUS: Admitted! Zeus bot is now IN the meeting. <<<\n');
+                console.log('\n>>> STATUS: Admitted! Clarus bot is now IN the meeting. <<<\n');
             } else {
                 console.log('\n>>> STATUS: Not in lobby or meeting (page may still be loading, or the call ended). <<<\n');
             }
@@ -450,6 +450,6 @@ const main = async () => {
 };
 
 main().catch((error) => {
-    console.error('\n=== Zeus bot hit a fatal error ===\n', error);
+    console.error('\n=== Clarus bot hit a fatal error ===\n', error);
     process.exit(1);
 });

@@ -1,5 +1,5 @@
 /**
- * Zeus hosted cockpit — the hub.
+ * Clarus hosted cockpit — the hub.
  *
  * A standalone, dependency-free Node server that puts the cockpit on a real
  * URL. It is ADDITIVE ONLY: the normal local run
@@ -341,7 +341,7 @@ const runDemoMeeting = (meeting) => {
     if (c0) {
         after(21, () => {
             meeting.nudges.push({
-                text: `[ZEUS] Before we drift — can we get "${c0.label}" settled? What's the decision?`,
+                text: `[CLARUS] Before we drift — can we get "${c0.label}" settled? What's the decision?`,
                 conditionId: c0.id, steered: false, at: new Date().toISOString(),
             });
             c0.nudges++;
@@ -365,7 +365,7 @@ const runDemoMeeting = (meeting) => {
     if (c1) {
         after(50, () => {
             meeting.nudges.push({
-                text: `[ZEUS] One thing still open — "${c1.label}". Can we pin it down before we lose the room?`,
+                text: `[CLARUS] One thing still open — "${c1.label}". Can we pin it down before we lose the room?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
             });
             c1.nudges++;
@@ -375,7 +375,7 @@ const runDemoMeeting = (meeting) => {
         after(58, () => say('Maya', "Let's take that offline — next item."));
         after(66, () => {
             meeting.nudges.push({
-                text: `[ZEUS] Flagging again before we wrap — "${c1.label}" is still open. Can someone own it now?`,
+                text: `[CLARUS] Flagging again before we wrap — "${c1.label}" is still open. Can someone own it now?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
             });
             c1.nudges++; // second nudge while open → the cockpit turns this card red: NEEDS YOU
@@ -430,7 +430,7 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
             : ["The owner's calendar is NOT connected — they must paste a Teams meeting link in the chat."];
 
     const system = [
-        "You are Zeus bot's briefing assistant. Your owner — a busy person, often on their phone — is",
+        "You are Clarus bot's briefing assistant. Your owner — a busy person, often on their phone — is",
         'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
         'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
         '',
@@ -1090,5 +1090,5 @@ server.listen(PORT, () => {
     // The chat-briefing state is in this line ON PURPOSE: "the chat is not
     // appearing" is answered by the first line of the deploy logs.
     const chat = ANTHROPIC_API_KEY ? 'ON' : 'OFF — set ANTHROPIC_API_KEY on this service to enable it';
-    console.log(`Zeus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS}, chat briefing: ${chat})`);
+    console.log(`Clarus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS}, chat briefing: ${chat})`);
 });
