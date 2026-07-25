@@ -330,10 +330,19 @@ goal is being ignored, and reporting everything to a private local cockpit.
 
 ## Outlook calendar (Microsoft Graph) — setup & operations
 
-**Scope (deliberate):** single owner, one Microsoft account, delegated
-`Calendars.Read` only — read-only, no email, nothing else. Tested against a
-personal Microsoft account. The sanctioned Graph API path; the browser
-join flow is untouched.
+**Scope (deliberate):** delegated `Calendars.Read` only — read-only, no
+email, nothing else. Tested against a personal Microsoft account. The
+sanctioned Graph API path; the browser join flow is untouched.
+
+**Multi-account:** several Microsoft accounts can be connected at once —
+the homepage shows **Add another account** once the first is linked, and
+each person signs in with their own Microsoft login (the sign-in page
+always asks which account, so it never silently reuses the browser's
+session). All accounts share the same MSAL token cache file; upcoming
+meetings are fetched from every account, tagged with whose calendar they
+came from, merged and deduped (same join link = same meeting). Honesty
+note: anyone who can open the cockpit sees the merged view — per-person
+access control inside the cockpit is a parked later phase.
 
 **One-time Entra app registration** (portal clicks, ~5 minutes):
 1. Go to **entra.microsoft.com** → sign in → **App registrations** →
@@ -368,7 +377,7 @@ secret or token ever appears anywhere else (a log, a commit, a screen
 share), rotate it: delete the client secret in Entra, create a new one,
 update `.env`, delete `calendar-token.json`, reconnect.
 
-**The hosted hub has the calendar too (still single owner).** The same
+**The hosted hub has the calendar too (same multi-account rules).** The same
 Entra app serves both. `deploy/cockpit-server/calendar.js` is a plain-JS
 port of the local connector (same msal-node library, same one-file token
 cache); the hub answers the same `/calendar/*` endpoints, so the shared

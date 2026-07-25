@@ -1,9 +1,15 @@
 /**
  * Hosted-hub Outlook calendar — a plain-JS port of the local connector
  * (apps/teams-bot/src/lib/CalendarConnector.ts). Same deliberate scope:
- * SINGLE OWNER, delegated Calendars.Read only, read-only, sign-in and
- * token handling through Microsoft's own auth library (@azure/msal-node)
- * — no hand-rolled OAuth.
+ * delegated Calendars.Read only, read-only, sign-in and token handling
+ * through Microsoft's own auth library (@azure/msal-node) — no
+ * hand-rolled OAuth.
+ *
+ * MULTI-ACCOUNT: the MSAL cache holds every account that has signed in
+ * ("Add another Outlook" on the homepage). Meetings are fetched from ALL
+ * of them and merged into one pick-list, each tagged with the account it
+ * came from. Anyone who can open this cockpit sees the merged view —
+ * per-person access control stays a parked later phase.
  *
  * Configuration (Railway service variables on the COCKPIT service):
  *   MS_CLIENT_ID / MS_CLIENT_SECRET  — the same Entra app as local
@@ -90,14 +96,19 @@ const redirectUriFor = (req) => {
     return `${proto}://${host}/auth/callback`;
 };
 
-/** configured = env credentials present; connected = a signed-in account exists */
+/** configured = env credentials present; connected = at least one signed-in account */
 const status = async () => {
     if (!app) {
-        return { configured: false, connected: false, account: null };
+        return { configured: false, connected: false, account: null, accounts: [] };
     }
-    const accounts = await app.getTokenCache().getAllAccounts();
-    const account = accounts[0] ?? null;
-    return { configured: true, connected: Boolean(account), account: account ? account.username : null };
+    const accounts = (await app.getTokenCache().getAllAccounts()).map((a) => a.username);
+    return {
+        configured: true,
+        connected: accounts.length > 0,
+        // Kept for older UI strings: every connected account, human-joined.
+        account: accounts.length ? accounts.join(' + ') : null,
+        accounts,
+    };
 };
 
 /** Where "Connect calendar" sends the owner: Microsoft's own sign-in page */
@@ -105,7 +116,9 @@ const authUrl = async (req) => {
     if (!app) throw new Error('Calendar is not configured (MS_CLIENT_ID / MS_CLIENT_SECRET missing).');
     lastAuthRedirectUri = redirectUriFor(req);
     console.log(`CALENDAR AUTH >>> redirect URI in play: ${lastAuthRedirectUri}`);
-    return app.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: lastAuthRedirectUri });
+    // select_account: without it Microsoft silently reuses the browser's
+    // signed-in account — a second person could never add THEIR calendar.
+    return app.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: lastAuthRedirectUri, prompt: 'select_account' });
 };
 
 /** Finishes the sign-in; MSAL stores the token (incl. refresh) in the file cache */
@@ -120,28 +133,28 @@ const handleCallback = async (req, code) => {
     return account;
 };
 
-/** A silently-refreshed access token, or null when not connected */
-const accessToken = async () => {
-    if (!app) return null;
-    const accounts = await app.getTokenCache().getAllAccounts();
-    if (!accounts[0]) return null;
+/** A silently-refreshed access token for ONE account, or null when it can't refresh */
+const accessTokenFor = async (account) => {
     try {
-        const result = await app.acquireTokenSilent({ account: accounts[0], scopes: GRAPH_SCOPES });
+        const result = await app.acquireTokenSilent({ account, scopes: GRAPH_SCOPES });
         return (result && result.accessToken) || null;
     } catch (error) {
-        console.error('Calendar token refresh failed (reconnect from the briefing screen):', error);
+        console.error(`Calendar token refresh failed for ${account.username} (reconnect from the homepage):`, error);
         return null;
     }
 };
 
 /**
- * The owner's next two weeks of meetings (max 25), soonest first — the
- * same Graph call as the local connector. Events without a Teams join
- * link come back with joinUrl: null so the UI can grey them out.
+ * The next two weeks of meetings (max 25 per account), soonest first,
+ * merged across EVERY signed-in account — each tagged with the account
+ * it came from. Events without a Teams join link come back with
+ * joinUrl: null so the UI can grey them out. A meeting both accounts
+ * were invited to appears once (deduped by its join link).
  */
 const upcomingMeetings = async () => {
-    const token = await accessToken();
-    if (!token) throw new Error('Calendar is not connected.');
+    if (!app) throw new Error('Calendar is not connected.');
+    const accounts = await app.getTokenCache().getAllAccounts();
+    if (accounts.length === 0) throw new Error('Calendar is not connected.');
     const now = new Date();
     const horizon = new Date(now.getTime() + 14 * 24 * 3600_000);
     const url = 'https://graph.microsoft.com/v1.0/me/calendarView'
@@ -149,18 +162,46 @@ const upcomingMeetings = async () => {
         + `&endDateTime=${encodeURIComponent(horizon.toISOString())}`
         + '&$orderby=start/dateTime&$top=25'
         + '&$select=subject,start,end,isOnlineMeeting,onlineMeeting';
-    const response = await fetch(url, {
-        headers: {
-            authorization: `Bearer ${token}`,
-            prefer: 'outlook.timezone="UTC"', // Graph answers in UTC — parsing stays simple
-        },
-    });
-    if (!response.ok) {
-        const body = await response.text().catch(() => '(no body)');
-        throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+
+    const merged = [];
+    let anySucceeded = false;
+    let lastError = null;
+    for (const account of accounts) {
+        const token = await accessTokenFor(account);
+        if (!token) { lastError = new Error(`Sign-in for ${account.username} has expired.`); continue; }
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    authorization: `Bearer ${token}`,
+                    prefer: 'outlook.timezone="UTC"', // Graph answers in UTC — parsing stays simple
+                },
+            });
+            if (!response.ok) {
+                const body = await response.text().catch(() => '(no body)');
+                throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+            }
+            const data = await response.json();
+            for (const event of data.value ?? []) {
+                merged.push({ ...toMeeting(event), account: account.username });
+            }
+            anySucceeded = true;
+        } catch (error) {
+            // One broken account must not blank the other's calendar.
+            console.error(`Calendar fetch failed for ${account.username}:`, error instanceof Error ? error.message : error);
+            lastError = error;
+        }
     }
-    const data = await response.json();
-    return (data.value ?? []).map((event) => toMeeting(event));
+    if (!anySucceeded) throw lastError ?? new Error('Calendar is not connected.');
+
+    // Same meeting on both calendars = one entry (the join link is the identity).
+    const seen = new Set();
+    const unique = merged.filter((m) => {
+        if (!m.joinUrl) return true;
+        if (seen.has(m.joinUrl)) return false;
+        seen.add(m.joinUrl);
+        return true;
+    });
+    return unique.sort((a, b) => a.start.localeCompare(b.start));
 };
 
 /** Graph event -> the pick-list shape (shared by the list and by-id fetches) */
@@ -182,24 +223,36 @@ const toMeeting = (event) => {
 
 /**
  * One event by id — the live truth for a meeting a waiting agent tracks.
- * Returns null when the event was cancelled or deleted.
+ * Returns null when the event was cancelled or deleted. Event ids live in
+ * ONE mailbox, so every signed-in account is tried until one knows it.
  */
 const getEvent = async (id) => {
-    const token = await accessToken();
-    if (!token) throw new Error('Calendar is not connected.');
+    if (!app) throw new Error('Calendar is not connected.');
+    const accounts = await app.getTokenCache().getAllAccounts();
+    if (accounts.length === 0) throw new Error('Calendar is not connected.');
     const url = `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(id)}`
         + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting';
-    const response = await fetch(url, {
-        headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
-    });
-    if (response.status === 404) return null;
-    if (!response.ok) {
-        const body = await response.text().catch(() => '(no body)');
-        throw new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+    let lastError = null;
+    let anyAnswered = false;
+    for (const account of accounts) {
+        const token = await accessTokenFor(account);
+        if (!token) { lastError = new Error(`Sign-in for ${account.username} has expired.`); continue; }
+        const response = await fetch(url, {
+            headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
+        });
+        if (response.status === 404) { anyAnswered = true; continue; } // not this mailbox — try the next
+        if (!response.ok) {
+            const body = await response.text().catch(() => '(no body)');
+            lastError = new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);
+            continue;
+        }
+        const event = await response.json();
+        if (event.isCancelled) return null;
+        return { ...toMeeting({ ...event, id }), account: account.username };
     }
-    const event = await response.json();
-    if (event.isCancelled) return null;
-    return toMeeting({ ...event, id });
+    // Every mailbox said 404 = the event is genuinely gone (cancelled).
+    if (anyAnswered) return null;
+    throw lastError ?? new Error('Calendar is not connected.');
 };
 
 module.exports = { status, authUrl, handleCallback, upcomingMeetings, getEvent };

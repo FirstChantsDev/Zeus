@@ -420,10 +420,13 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         const startMs = Date.parse(m.start);
         return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
     };
+    // Several Outlook accounts can be connected — say whose calendar each
+    // meeting is from, so "my brother's standup" resolves correctly.
+    const manyAccounts = new Set(meetingsMeta.map((m) => m.account).filter(Boolean)).size > 1;
     const calendarLines = meetingsMeta.length
         ? [
-            "The owner's upcoming meetings (their calendar is connected):",
-            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+            `Upcoming meetings (${manyAccounts ? 'across every connected calendar' : 'the connected calendar'}):`,
+            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
         ]
         : calendarConnected
             ? ["The owner's calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting (\"your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead\") and take a pasted link."]
@@ -836,7 +839,7 @@ const server = http.createServer(async (req, res) => {
             console.error('BRIEF-CHAT >>> calendar fetch failed:', error instanceof Error ? error.message : error);
         }
         const meetingsMeta = session.meetings.map((m, index) => ({
-            index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl),
+            index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl), account: m.account ?? null,
         }));
         console.log(`BRIEF-CHAT >>> calendar ${calendarConnected ? 'connected' : 'not connected'}, ${meetingsMeta.length} meeting(s) in view (${meetingsMeta.filter((m) => m.hasTeamsLink).length} with a Teams link)`);
 
@@ -916,7 +919,7 @@ const server = http.createServer(async (req, res) => {
     // access code (the OAuth callback is a top-level redirect, so the
     // SameSite=Lax session cookie rides along).
     if (url === '/calendar/status') {
-        answer(res, 200, await calendar.status().catch(() => ({ configured: true, connected: false, account: null })));
+        answer(res, 200, await calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [] })));
         return;
     }
     if (url === '/calendar/auth') {

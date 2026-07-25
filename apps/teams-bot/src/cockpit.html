@@ -746,16 +746,20 @@ async function detectDashboard(){
   }catch(e){ /* local — stay in single-meeting mode */ }
 }
 
-// The homepage's Outlook line: a Connect button until the calendar is
-// linked, then the same quiet "connected" status the chat shows.
+// The homepage's Outlook line: a Connect button until a calendar is
+// linked, then the connected accounts plus a way to add another —
+// several people (e.g. a sibling) can each sign in with their own
+// Microsoft account and their calendars merge into one pick-list.
 async function renderDashCalendar(){
   try{
     const s = await (await fetch('/calendar/status')).json();
     const el = document.getElementById('dashCal');
     if(!s.configured){ el.style.display = 'none'; return; }
     el.style.display = '';
+    const names = (s.accounts && s.accounts.length ? s.accounts : [s.account]).filter(Boolean);
     el.innerHTML = s.connected
-      ? `<span>Outlook connected: ${esc(s.account)} · read-only</span>`
+      ? `<span>Outlook connected: ${names.map(esc).join(' + ')} · read-only</span>
+         <button class="cal-connect" onclick="location.href='/calendar/auth'">Add another account</button>`
       : `<button class="cal-connect" onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
          <span>one sign-in — then briefs pick meetings straight from your calendar</span>`;
   }catch(e){ /* no calendar plumbing on this server — say nothing */ }

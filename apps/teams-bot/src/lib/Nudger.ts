@@ -427,7 +427,7 @@ export class Nudger {
      */
     public async briefChat(args: {
         history: Array<{ from: 'owner' | 'agent', text: string }>,
-        meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+        meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean, account?: string | null }>,
         /** Distinguishes "calendar not connected" from "connected but empty" in the prompt */
         calendarConnected?: boolean,
     }): Promise<{
@@ -450,10 +450,13 @@ export class Nudger {
             const startMs = Date.parse(m.start);
             return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
         };
+        // Several Outlook accounts can be connected — say whose calendar each
+        // meeting is from, so "my brother's standup" resolves correctly.
+        const manyAccounts = new Set(args.meetings.map((m) => m.account).filter(Boolean)).size > 1;
         const calendarLines = args.meetings.length
             ? [
-                'The owner\'s upcoming meetings (their calendar is connected):',
-                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+                `Upcoming meetings (${manyAccounts ? 'across every connected calendar' : 'the connected calendar'}):`,
+                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
             ]
             : args.calendarConnected
                 ? ['The owner\'s calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting ("your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead") and take a pasted link.']

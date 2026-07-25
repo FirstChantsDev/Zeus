@@ -10,7 +10,7 @@ import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
  *  (wired to Nudger.briefChat in gate.ts; null when there's no API key). */
 export type BriefChatHandler = (
     history: Array<{ from: 'owner' | 'agent', text: string }>,
-    meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean }>,
+    meetings: Array<{ index: number, subject: string, start: string, durationMinutes: number, hasTeamsLink: boolean, account: string | null }>,
     calendarConnected: boolean,
 ) => Promise<{
     reply: string,
@@ -260,8 +260,8 @@ export class CockpitServer {
                 // calendar UI the briefing screen shows (or none at all).
                 void (async () => {
                     const status = this.calendar
-                        ? await this.calendar.status().catch(() => ({ configured: true, connected: false, account: null }))
-                        : { configured: false, connected: false, account: null };
+                        ? await this.calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [] as string[] }))
+                        : { configured: false, connected: false, account: null, accounts: [] as string[] };
                     res.writeHead(200, { 'content-type': 'application/json' });
                     res.end(JSON.stringify(status));
                 })();
@@ -490,7 +490,7 @@ export class CockpitServer {
                     }
                 }
                 const meetingsMeta = this.chatMeetings.map((m, index) => ({
-                    index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl),
+                    index, subject: m.subject, start: m.start, durationMinutes: m.durationMinutes, hasTeamsLink: Boolean(m.joinUrl), account: m.account ?? null,
                 }));
                 console.log(`BRIEF-CHAT >>> calendar ${calendarConnected ? 'connected' : 'not connected'}, ${meetingsMeta.length} meeting(s) in view (${meetingsMeta.filter((m) => m.hasTeamsLink).length} with a Teams link)`);
 
