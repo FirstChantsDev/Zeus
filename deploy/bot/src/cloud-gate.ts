@@ -1,5 +1,5 @@
 /**
- * Clarus cloud bot — Phase 6, Milestone 3.
+ * Clarus cloud bot - Phase 6, Milestone 3.
  *
  * The hosted twin of apps/teams-bot/src/gate.ts. Instead of serving its own
  * cockpit, it talks to the hosted cockpit server (the hub) over HTTPS:
@@ -8,14 +8,14 @@
  *   2. Joins that meeting and runs the exact same procedures as local
  *      (join, greeting, captions, Nudger decisions).
  *   3. Pushes its state (board, transcript, nudges, mentions) to the hub
- *      every couple of seconds — the website renders from those pushes —
+ *      every couple of seconds - the website renders from those pushes -
  *      and collects any queued steers in the same breath.
  *   4. When the meeting ends, resets the hub (fresh briefing screen) and
  *      goes back to polling. One shared bot, one meeting at a time.
  *
  * Safety: MAX_DAILY_DECISIONS caps the number of paid API calls per
  * calendar day (UTC). The kill switch is Railway's Stop button on this
- * service — documented in NOTES.md.
+ * service - documented in NOTES.md.
  *
  * Env: HUB_URL, BOT_TOKEN, ANTHROPIC_API_KEY, MAX_DAILY_DECISIONS (500)
  */
@@ -60,7 +60,7 @@ type BriefFromHub = {
     lengthMinutes: number;
     ownerName: string;
     meetingUrl: string;
-    /** ISO start time from the calendar pick — null when unknown (pasted link) */
+    /** ISO start time from the calendar pick - null when unknown (pasted link) */
     meetingStart?: string | null;
 };
 
@@ -69,7 +69,7 @@ const JOIN_EARLY_MS = 2 * 60000;
 
 /**
  * ================================================
- * The hub client — every call carries the shared secret
+ * The hub client - every call carries the shared secret
  * ================================================
  */
 const hub = {
@@ -120,7 +120,7 @@ const hub = {
 
 /**
  * ================================================
- * The usage cap — paid API calls per UTC day
+ * The usage cap - paid API calls per UTC day
  * ================================================
  */
 let capDay = new Date().toISOString().slice(0, 10);
@@ -136,7 +136,7 @@ const underCap = (): boolean => {
     if (decisionsToday >= MAX_DAILY_DECISIONS) {
         if (!capAnnounced) {
             capAnnounced = true;
-            console.error(`USAGE CAP HIT >>> ${MAX_DAILY_DECISIONS} decisions today — no more API calls until tomorrow (UTC).`);
+            console.error(`USAGE CAP HIT >>> ${MAX_DAILY_DECISIONS} decisions today - no more API calls until tomorrow (UTC).`);
         }
         return false;
     }
@@ -151,9 +151,9 @@ const underCap = (): boolean => {
  */
 const runMeeting = async (brief: BriefFromHub) => {
     const botId = randomUUID();
-    console.log(`\n=== Cloud bot briefed (${brief.meetingId}): "${brief.meetingName}" — ${brief.labels.join(' | ')} ===\n`);
+    console.log(`\n=== Cloud bot briefed (${brief.meetingId}): "${brief.meetingName}" - ${brief.labels.join(' | ')} ===\n`);
 
-    // Phase 7c: this meeting's OWN conditions and its OWN brain — nothing is
+    // Phase 7c: this meeting's OWN conditions and its OWN brain - nothing is
     // shared between meetings, so boards can never cross-contaminate.
     const conditions: Condition[] = brief.labels.map((label, index) => ({
         id: `c${index}`, label, status: 'open', nudges: 0,
@@ -162,7 +162,7 @@ const runMeeting = async (brief: BriefFromHub) => {
     nudger.setContext(brief.context);
     nudger.setOwner(brief.ownerName);
 
-    // The meeting's audit trail — events appended as they happen; the
+    // The meeting's audit trail - events appended as they happen; the
     // finished record goes to the hub, which persists it to disk.
     const record = new MeetingRecord(brief.meetingId);
     record.briefed(brief);
@@ -186,7 +186,7 @@ const runMeeting = async (brief: BriefFromHub) => {
     let nudgeQueue: Promise<void> = Promise.resolve();
     let endReason = 'the bot run ended unexpectedly';
 
-    // Everything the brain concludes lands here — from caption lines AND
+    // Everything the brain concludes lands here - from caption lines AND
     // from immediate re-judgements after a board edit (line = null then).
     const handleDecision = async (
         decision: LineDecision,
@@ -197,7 +197,7 @@ const runMeeting = async (brief: BriefFromHub) => {
             if (line) line.hit = true;
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-closed', `Condition closed: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-closed', `Condition closed: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
                 });
             }
@@ -207,7 +207,7 @@ const runMeeting = async (brief: BriefFromHub) => {
             if (line) line.hit = true;
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
                 });
             }
@@ -215,7 +215,7 @@ const runMeeting = async (brief: BriefFromHub) => {
         for (const id of decision.reopenedIds) {
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-reopened', `Condition reopened — the room unsettled it: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-reopened', `Condition reopened - the room unsettled it: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null,
                 });
             }
@@ -250,7 +250,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                 delete condition.evidence;
             }
             console.log(`CONDITION EDITED >>> ${condition.id}: "${before}" → "${edit.label}"${reopened ? ' (reopened)' : ''}`);
-            record.log('condition-edited', `Condition ${condition.id} edited: "${before}" → "${edit.label}"${reopened ? ' (was closed — reopened for re-evaluation)' : ''}`, { id: condition.id, before, after: edit.label, reopened });
+            record.log('condition-edited', `Condition ${condition.id} edited: "${before}" → "${edit.label}"${reopened ? ' (was closed - reopened for re-evaluation)' : ''}`, { id: condition.id, before, after: edit.label, reopened });
         } else {
             if (conditions.length >= MAX_CONDITIONS) return;
             const nextIndex = conditions.reduce((max, c) => {
@@ -262,7 +262,7 @@ const runMeeting = async (brief: BriefFromHub) => {
             console.log(`CONDITION ADDED >>> ${condition.id}: "${edit.label}"`);
             record.log('condition-added', `Condition added mid-call: "${edit.label}"`, { id: condition.id, label: edit.label });
         }
-        // Re-judge the whole transcript so far right away — a condition the
+        // Re-judge the whole transcript so far right away - a condition the
         // room already settled before it was added closes immediately.
         if (transcript.length === 0) return;
         nudgeQueue = nudgeQueue
@@ -278,12 +278,12 @@ const runMeeting = async (brief: BriefFromHub) => {
         // A calendar-picked meeting that starts later: hold here (status
         // "scheduled" on the cockpit) and join ~2 minutes before start.
         // Every check-in refreshes the start from the hub, which tracks the
-        // calendar — a MOVED meeting shifts the wait (later, earlier, or
+        // calendar - a MOVED meeting shifts the wait (later, earlier, or
         // "join right now"), a CANCELLED one stands the agent down, and the
         // Kill bot button works throughout.
         let startMs = brief.meetingStart ? Date.parse(brief.meetingStart) : NaN;
         if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
-            console.log(`=== Meeting ${brief.meetingId} starts ${brief.meetingStart} — holding, joining ~2 min before. ===`);
+            console.log(`=== Meeting ${brief.meetingId} starts ${brief.meetingStart} - holding, joining ~2 min before. ===`);
             let killedWhileWaiting: string | null = null;
             while (startMs - Date.now() > JOIN_EARLY_MS) {
                 const checkin = await hub.pushState(brief.meetingId, { meetingStatus: 'scheduled', meetingJoinedAt: null, conditions, nudges, transcript, mentions });
@@ -295,7 +295,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                     const movedMs = Date.parse(checkin.meetingStart);
                     if (Number.isFinite(movedMs) && movedMs !== startMs) {
                         console.log(`=== Meeting ${brief.meetingId} moved: ${new Date(startMs).toISOString()} → ${checkin.meetingStart} ===`);
-                        record.log('meeting-briefed', `The calendar meeting moved to ${checkin.meetingStart} — the agent adjusted its join time.`, { movedTo: checkin.meetingStart });
+                        record.log('meeting-briefed', `The calendar meeting moved to ${checkin.meetingStart} - the agent adjusted its join time.`, { movedTo: checkin.meetingStart });
                         startMs = movedMs; // earlier (even "now") exits the loop; later keeps waiting
                     }
                 }
@@ -307,7 +307,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                 record.log('meeting-ended', `Stood down before the scheduled start: ${killedWhileWaiting}.`, {});
                 return; // the finally block still persists the record and frees the hub drawer
             }
-            console.log(`=== Meeting ${brief.meetingId} is about to start — joining now. ===`);
+            console.log(`=== Meeting ${brief.meetingId} is about to start - joining now. ===`);
         }
 
         browser = await chromium.launch({
@@ -324,7 +324,7 @@ const runMeeting = async (brief: BriefFromHub) => {
             viewport: { width: 1600, height: 900 },
             // The Windows Chrome identity is deliberate and PROVEN: it works
             // locally and reached the lobby from the cloud. The "honest"
-            // Linux identity regressed — the Teams launcher hides the
+            // Linux identity regressed - the Teams launcher hides the
             // continue-on-web button from Linux visitors.
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         });
@@ -337,13 +337,13 @@ const runMeeting = async (brief: BriefFromHub) => {
             await join.startMeetingLauncherFlow({ meetingUrl: brief.meetingUrl });
             await join.joinMeetingLobbyFlow();
         } catch (error) {
-            // Before giving up, put Teams' own words in the log — the page
+            // Before giving up, put Teams' own words in the log - the page
             // usually says exactly why it refused (unsupported browser,
             // sign-in required, meeting not found...).
-            const title = await page.title().catch(() => '(no title — page/browser may be dead)');
-            const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable — page/browser may be dead)') as string;
-            console.log(`JOIN FAILED — PAGE TITLE >>> ${title}`);
-            console.log(`JOIN FAILED — PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
+            const title = await page.title().catch(() => '(no title - page/browser may be dead)');
+            const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable - page/browser may be dead)') as string;
+            console.log(`JOIN FAILED - PAGE TITLE >>> ${title}`);
+            console.log(`JOIN FAILED - PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
             throw error;
         }
         console.log('=== Cloud bot: join clicked, watching status ===');
@@ -356,7 +356,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                 const { steers, edits, kill } = await hub.pushState(brief.meetingId, { meetingStatus, meetingJoinedAt, conditions, nudges, transcript, mentions });
                 if (kill && !killRequested) {
                     killRequested = true;
-                    console.log('KILL from hub >>> the owner pressed Kill bot — wrapping this meeting up.');
+                    console.log('KILL from hub >>> the owner pressed Kill bot - wrapping this meeting up.');
                 }
                 for (const edit of edits) {
                     applyBoardEdit(edit, chat);
@@ -387,11 +387,11 @@ const runMeeting = async (brief: BriefFromHub) => {
 
         try {
             while (true) {
-                // The cockpit's Kill bot button — checked first so it works
+                // The cockpit's Kill bot button - checked first so it works
                 // from the lobby too, exactly like the local kill switch.
                 if (killRequested) {
                     endReason = 'shut down from the cockpit (Kill bot)';
-                    record.log('meeting-ended', 'The owner pressed Kill bot in the cockpit — the agent left the meeting.', {});
+                    record.log('meeting-ended', 'The owner pressed Kill bot in the cockpit - the agent left the meeting.', {});
                     break;
                 }
                 let state = 'unknown';
@@ -409,26 +409,26 @@ const runMeeting = async (brief: BriefFromHub) => {
                     console.log(`>>> STATUS: ${state} <<<`);
                     lastState = state;
                     // Diagnosis: when Teams drops us somewhere unrecognised,
-                    // log what the page actually says — its own words explain
+                    // log what the page actually says - its own words explain
                     // rejections better than our guesses.
                     if (state === 'unknown') {
-                        // NOTE: raw string, not a function — tsx rewrites
+                        // NOTE: raw string, not a function - tsx rewrites
                         // functions with helpers that don't exist in the page
                         // (same trap documented in captions-procedure.ts).
-                        const title = await page.title().catch(() => '(no title — page/browser may be dead)');
-                        const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable — page/browser may be dead)') as string;
+                        const title = await page.title().catch(() => '(no title - page/browser may be dead)');
+                        const bodyText = await page.evaluate(`(document.body && document.body.innerText || '').slice(0, 400)`).catch(() => '(unreadable - page/browser may be dead)') as string;
                         console.log(`PAGE SAYS >>> title: ${title}`);
                         console.log(`PAGE SAYS >>> ${bodyText.replace(/\s+/g, ' ').trim()}`);
                     }
                 }
 
                 // Meeting-over detection: we were in, and now we've been lost
-                // for a while — or we are absurdly far past the scheduled end.
+                // for a while - or we are absurdly far past the scheduled end.
                 if (meetingJoinedAt && state !== 'in-meeting') {
                     lostSince = lostSince ?? Date.now();
                     if (Date.now() - lostSince >= MEETING_LOST_MS) {
                         endReason = 'the meeting ended (out of the room for 90s)';
-                        console.log('=== Meeting appears to be over (lost for 90s) — wrapping up. ===');
+                        console.log('=== Meeting appears to be over (lost for 90s) - wrapping up. ===');
                         break;
                     }
                 } else {
@@ -437,14 +437,14 @@ const runMeeting = async (brief: BriefFromHub) => {
                 const remaining = timeState().remainingMinutes;
                 if (remaining !== null && remaining < -OVERTIME_LIMIT_MINUTES) {
                     endReason = `hard overtime limit reached (${OVERTIME_LIMIT_MINUTES} min past the scheduled end)`;
-                    console.log('=== Hard overtime limit reached — leaving the meeting. ===');
+                    console.log('=== Hard overtime limit reached - leaving the meeting. ===');
                     break;
                 }
                 // Never admitted at all? Give up after a while so the website
                 // isn't stuck "busy" on a meeting that never started.
                 if (!meetingJoinedAt && Date.now() - joinAttemptStartedAt > 6 * 60000) {
                     endReason = 'never admitted to the meeting (gave up after 6 minutes)';
-                    console.log('=== Not admitted within 6 minutes — giving up and freeing the cockpit. ===');
+                    console.log('=== Not admitted within 6 minutes - giving up and freeing the cockpit. ===');
                     break;
                 }
 
@@ -452,7 +452,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                     chatMessagePosted = true;
                     await page.waitForTimeout(3000);
                     const posted = await chat.sendMessageReliably(greetingFor(brief.ownerName));
-                    console.log(posted ? '>>> Greeting posted. <<<' : '>>> Greeting failed after retries — carrying on. <<<');
+                    console.log(posted ? '>>> Greeting posted. <<<' : '>>> Greeting failed after retries - carrying on. <<<');
                 }
 
                 if (state === 'in-meeting' && chatMessagePosted && !captionsStarted) {
@@ -535,7 +535,7 @@ const MAX_CONCURRENT_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
 let activeMeetings = 0;
 
 const main = async () => {
-    console.log(`Clarus cloud bot up — hub: ${HUB_URL}, daily decision cap (ALL meetings combined): ${MAX_DAILY_DECISIONS}, max concurrent meetings: ${MAX_CONCURRENT_MEETINGS}`);
+    console.log(`Clarus cloud bot up - hub: ${HUB_URL}, daily decision cap (ALL meetings combined): ${MAX_DAILY_DECISIONS}, max concurrent meetings: ${MAX_CONCURRENT_MEETINGS}`);
     while (true) {
         if (activeMeetings < MAX_CONCURRENT_MEETINGS) {
             const brief = await hub.getBrief();

@@ -119,7 +119,7 @@ export class CaptionsProcedure {
                     text: (el.textContent || '').trim().slice(0, 50) || undefined,
                 }))
         );
-        this.logger.warn({ message: `${context} — visible menu items/buttons:`, data: items });
+        this.logger.warn({ message: `${context} - visible menu items/buttons:`, data: items });
     }
 
     /**
@@ -154,7 +154,7 @@ export class CaptionsProcedure {
                 throw new Error('"More" button not found');
             }
 
-            // Find the captions entry — sometimes directly in the menu,
+            // Find the captions entry - sometimes directly in the menu,
             // sometimes nested under "Language and speech".
             const findCaptionsEntry = () =>
                 this.page.locator('div[id="closed-captions-button"], [role="menuitem"], [role="menuitemcheckbox"]')
@@ -208,7 +208,7 @@ export class CaptionsProcedure {
             // Inside the page: on any change in the caption area, rescan all caption
             // rows, stamp new rows with a stable incrementing id, and report each
             // row's current speaker + text up to Node.
-            // NOTE: passed as a raw string, not a function — our TypeScript runner
+            // NOTE: passed as a raw string, not a function - our TypeScript runner
             // (tsx/esbuild) rewrites functions with helpers like __name that do not
             // exist inside the browser page, which crashes page.evaluate.
             await this.page.evaluate(`(() => {
@@ -283,7 +283,7 @@ export class CaptionsProcedure {
 
         // A brand-new row means older rows are done talking. But Teams sometimes
         // REPLACES a row mid-sentence: the new row carries the same sentence,
-        // just longer. In that case the old row is a stale stub of this one —
+        // just longer. In that case the old row is a stale stub of this one -
         // absorb it silently instead of printing a fragment.
         if (isNewRow) {
             const newNorm = CaptionsProcedure._normalize(update.text);
@@ -328,7 +328,7 @@ export class CaptionsProcedure {
             ts: new Date().toISOString(),
         };
 
-        // One clean line per finished sentence — this is the Milestone 4 deliverable
+        // One clean line per finished sentence - this is the Milestone 4 deliverable
         console.log(`CAPTION >>> ${finished.speaker}: ${finished.text}`);
 
         this.transcriptFileStreamer.write(finished);

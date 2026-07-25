@@ -8,29 +8,29 @@ import {
 } from '@azure/msal-node';
 
 /**
- * CalendarConnector — read-only access to the owner's Outlook calendar via
+ * CalendarConnector - read-only access to the owner's Outlook calendar via
  * the official Microsoft Graph API, so briefing never needs a pasted link.
  *
  * Scope decisions (deliberate):
  *   - MULTI-ACCOUNT. Every Microsoft account that signs in ("Add another
  *     account") lands in the same MSAL cache; meetings are fetched from
  *     all of them and merged, each tagged with its account. Anyone who
- *     can open the cockpit sees the merged view — per-person access
+ *     can open the cockpit sees the merged view - per-person access
  *     control is a parked later phase.
- *   - READ-ONLY. Delegated `Calendars.Read` and nothing else — we never
+ *   - READ-ONLY. Delegated `Calendars.Read` and nothing else - we never
  *     write to the calendar, never read email.
  *   - Sign-in and token handling go through Microsoft's own auth library
- *     (@azure/msal-node) — no hand-rolled OAuth.
+ *     (@azure/msal-node) - no hand-rolled OAuth.
  *
  * Configuration (server-side secrets, .env only, never committed):
- *   MS_CLIENT_ID / MS_CLIENT_SECRET — from the Entra app registration
- *   MS_REDIRECT_URI — optional; defaults to http://localhost:4300/auth/callback
+ *   MS_CLIENT_ID / MS_CLIENT_SECRET - from the Entra app registration
+ *   MS_REDIRECT_URI - optional; defaults to http://localhost:4300/auth/callback
  *
  * THE ONE PIECE OF STATE THAT OUTLIVES THE PROCESS: the sign-in token.
  * MSAL's cache (access + refresh token) is persisted to ONE plain
- * server-side file — calendar-token.json at the repo root (override with
+ * server-side file - calendar-token.json at the repo root (override with
  * ZEUS_CAL_TOKEN_FILE), chmod 600, gitignored. Not a database on purpose.
- * If the file is deleted: nothing breaks — the calendar shows as
+ * If the file is deleted: nothing breaks - the calendar shows as
  * disconnected and the owner clicks "Connect calendar" again. That's the
  * whole recovery procedure.
  */
@@ -43,24 +43,24 @@ export type UpcomingMeeting = {
     start: string;
     end: string;
     durationMinutes: number;
-    /** The Teams join link — null when the event has none (greyed out in the UI) */
+    /** The Teams join link - null when the event has none (greyed out in the UI) */
     joinUrl: string | null;
     /** Which signed-in account's calendar this came from */
     account?: string;
 };
 
-/** What the cockpit needs from a calendar — the harness fakes this shape */
+/** What the cockpit needs from a calendar - the harness fakes this shape */
 export interface CalendarLike {
     status(): Promise<{ configured: boolean, connected: boolean, account: string | null, accounts: string[], selected: string }>;
     authUrl(): Promise<string>;
     handleCallback(code: string): Promise<string>; // returns the signed-in account name
     upcomingMeetings(): Promise<UpcomingMeeting[]>;
-    /** One event by id — null when it was cancelled/deleted. Lets a waiting
+    /** One event by id - null when it was cancelled/deleted. Lets a waiting
      *  agent follow a meeting that gets MOVED (earlier or later). */
     getEvent(id: string): Promise<UpcomingMeeting | null>;
     /** The dropdown's choice: 'all' or one signed-in username. Returns what stuck. */
     setSelected(choice: string): Promise<string>;
-    /** Signs one account out — its meetings drop from the pick-list. */
+    /** Signs one account out - its meetings drop from the pick-list. */
     removeAccount(username: string): Promise<void>;
 }
 
@@ -92,7 +92,7 @@ const fileCachePlugin: ICachePlugin = {
     async beforeCacheAccess(context: TokenCacheContext) {
         try {
             context.tokenCache.deserialize(fs.readFileSync(tokenFile(), 'utf8'));
-        } catch { /* no file yet — first run or disconnected */ }
+        } catch { /* no file yet - first run or disconnected */ }
     },
     async afterCacheAccess(context: TokenCacheContext) {
         if (context.cacheHasChanged) {
@@ -106,7 +106,7 @@ const fileCachePlugin: ICachePlugin = {
 };
 
 export class CalendarConnector implements CalendarLike {
-    // Both spellings accepted — MS_* and MICROSOFT_* — so the .env just works.
+    // Both spellings accepted - MS_* and MICROSOFT_* - so the .env just works.
     private readonly clientId = process.env.MS_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID || '';
     private readonly clientSecret = process.env.MS_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET || '';
     private readonly redirectUri = process.env.MS_REDIRECT_URI || process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4300/auth/callback';
@@ -125,7 +125,7 @@ export class CalendarConnector implements CalendarLike {
                 },
                 cache: { cachePlugin: fileCachePlugin },
             })
-            : null; // not configured — the UI simply never shows the calendar
+            : null; // not configured - the UI simply never shows the calendar
     }
 
     /** configured = env credentials present; connected = at least one signed-in account */
@@ -171,7 +171,7 @@ export class CalendarConnector implements CalendarLike {
     public async authUrl(): Promise<string> {
         if (!this.msal) throw new Error('Calendar is not configured (MS_CLIENT_ID / MS_CLIENT_SECRET missing).');
         // select_account: without it Microsoft silently reuses the browser's
-        // signed-in account — a second person could never add THEIR calendar.
+        // signed-in account - a second person could never add THEIR calendar.
         return this.msal.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: this.redirectUri, prompt: 'select_account' });
     }
 
@@ -197,7 +197,7 @@ export class CalendarConnector implements CalendarLike {
 
     /**
      * The next two weeks of meetings (max 25 per account), soonest first,
-     * merged across EVERY signed-in account — each tagged with the account
+     * merged across EVERY signed-in account - each tagged with the account
      * it came from. Events without a Teams join link come back with
      * joinUrl: null so the UI can grey them out. Uses /me/calendarView so
      * recurring meetings appear as their actual occurrences. A meeting both
@@ -271,7 +271,7 @@ export class CalendarConnector implements CalendarLike {
     }
 
     /**
-     * One event by id — the live truth for a meeting the agent is waiting
+     * One event by id - the live truth for a meeting the agent is waiting
      * on. Returns null when the event was cancelled or deleted (Graph
      * answers 404, or marks it isCancelled). Event ids live in ONE
      * mailbox, so every signed-in account is tried until one knows it.
@@ -290,7 +290,7 @@ export class CalendarConnector implements CalendarLike {
             const response = await fetch(url, {
                 headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
             });
-            if (response.status === 404) { anyAnswered = true; continue; } // not this mailbox — try the next
+            if (response.status === 404) { anyAnswered = true; continue; } // not this mailbox - try the next
             if (!response.ok) {
                 const body = await response.text().catch(() => '(no body)');
                 lastError = new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);

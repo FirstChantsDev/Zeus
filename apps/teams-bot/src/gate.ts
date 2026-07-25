@@ -2,12 +2,12 @@
  * Clarus prototype launcher.
  *
  * Usage:  npx tsx apps/teams-bot/src/gate.ts [teams-meeting-url]
- *         (the link is optional since Phase 10 — pick a meeting from the
+ *         (the link is optional since Phase 10 - pick a meeting from the
  *          connected calendar, or paste a link, on the briefing screen)
  *
  * Phase 3 flow: starts the cockpit at http://localhost:4300 and WAITS.
  * The owner types her brief there (meeting name, 1-3 conditions, optional
- * context) and clicks "Send agent into the meeting" — only then does a
+ * context) and clicks "Send agent into the meeting" - only then does a
  * VISIBLE Chrome window open and join the meeting as "Clarus bot" with
  * camera and mic off. The window stays open until you press Ctrl+C in
  * the terminal.
@@ -28,14 +28,14 @@ import { conditions, applyBrief } from './conditions';
 const COCKPIT_PORT = 4300;
 
 /** Auto-shutdown: how long the meeting can be lost (not in-meeting/lobby)
- *  after the bot was in, before we call it over — same as the cloud bot. */
+ *  after the bot was in, before we call it over - same as the cloud bot. */
 const MEETING_LOST_MS = 90000;
 /** Auto-shutdown: leave once this far past the scheduled end, whatever happens */
 const OVERTIME_LIMIT_MINUTES = 60;
 
 /**
  * Phase 5: THE greeting the bot posts to the meeting chat when it joins.
- * One place on purpose — change the wording here (it becomes configurable
+ * One place on purpose - change the wording here (it becomes configurable
  * from the briefing screen in a later phase). {owner} comes from the brief.
  */
 const greetingFor = (ownerName: string) => ownerName
@@ -48,7 +48,7 @@ const greetingFor = (ownerName: string) => ownerName
 // original hands-on path and always wins as the fallback.
 const meetingUrlArg = process.argv[2] ?? '';
 if (!meetingUrlArg) {
-    console.log('No meeting link on the command line — pick one from your calendar (or paste it) on the briefing screen.');
+    console.log('No meeting link on the command line - pick one from your calendar (or paste it) on the briefing screen.');
 }
 
 const main = async () => {
@@ -61,7 +61,7 @@ const main = async () => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const nudger = apiKey ? new Nudger({ botId, apiKey, conditions }) : null;
     if (!nudger) {
-        console.log('NOTE: no ANTHROPIC_API_KEY found in .env — captions will print, but no nudges will be posted.');
+        console.log('NOTE: no ANTHROPIC_API_KEY found in .env - captions will print, but no nudges will be posted.');
     }
 
     // The bot only walks into the meeting AFTER the brief is submitted:
@@ -73,7 +73,7 @@ const main = async () => {
     let chat: ChatProcedure | null = null;
     let browser: Browser | null = null;
 
-    // The meeting's audit trail — events are appended AS THEY HAPPEN and
+    // The meeting's audit trail - events are appended AS THEY HAPPEN and
     // the whole record is written to records/ when the meeting ends.
     const record = new MeetingRecord(botId.slice(0, 8));
     let wasBriefed = false;
@@ -106,27 +106,27 @@ const main = async () => {
     };
     process.on('SIGINT', () => { void shutdown('stopped from the terminal (Ctrl+C)'); });
 
-    // Everything the brain concludes lands here — from live caption lines
+    // Everything the brain concludes lands here - from live caption lines
     // AND from immediate re-judgements after a condition edit/addition.
     const handleDecision = async (decision: LineDecision, transcriptRecord: TranscriptRecord | null) => {
         for (const id of decision.resolvedIds) {
             if (transcriptRecord) {
-                transcriptRecord.hit = true; // this line closed a condition — cockpit shows it in jade
+                transcriptRecord.hit = true; // this line closed a condition - cockpit shows it in jade
             }
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-closed', `Condition closed: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-closed', `Condition closed: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
                 });
             }
         }
-        // Phase 13: closed conditions stay alive until the meeting ends —
+        // Phase 13: closed conditions stay alive until the meeting ends -
         // the room revising a decision updates the card; retracting reopens it.
         for (const id of decision.revisedIds) {
             if (transcriptRecord) transcriptRecord.hit = true;
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-revised', `Condition revised (stays closed): "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
                 });
             }
@@ -134,7 +134,7 @@ const main = async () => {
         for (const id of decision.reopenedIds) {
             const condition = conditions.find((c) => c.id === id);
             if (condition) {
-                record.log('condition-reopened', `Condition reopened — the room unsettled it: "${condition.label}"${condition.note ? ` — ${condition.note}` : ''}`, {
+                record.log('condition-reopened', `Condition reopened - the room unsettled it: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
                     id, label: condition.label, note: condition.note ?? null,
                 });
             }
@@ -156,11 +156,11 @@ const main = async () => {
     // Phase 5: the owner's name from the brief, for the greeting.
     let ownerName = '';
 
-    // Phase 10: where the agent actually goes — resolved at brief time
+    // Phase 10: where the agent actually goes - resolved at brief time
     // (calendar pick > pasted link > launch argument).
     let activeMeetingUrl = meetingUrlArg;
 
-    // Phase 12: a calendar-picked meeting that starts later — the bot waits
+    // Phase 12: a calendar-picked meeting that starts later - the bot waits
     // and joins ~2 minutes before, instead of idling in an empty lobby.
     // While waiting it re-reads the event so a MOVED meeting shifts the
     // join time and a CANCELLED one stands the agent down.
@@ -171,27 +171,27 @@ const main = async () => {
     // reports so, and the briefing screen shows no calendar UI.
     const calendar = new CalendarConnector();
 
-    // Everything the agent says — self-driven nudges and owner steers alike —
+    // Everything the agent says - self-driven nudges and owner steers alike -
     // goes through one queue, one message at a time, in order.
     let nudgeQueue: Promise<void> = Promise.resolve();
 
-    // The owner's private cockpit — a tiny web server inside this same
+    // The owner's private cockpit - a tiny web server inside this same
     // process, serving the briefing screen first and the live board after.
-    // A steer typed there is carried out immediately — the agent composes
+    // A steer typed there is carried out immediately - the agent composes
     // the message and posts it, no waiting for the next caption.
     const cockpit: CockpitServer = new CockpitServer({
         botId,
         conditions,
         port: COCKPIT_PORT,
-        meetingUrl: meetingUrlArg, // may be '' — a calendar pick or pasted link fills it at brief time
+        meetingUrl: meetingUrlArg, // may be '' - a calendar pick or pasted link fills it at brief time
         calendar,
-        // Phase 10 M3: chat-mode briefing — the model collects the brief
+        // Phase 10 M3: chat-mode briefing - the model collects the brief
         // conversationally and matches it against the calendar meetings.
         onBriefChat: nudger
             ? (history, meetings, calendarConnected) => nudger.briefChat({ history, meetings, calendarConnected })
             : null,
 
-        // Phase 3: the briefing screen submitted — fill the shared conditions
+        // Phase 3: the briefing screen submitted - fill the shared conditions
         // array with the owner's typed labels and let the join flow proceed.
         onSetup: (brief) => {
             applyBrief(brief.labels);
@@ -203,7 +203,7 @@ const main = async () => {
             trackedEventId = brief.calendarEventId;
             wasBriefed = true;
             record.briefed(brief);             // the audit trail starts here
-            console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) — the agent is driving:`);
+            console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) - the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);
             }
@@ -214,7 +214,7 @@ const main = async () => {
         },
         onCommand: (instruction) => {
             if (!nudger) {
-                console.log('STEER ignored — no ANTHROPIC_API_KEY, the agent cannot compose messages.');
+                console.log('STEER ignored - no ANTHROPIC_API_KEY, the agent cannot compose messages.');
                 return;
             }
             record.log('steer-received', `Owner steer: "${instruction}"`, { instruction });
@@ -223,7 +223,7 @@ const main = async () => {
                 .then(async () => {
                     const chatNow = chat;
                     if (!chatNow) {
-                        console.log('STEER ignored — the agent has not opened the meeting yet.');
+                        console.log('STEER ignored - the agent has not opened the meeting yet.');
                         return;
                     }
                     const directive = await nudger.executeSteer(instruction, cockpit.recentTranscript(10), cockpit.timeState());
@@ -241,16 +241,16 @@ const main = async () => {
                 });
         },
         // Live board edits from the cockpit: audit-log the change, then
-        // immediately re-judge the WHOLE transcript so far — a condition
+        // immediately re-judge the WHOLE transcript so far - a condition
         // added after the room already settled it closes straight away.
         onConditionsChanged: (change) => {
             if (change.kind === 'edited') {
-                record.log('condition-edited', `Condition ${change.id} edited: "${change.before}" → "${change.after}"${change.reopened ? ' (was closed — reopened for re-evaluation)' : ''}`, { ...change });
+                record.log('condition-edited', `Condition ${change.id} edited: "${change.before}" → "${change.after}"${change.reopened ? ' (was closed - reopened for re-evaluation)' : ''}`, { ...change });
             } else {
                 record.log('condition-added', `Condition added mid-call: "${change.label}"`, { ...change });
             }
             if (!nudger || !chat || cockpit.recentTranscript(1).length === 0) {
-                return; // nothing said yet (or no API key) — the next caption picks it up
+                return; // nothing said yet (or no API key) - the next caption picks it up
             }
             nudgeQueue = nudgeQueue
                 .then(async () => {
@@ -264,7 +264,7 @@ const main = async () => {
                     console.error('Re-judge pipeline error:', error);
                 });
         },
-        // The cockpit's Kill bot button — works any time, even before the
+        // The cockpit's Kill bot button - works any time, even before the
         // brief (kills the waiting process too).
         onShutdown: () => {
             void shutdown('the Kill bot button was pressed in the cockpit');
@@ -283,7 +283,7 @@ const main = async () => {
     let startMs = scheduledStartIso ? Date.parse(scheduledStartIso) : NaN;
     if (Number.isFinite(startMs) && startMs - Date.now() > JOIN_EARLY_MS) {
         cockpit.setMeetingStatus('scheduled');
-        console.log(`\n=== Meeting starts ${scheduledStartIso} — waiting, the agent joins ~2 minutes before. ===\n`);
+        console.log(`\n=== Meeting starts ${scheduledStartIso} - waiting, the agent joins ~2 minutes before. ===\n`);
         let ticks = 0;
         while (startMs - Date.now() > JOIN_EARLY_MS) {
             await new Promise((resolve) => setTimeout(resolve, 15000));
@@ -296,8 +296,8 @@ const main = async () => {
                 }
                 const movedMs = Date.parse(event.start);
                 if (Number.isFinite(movedMs) && movedMs !== startMs) {
-                    console.log(`=== Meeting moved: ${new Date(startMs).toISOString()} → ${event.start} — adjusting. ===`);
-                    record.log('meeting-briefed', `The calendar meeting moved to ${event.start} — the agent adjusted its join time.`, { movedTo: event.start });
+                    console.log(`=== Meeting moved: ${new Date(startMs).toISOString()} → ${event.start} - adjusting. ===`);
+                    record.log('meeting-briefed', `The calendar meeting moved to ${event.start} - the agent adjusted its join time.`, { movedTo: event.start });
                     startMs = movedMs;
                     cockpit.updateMeetingStart(event.start, event.durationMinutes);
                 }
@@ -308,10 +308,10 @@ const main = async () => {
         cockpit.setMeetingStatus('connecting');
     }
 
-    console.log('\n=== Clarus bot: brief received — opening the meeting link... ===\n');
+    console.log('\n=== Clarus bot: brief received - opening the meeting link... ===\n');
     // Which browser to drive. Locally this stays installed Google Chrome
     // ('chrome') because Playwright's bundled Chromium won't start on this
-    // PC. The Docker container (Phase 6) has no Chrome — it sets
+    // PC. The Docker container (Phase 6) has no Chrome - it sets
     // ZEUS_BROWSER_CHANNEL=bundled to use the image's bundled Chromium.
     // Default unchanged: without that setting, behaviour is exactly as before.
     const browserChannel = process.env.ZEUS_BROWSER_CHANNEL === 'bundled' ? undefined : 'chrome';
@@ -356,7 +356,7 @@ const main = async () => {
 
         // Auto-shutdown, same rules as the cloud bot: once the bot has been
         // in the meeting, being lost for 90s means the call ended (or we
-        // were removed) — kill the process instead of idling forever. And
+        // were removed) - kill the process instead of idling forever. And
         // whatever happens, never linger absurdly far past the scheduled end.
         if (state === 'in-meeting') {
             wasInMeeting = true;
@@ -385,18 +385,18 @@ const main = async () => {
             lastState = state;
         }
 
-        // Phase 5: once admitted, post the greeting — reliably. The send is
+        // Phase 5: once admitted, post the greeting - reliably. The send is
         // confirmed (the compose box must clear) and retried a few times,
         // because this message becomes customisable later and must not be
         // hit-or-miss.
         if (state === 'in-meeting' && !chatMessagePosted) {
-            chatMessagePosted = true; // one greeting per meeting — retries live inside sendMessageReliably
+            chatMessagePosted = true; // one greeting per meeting - retries live inside sendMessageReliably
             await page.waitForTimeout(3000); // let the meeting UI settle first
             const posted = await chat.sendMessageReliably(greetingFor(ownerName));
             if (posted) {
                 console.log('\n>>> STATUS: Greeting posted to the meeting chat. <<<\n');
             } else {
-                console.error('\n>>> PROBLEM: Greeting did not post after several attempts — carrying on without it. <<<\n');
+                console.error('\n>>> PROBLEM: Greeting did not post after several attempts - carrying on without it. <<<\n');
             }
         }
 
@@ -433,7 +433,7 @@ const main = async () => {
                 });
                 await captions.enableCaptionsFlow();
                 await captions.subscribeToCaptions();
-                console.log('\n>>> STATUS: Live captions are ON. Speak — finished lines print below as CAPTION >>> lines. <<<\n');
+                console.log('\n>>> STATUS: Live captions are ON. Speak - finished lines print below as CAPTION >>> lines. <<<\n');
             } catch (error) {
                 console.error('\n>>> PROBLEM: Could not turn on / read live captions. <<<\n', error);
             }

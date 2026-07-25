@@ -1,5 +1,5 @@
 /**
- * Clarus hosted cockpit — the hub.
+ * Clarus hosted cockpit - the hub.
  *
  * A standalone, dependency-free Node server that puts the cockpit on a real
  * URL. It is ADDITIVE ONLY: the normal local run
@@ -8,21 +8,21 @@
  *
  * Phase 7c: state is PER MEETING. Every meeting lives in its own drawer in
  * the `meetings` map, keyed by a meeting ID, with its own conditions,
- * transcript, nudges, mentions, timer, and steer queue — nothing shared.
+ * transcript, nudges, mentions, timer, and steer queue - nothing shared.
  * Endpoints carry the meeting ID (/state/<id>, /command/<id>, /bot/state/<id>);
  * the old ID-less forms keep working by routing to the newest meeting, so
  * the ordinary single-meeting flow is byte-for-byte unchanged.
  *
  * Run:  node deploy/cockpit-server/server.js   (from the repo root)
  * Env:  PORT (default 4400), ACCESS_CODE, DEMO_MODE (default 1), BOT_TOKEN,
- *       MAX_MEETINGS (default 1 — Milestone 2 raises the default ceiling)
+ *       MAX_MEETINGS (default 1 - Milestone 2 raises the default ceiling)
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 // Phase 10 on the hub: the owner's Outlook calendar (read-only, single
-// owner). Reports configured:false when MS_CLIENT_ID/SECRET are absent —
+// owner). Reports configured:false when MS_CLIENT_ID/SECRET are absent -
 // then nothing changes anywhere.
 const calendar = require('./calendar');
 
@@ -31,7 +31,7 @@ const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
 const DEMO_MODE = (process.env.DEMO_MODE ?? '1') !== '0';
 const MAX_CONDITIONS = 5;
 // Phase 7c Milestone 2: up to three meetings at once. Each is a full
-// Chrome on the bot machine (~500MB+), so 3 is the deliberate ceiling —
+// Chrome on the bot machine (~500MB+), so 3 is the deliberate ceiling -
 // a 4th brief is politely refused.
 const MAX_MEETINGS = Number(process.env.MAX_MEETINGS) || 3;
 // The shared secret the cloud bot presents on /bot/* calls.
@@ -45,11 +45,11 @@ const COCKPIT_PAGE = path.join(__dirname, '..', '..', 'apps', 'teams-bot', 'src'
 
 /**
  * ================================================
- * Persisted meeting records — one JSON file per completed meeting.
+ * Persisted meeting records - one JSON file per completed meeting.
  * The cloud bot POSTs the finished record to /bot/record/<id>; the
  * cockpit reads it back via /history. Same file shape as the local
  * bot's records/ directory. NOTE: on Railway this directory is only
- * durable if a volume is mounted at RECORDS_DIR — documented in NOTES.md.
+ * durable if a volume is mounted at RECORDS_DIR - documented in NOTES.md.
  * ================================================
  */
 const RECORDS_DIR = process.env.RECORDS_DIR || path.join(process.cwd(), 'records');
@@ -67,7 +67,7 @@ const writeRecordFile = (record) => {
     }
 };
 
-/** All records, newest first — same shape as the local bot's /history */
+/** All records, newest first - same shape as the local bot's /history */
 const listRecords = () => {
     let files = [];
     try {
@@ -118,7 +118,7 @@ const computeMetrics = (entries) => {
 
 /**
  * ================================================
- * Sessions — who has entered the access code
+ * Sessions - who has entered the access code
  * ================================================
  */
 const sessions = new Set();
@@ -139,7 +139,7 @@ const isAuthed = (req) => sessions.has(parseCookies(req).zeus_session || '');
 
 /**
  * ================================================
- * Meetings — one drawer of state per meeting, keyed by ID
+ * Meetings - one drawer of state per meeting, keyed by ID
  * ================================================
  */
 const startedAt = new Date().toISOString();
@@ -171,13 +171,13 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         briefClaimed: false, // the bot has collected this brief and owns the meeting
         steerQueue: [],      // owner instructions waiting for the bot's next check-in
         editQueue: [],       // live board edits waiting for the bot's next check-in
-        killRequested: false, // the owner pressed Kill bot — the bot wraps up on its next check-in
+        killRequested: false, // the owner pressed Kill bot - the bot wraps up on its next check-in
     };
     meetings.set(id, meeting);
     return meeting;
 };
 
-/** Newest meeting first — the routing order for the ID-less legacy endpoints */
+/** Newest meeting first - the routing order for the ID-less legacy endpoints */
 const meetingList = () => [...meetings.values()].sort((a, b) => b.briefedAt.localeCompare(a.briefedAt));
 
 /** The meeting an ID-less request means: the newest one (there is at most one until Milestone 2). */
@@ -225,7 +225,7 @@ const buildStateJson = (meeting) => {
     };
 };
 
-/** What /state answers when no meeting exists — the page shows the briefing screen. */
+/** What /state answers when no meeting exists - the page shows the briefing screen. */
 const emptyStateJson = () => ({
     startedAt,
     meetingId: null,
@@ -244,7 +244,7 @@ const emptyStateJson = () => ({
     chatBriefing: Boolean(ANTHROPIC_API_KEY),
 });
 
-/** The overseer rollup — one row per running meeting (used by the summary view). */
+/** The overseer rollup - one row per running meeting (used by the summary view). */
 const buildSummaryJson = () => ({
     maxMeetings: MAX_MEETINGS,
     meetings: meetingList().map((meeting) => ({
@@ -268,7 +268,7 @@ const buildSummaryJson = () => ({
 
 /**
  * ================================================
- * Calendar tracking — a meeting the agent has NOT yet joined follows its
+ * Calendar tracking - a meeting the agent has NOT yet joined follows its
  * calendar event: moved later → the agent waits longer; moved earlier
  * (even to right now) → it joins sooner; cancelled → it stands down.
  * Runs only for briefs that came from a calendar pick (calendarEventId).
@@ -283,14 +283,14 @@ const refreshCalendarMeetings = async () => {
         try {
             event = await calendar.getEvent(meeting.calendarEventId);
         } catch (error) {
-            // Token hiccup / Graph blip — try again next round, say why once here.
+            // Token hiccup / Graph blip - try again next round, say why once here.
             console.error(`CALENDAR TRACK >>> (${meeting.id}) could not re-read the event:`, error instanceof Error ? error.message : error);
             continue;
         }
         if (!event) {
             // Cancelled or deleted. A claimed meeting is stood down via the
             // bot (proper record + reset); an unclaimed one is just dropped.
-            console.log(`CALENDAR TRACK >>> (${meeting.id}) "${meeting.meetingName}" was cancelled — standing the agent down.`);
+            console.log(`CALENDAR TRACK >>> (${meeting.id}) "${meeting.meetingName}" was cancelled - standing the agent down.`);
             if (meeting.briefClaimed) {
                 meeting.killRequested = true;
                 meeting.killReason = 'the calendar meeting was cancelled or deleted';
@@ -318,7 +318,7 @@ setInterval(() => { void refreshCalendarMeetings().catch(() => { /* next round *
 
 /**
  * ================================================
- * Demo meeting — plays out against whatever conditions were typed
+ * Demo meeting - plays out against whatever conditions were typed
  * (only when DEMO_MODE=1; the production hub runs with the real bot)
  * ================================================
  */
@@ -334,70 +334,70 @@ const runDemoMeeting = (meeting) => {
         meeting.meetingStatus = 'in-meeting';
         meeting.meetingJoinedAt = new Date().toISOString();
     });
-    after(6, () => say('Maya', "Right, let's get going — where did we land after last week?"));
+    after(6, () => say('Maya', "Right, let's get going - where did we land after last week?"));
     after(11, () => say('Jordan', 'Good progress on our side, two options ready to show.'));
-    after(16, () => say('Sam', 'Before that — did everyone see the summary I sent round?'));
+    after(16, () => say('Sam', 'Before that - did everyone see the summary I sent round?'));
 
     if (c0) {
         after(21, () => {
             meeting.nudges.push({
-                text: `[CLARUS] Before we drift — can we get "${c0.label}" settled? What's the decision?`,
+                text: `[CLARUS] Before we drift - can we get "${c0.label}" settled? What's the decision?`,
                 conditionId: c0.id, steered: false, at: new Date().toISOString(),
             });
             c0.nudges++;
-            c0.note = 'Agent has raised it — waiting on the room.';
+            c0.note = 'Agent has raised it - waiting on the room.';
         });
-        after(29, () => say('Maya', `Fair point. Let's call it settled — consider ${c0.label.toLowerCase()} done, signed off as of today.`, true));
+        after(29, () => say('Maya', `Fair point. Let's call it settled - consider ${c0.label.toLowerCase()} done, signed off as of today.`, true));
         after(31, () => {
             c0.status = 'closed';
-            c0.note = 'Settled by Maya — signed off today.';
+            c0.note = 'Settled by Maya - signed off today.';
             c0.why = 'Maya stated the sign-off directly and nobody objected, so the room treats it as agreed.';
-            c0.evidence = [{ speaker: 'Maya', quote: `Let's call it settled — consider ${c0.label.toLowerCase()} done, signed off as of today.` }];
+            c0.evidence = [{ speaker: 'Maya', quote: `Let's call it settled - consider ${c0.label.toLowerCase()} done, signed off as of today.` }];
         });
     }
     after(37, () => say('Jordan', "Great. I'll circulate the follow-ups after this."));
     if (owner) {
         after(43, () => {
-            say('Sam', `Hold on — we can't finalise the rest until ${owner} takes a look.`);
-            meeting.mentions.push({ speaker: 'Sam', quote: `Hold on — we can't finalise the rest until ${owner} takes a look.`, at: new Date().toISOString() });
+            say('Sam', `Hold on - we can't finalise the rest until ${owner} takes a look.`);
+            meeting.mentions.push({ speaker: 'Sam', quote: `Hold on - we can't finalise the rest until ${owner} takes a look.`, at: new Date().toISOString() });
         });
     }
     if (c1) {
         after(50, () => {
             meeting.nudges.push({
-                text: `[CLARUS] One thing still open — "${c1.label}". Can we pin it down before we lose the room?`,
+                text: `[CLARUS] One thing still open - "${c1.label}". Can we pin it down before we lose the room?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
             });
             c1.nudges++;
-            c1.note = 'Agent has raised it — waiting on the room.';
+            c1.note = 'Agent has raised it - waiting on the room.';
             c1.why = 'It has been raised once but the discussion moved on without an answer.';
         });
-        after(58, () => say('Maya', "Let's take that offline — next item."));
+        after(58, () => say('Maya', "Let's take that offline - next item."));
         after(66, () => {
             meeting.nudges.push({
-                text: `[CLARUS] Flagging again before we wrap — "${c1.label}" is still open. Can someone own it now?`,
+                text: `[CLARUS] Flagging again before we wrap - "${c1.label}" is still open. Can someone own it now?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
             });
             c1.nudges++; // second nudge while open → the cockpit turns this card red: NEEDS YOU
-            c1.why = 'Nudged twice and the room keeps deferring it — this is the one that needs the owner.';
+            c1.why = 'Nudged twice and the room keeps deferring it - this is the one that needs the owner.';
         });
     }
     if (c2) {
-        after(72, () => say('Jordan', `On ${c2.label.toLowerCase()} — we're close, just waiting on one confirmation.`));
+        after(72, () => say('Jordan', `On ${c2.label.toLowerCase()} - we're close, just waiting on one confirmation.`));
         after(74, () => {
-            c2.note = 'Close — waiting on one confirmation.';
+            c2.note = 'Close - waiting on one confirmation.';
             c2.why = 'Jordan says it is nearly there; one confirmation outstanding before it can close.';
         });
     }
-    // Phase 13: closed conditions stay alive — the room revises its first
+    // Phase 13: closed conditions stay alive - the room revises its first
     // decision and the jade card updates in place.
     if (c0) {
-        after(82, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} — I think we were too hasty earlier.`));
-        after(86, () => say('Maya', "Fair — let's revise it: keep it agreed, but at the higher figure we discussed.", true));
+        after(82, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} - I think we were too hasty earlier.`));
+        after(86, () => say('Maya', "Fair - let's revise it: keep it agreed, but at the higher figure we discussed.", true));
         after(88, () => {
-            c0.note = 'Revised by Maya — still agreed, now at the higher figure.';
+            c0.note = 'Revised by Maya - still agreed, now at the higher figure.';
             c0.why = 'The room revisited the earlier decision and agreed a revised figure; the condition stays settled with the new facts.';
-            c0.evidence = [{ speaker: 'Maya', quote: "Fair — let's revise it: keep it agreed, but at the higher figure we discussed." }];
+            c0.evidence = [{ speaker: 'Maya', quote: "Fair - let's revise it: keep it agreed, but at the higher figure we discussed." }];
         });
     }
 };
@@ -405,10 +405,10 @@ const runDemoMeeting = (meeting) => {
 /**
  * ================================================
  * Phase 9: the chat-mode briefing brain (hub edition).
- * Same conversation design as the local Nudger.briefChat, in plain JS —
+ * Same conversation design as the local Nudger.briefChat, in plain JS -
  * and, now the hub has the calendar too, the SAME calendar-aware prompt:
  * the model matches what the owner says against their upcoming meetings
- * (by index — join links never leave the server) and only falls back to
+ * (by index - join links never leave the server) and only falls back to
  * a pasted link when there is no calendar to read.
  * One in-memory conversation per signed-in browser session.
  * ================================================
@@ -420,20 +420,21 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         const startMs = Date.parse(m.start);
         return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
     };
-    // Several Outlook accounts can be connected — say whose calendar each
+    // Several Outlook accounts can be connected - say whose calendar each
     // meeting is from, so "my brother's standup" resolves correctly.
     const manyAccounts = new Set(meetingsMeta.map((m) => m.account).filter(Boolean)).size > 1;
     const calendarLines = meetingsMeta.length
         ? [
             `Upcoming meetings (${manyAccounts ? 'across every connected calendar' : 'the connected calendar'}):`,
-            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+            ...meetingsMeta.map((m) => `  ${m.index}: "${m.subject}" - ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now - the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link - cannot be chosen]'}`),
         ]
         : calendarConnected
-            ? ["The owner's calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting (\"your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead\") and take a pasted link."]
-            : ["The owner's calendar is NOT connected — they must paste a Teams meeting link in the chat."];
+            ? ["The owner's calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting (\"your calendar shows nothing in the next two weeks - is it on a different account? Paste the Teams link instead\") and take a pasted link."]
+            : ["The owner's calendar is NOT connected - they must paste a Teams meeting link in the chat."];
 
     const system = [
-        "You are Clarus bot's briefing assistant. Your owner — a busy person, often on their phone — is",
+        'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
+        "You are Clarus bot's briefing assistant. Your owner - a busy person, often on their phone - is",
         'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
         'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
         '',
@@ -442,24 +443,24 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         '   and only if the answer would materially change the conditions (e.g. "Who holds the budget',
         '   decision?" or "Is there a figure already in play?"). If their first message is enough, skip',
         '   questions entirely.',
-        '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions — things that',
+        '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions - things that',
         '   must be TRUE by the end of the meeting, framed as outcomes.',
         '   Good: "Event budget confirmed with a number" / "Launch date agreed" / "Owner assigned for follow-ups".',
         '   Bad: "Discuss the budget" / "Talk about the timeline".',
-        "   The owner sees them as editable cards with a confirm button — your reply should invite",
-        '   tweaks ("Here\'s what I\'ll drive the room to close — edit anything"). When their next',
-        '   message starts "Confirmed conditions:", those exact conditions are final — do not re-propose.',
+        "   The owner sees them as editable cards with a confirm button - your reply should invite",
+        '   tweaks ("Here\'s what I\'ll drive the room to close - edit anything"). When their next',
+        '   message starts "Confirmed conditions:", those exact conditions are final - do not re-propose.',
         '3. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list below,',
         '   set proposeMeeting to its index and ask for confirmation, naming it with its day and time',
-        '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 — right?"). NEVER guess between',
-        '   several plausible matches and never invent meetings — if nothing matches confidently, set',
+        '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 - right?"). NEVER guess between',
+        '   several plausible matches and never invent meetings - if nothing matches confidently, set',
         '   showList true and ask them to tap one. A pasted Teams link also works; without a calendar,',
-        '   ask them to paste the link ("Last thing — paste the meeting link and I\'ll send the agent',
+        '   ask them to paste the link ("Last thing - paste the meeting link and I\'ll send the agent',
         '   in."). Meetings marked [NO Teams link] cannot be chosen. When the owner confirms your',
         '   proposal (yes / that one / correct), the meeting is resolved.',
-        '   You may resolve the meeting before or after the conditions — take whichever the owner gives',
+        '   You may resolve the meeting before or after the conditions - take whichever the owner gives',
         '   first, but never skip the condition-confirm step.',
-        '4. Their name and extra context are optional — fold at most ONE ask for them into another',
+        '4. Their name and extra context are optional - fold at most ONE ask for them into another',
         '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
         '   pasted link default to 30 unless they say otherwise.',
         '',
@@ -474,7 +475,7 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
         '   "context": "..."}}',
         'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
-        'has confirmed the conditions. Its reply is still shown — make it the send-off ("Sending the',
+        'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
         "agent in now. You'll see it on your board.\").",
     ].join('\n');
     const conversation = history.map((m) => `${m.from === 'owner' ? 'Owner' : 'You'}: ${m.text}`).join('\n');
@@ -497,7 +498,8 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         return null;
     }
     const data = await response.json();
-    const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim();
+    // The model must never put an em dash in front of the owner.
+    const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim().replace(/\u2014/g, '-');
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start < 0 || end <= start) return null;
@@ -520,10 +522,10 @@ const LOGIN_PAGE = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#faf8f3">
-<title>Clarus — Command Centre</title>
+<title>Clarus - Command Centre</title>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Instrument+Sans:wght@400..700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
-/* Clarus design system — tokens mirror apps/teams-bot/src/cockpit.html */
+/* Clarus design system - tokens mirror apps/teams-bot/src/cockpit.html */
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;font-size:14px;}
 body{display:flex;align-items:center;justify-content:center;}
@@ -555,7 +557,7 @@ async function go(){
   if(!code) return;
   const r = await fetch('/login', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({code})});
   if(r.ok){ location.reload(); }
-  else{ document.getElementById('err').textContent = 'Wrong code — try again.'; }
+  else{ document.getElementById('err').textContent = 'Wrong code - try again.'; }
 }
 document.getElementById('code').addEventListener('keydown', (e) => { if(e.key==='Enter') go(); });
 </script>
@@ -590,7 +592,7 @@ const server = http.createServer(async (req, res) => {
 
     // The front door: access code first, cockpit after.
     if (url === '/' || url === '/index.html') {
-        // no-store: phones must always fetch the CURRENT page — a cached
+        // no-store: phones must always fetch the CURRENT page - a cached
         // copy from before a redeploy looks exactly like "the fix didn't
         // work" (no chat, old layout) with nothing wrong server-side.
         if (!isAuthed(req)) {
@@ -629,7 +631,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // ── The cloud bot's endpoints — shared-secret auth, not cookies ──
+    // ── The cloud bot's endpoints - shared-secret auth, not cookies ──
     if (url.startsWith('/bot/')) {
         if (!BOT_TOKEN || req.headers['x-bot-token'] !== BOT_TOKEN) {
             answer(res, 403, { ok: false, error: 'bad bot token' });
@@ -680,7 +682,7 @@ const server = http.createServer(async (req, res) => {
                 meeting.editQueue = [];
                 // kill rides back on the check-in; the bot wraps the meeting
                 // up (record + reset) exactly as if the call had ended.
-                // meetingStart is the CURRENT calendar truth — a waiting bot
+                // meetingStart is the CURRENT calendar truth - a waiting bot
                 // follows it when the event gets moved.
                 answer(res, 200, {
                     ok: true, steers, edits,
@@ -695,7 +697,7 @@ const server = http.createServer(async (req, res) => {
         }
         const recordId = idFrom(url, '/bot/record');
         if (recordId && req.method === 'POST') {
-            // The finished meeting's audit record — persist it to disk.
+            // The finished meeting's audit record - persist it to disk.
             try {
                 const record = JSON.parse(await readBody(req));
                 if (!record || typeof record !== 'object' || !record.endedAt || !record.id) {
@@ -710,7 +712,7 @@ const server = http.createServer(async (req, res) => {
         }
         const resetId = idFrom(url, '/bot/reset');
         if ((resetId || url === '/bot/reset') && req.method === 'POST') {
-            // Meeting over — drop its drawer entirely; its memory goes with it.
+            // Meeting over - drop its drawer entirely; its memory goes with it.
             const meeting = resetId ? meetings.get(resetId) : defaultMeeting();
             if (meeting) {
                 meetings.delete(meeting.id);
@@ -723,7 +725,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Everything below is the cockpit API — access code required.
+    // Everything below is the cockpit API - access code required.
     if (!isAuthed(req)) {
         answer(res, 401, { ok: false, error: 'access code required' });
         return;
@@ -735,7 +737,7 @@ const server = http.createServer(async (req, res) => {
         if (stateId) {
             const meeting = meetings.get(stateId);
             if (!meeting) {
-                answer(res, 404, { ok: false, error: 'meeting not found — it may have ended' });
+                answer(res, 404, { ok: false, error: 'meeting not found - it may have ended' });
                 return;
             }
             answer(res, 200, buildStateJson(meeting));
@@ -755,10 +757,10 @@ const server = http.createServer(async (req, res) => {
     if (url === '/setup' && req.method === 'POST') {
         try {
             const parsed = JSON.parse(await readBody(req));
-            // The ceiling — checked AFTER the body arrives so two
+            // The ceiling - checked AFTER the body arrives so two
             // near-simultaneous submits can't both slip through.
             if (meetings.size >= MAX_MEETINGS) {
-                answer(res, 409, { ok: false, error: MAX_MEETINGS === 1 ? 'The agent is already handling a meeting — try again once it finishes.' : `${MAX_MEETINGS} meetings are already running — try again when one finishes.` });
+                answer(res, 409, { ok: false, error: MAX_MEETINGS === 1 ? 'The agent is already handling a meeting - try again once it finishes.' : `${MAX_MEETINGS} meetings are already running - try again when one finishes.` });
                 return;
             }
             const meetingUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
@@ -785,8 +787,8 @@ const server = http.createServer(async (req, res) => {
                 meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
                 calendarEventId: typeof parsed.calendarEventId === 'string' ? parsed.calendarEventId : null,
             });
-            console.log(`BRIEFED >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')}${DEMO_MODE ? ' (demo meeting starting)' : ''} (${meetings.size}/${MAX_MEETINGS} running)`);
-            // A future-start brief stays "scheduled" — the demo playback
+            console.log(`BRIEFED >>> ${meeting.id} "${meeting.meetingName}" - ${labels.join(' | ')}${DEMO_MODE ? ' (demo meeting starting)' : ''} (${meetings.size}/${MAX_MEETINGS} running)`);
+            // A future-start brief stays "scheduled" - the demo playback
             // would contradict the card, so it only runs for now-meetings.
             if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') {
                 runDemoMeeting(meeting);
@@ -798,7 +800,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Phase 9: the chat-mode briefing (hub edition — no calendar, so the
+    // Phase 9: the chat-mode briefing (hub edition - no calendar, so the
     // conversation always ends with a pasted link). A finished brief goes
     // through the same rules as /setup: max meetings, link required.
     if (url === '/brief-chat/reset' && req.method === 'POST') {
@@ -810,7 +812,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/brief-chat' && req.method === 'POST') {
         const token = parseCookies(req).zeus_session || '';
         if (!ANTHROPIC_API_KEY) {
-            answer(res, 200, { reply: 'Chat briefing is not set up on this server — use the form.', propose: null, showList: false, meetings: [], briefed: false });
+            answer(res, 200, { reply: 'Chat briefing is not set up on this server - use the form.', propose: null, showList: false, meetings: [], briefed: false });
             return;
         }
         let text = '';
@@ -824,7 +826,7 @@ const server = http.createServer(async (req, res) => {
         chatSessions.set(token, session);
 
         // Refresh the calendar view each turn (it may have just been
-        // connected in another tab). Join URLs stay in session.meetings —
+        // connected in another tab). Join URLs stay in session.meetings -
         // the model and the page only ever see index + metadata.
         let calendarConnected = false;
         try {
@@ -834,7 +836,7 @@ const server = http.createServer(async (req, res) => {
                 session.meetings = await calendar.upcomingMeetings();
             }
         } catch (error) {
-            // The convenience failing must not kill the chat — but say WHY
+            // The convenience failing must not kill the chat - but say WHY
             // in the log, or this is undebuggable.
             console.error('BRIEF-CHAT >>> calendar fetch failed:', error instanceof Error ? error.message : error);
         }
@@ -846,7 +848,7 @@ const server = http.createServer(async (req, res) => {
         let result = null;
         try { result = await briefChatCall(session.history, meetingsMeta, calendarConnected); } catch (error) { console.error('brief-chat failed:', error); }
         if (!result) {
-            const reply = 'Sorry — I tripped over myself there. Say that again?';
+            const reply = 'Sorry - I tripped over myself there. Say that again?';
             session.history.push({ from: 'agent', text: reply });
             answer(res, 200, { reply, propose: null, showList: false, meetings: [], briefed: false });
             return;
@@ -869,9 +871,9 @@ const server = http.createServer(async (req, res) => {
             const labels = (Array.isArray(b.conditions) ? b.conditions : [])
                 .filter((l) => typeof l === 'string').map((l) => l.trim()).filter(Boolean);
             if (meetings.size >= MAX_MEETINGS) {
-                briefError = `${MAX_MEETINGS} meetings are already running — try again when one finishes.`;
+                briefError = `${MAX_MEETINGS} meetings are already running - try again when one finishes.`;
             } else if (!DEMO_MODE && (!meetingUrl || !meetingUrl.includes('teams.'))) {
-                briefError = 'That link does not look like a Teams meeting link — paste it again?';
+                briefError = 'That link does not look like a Teams meeting link - paste it again?';
             } else if (labels.length < 1 || labels.length > MAX_CONDITIONS) {
                 briefError = `I need 1 to ${MAX_CONDITIONS} conditions before I go in.`;
             } else {
@@ -886,13 +888,13 @@ const server = http.createServer(async (req, res) => {
                     meetingStart: (picked && picked.start) || null,
                     calendarEventId: (picked && picked.id) || null,
                 });
-                console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" — ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
+                console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" - ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
                 if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') runDemoMeeting(meeting);
                 briefedNow = true;
                 meetingId = meeting.id;
                 chatSessions.delete(token); // fresh conversation for the next brief
             }
-            if (briefError) session.history.push({ from: 'agent', text: `Hmm — ${briefError}` });
+            if (briefError) session.history.push({ from: 'agent', text: `Hmm - ${briefError}` });
         }
         // A clear single match → the one-tap confirm; unsure → the tappable list.
         const proposed = (typeof result.proposeMeeting === 'number' && meetingsMeta[result.proposeMeeting])
@@ -952,35 +954,35 @@ const server = http.createServer(async (req, res) => {
         } catch (error) {
             console.error('Calendar auth URL failed:', error);
             res.writeHead(500, { 'content-type': 'text/plain' });
-            res.end('Calendar is not configured — set MS_CLIENT_ID and MS_CLIENT_SECRET on the cockpit service');
+            res.end('Calendar is not configured - set MS_CLIENT_ID and MS_CLIENT_SECRET on the cockpit service');
         }
         return;
     }
     if (url === '/auth/callback') {
         const params = new URL(req.url || '/', 'http://localhost').searchParams;
         const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        // The owner is on a phone — the deploy log is the WRONG place for
+        // The owner is on a phone - the deploy log is the WRONG place for
         // the reason. Put Microsoft's own words on the page.
         const failPage = (why) => {
             res.writeHead(500, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
             res.end(`<body style="background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;padding:24px;line-height:1.6">
               <h2 style="color:#a8503a">Calendar sign-in failed</h2>
               <p style="font-family:monospace;font-size:13px;color:#a07826;word-break:break-word">${escapeHtml(why).slice(0, 600)}</p>
-              <p style="color:#5d5849;font-size:14px">The usual suspects: (1) MS_CLIENT_SECRET on this service is the secret's <b>ID</b>, not its <b>Value</b> — Entra shows both columns; (2) the redirect URI is registered under the <b>SPA</b> platform instead of <b>Web</b> in the Entra app; (3) the registered URI doesn't exactly match this site's /auth/callback.</p>
+              <p style="color:#5d5849;font-size:14px">The usual suspects: (1) MS_CLIENT_SECRET on this service is the secret's <b>ID</b>, not its <b>Value</b> - Entra shows both columns; (2) the redirect URI is registered under the <b>SPA</b> platform instead of <b>Web</b> in the Entra app; (3) the registered URI doesn't exactly match this site's /auth/callback.</p>
               <p><a href="/" style="color:#2b3fc4">← Back to the cockpit</a></p>
             </body>`);
         };
         // Microsoft can come back with an error instead of a code (consent
-        // declined, bad redirect URI...) — show its words, don't throw.
+        // declined, bad redirect URI...) - show its words, don't throw.
         if (params.get('error')) {
-            console.error(`Calendar sign-in failed: ${params.get('error')} — ${params.get('error_description') || ''}`);
+            console.error(`Calendar sign-in failed: ${params.get('error')} - ${params.get('error_description') || ''}`);
             failPage(`${params.get('error')}: ${params.get('error_description') || '(no description from Microsoft)'}`);
             return;
         }
         try {
             const account = await calendar.handleCallback(req, params.get('code') || '');
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${escapeHtml(account)}</b> — taking you back…</p></body>`);
+            res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#faf8f3;color:#1c1a16;font-family:'Instrument Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${escapeHtml(account)}</b> - taking you back…</p></body>`);
         } catch (error) {
             console.error('Calendar sign-in failed:', error);
             failPage((error && (error.errorCode ? `${error.errorCode}: ${error.errorMessage || error.message}` : error.message)) || 'unknown error');
@@ -992,7 +994,7 @@ const server = http.createServer(async (req, res) => {
             answer(res, 200, { meetings: await calendar.upcomingMeetings() });
         } catch (error) {
             console.error('Calendar fetch failed:', error);
-            answer(res, 409, { ok: false, error: 'Calendar not connected — click Connect calendar on the briefing screen.' });
+            answer(res, 409, { ok: false, error: 'Calendar not connected - click Connect calendar on the briefing screen.' });
         }
         return;
     }
@@ -1009,7 +1011,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Live board edits — per meeting, with the ID-less legacy form.
+    // Live board edits - per meeting, with the ID-less legacy form.
     const conditionsId = idFrom(url, '/conditions');
     if ((url === '/conditions' || conditionsId) && req.method === 'POST') {
         const meeting = conditionsId ? meetings.get(conditionsId) : defaultMeeting();
@@ -1025,7 +1027,7 @@ const server = http.createServer(async (req, res) => {
                 return;
             }
             if (parsed.op === 'add' && meeting.conditions.length + meeting.editQueue.filter((e) => e.op === 'add').length >= MAX_CONDITIONS) {
-                answer(res, 400, { ok: false, error: `The board is full — the agent tracks at most ${MAX_CONDITIONS} conditions.` });
+                answer(res, 400, { ok: false, error: `The board is full - the agent tracks at most ${MAX_CONDITIONS} conditions.` });
                 return;
             }
             if (parsed.op === 'edit' && !meeting.conditions.some((c) => c.id === parsed.id)) {
@@ -1037,12 +1039,12 @@ const server = http.createServer(async (req, res) => {
                 return;
             }
             if (meeting.briefClaimed) {
-                // The bot owns this meeting's state — queue the edit; it is
+                // The bot owns this meeting's state - queue the edit; it is
                 // applied (and audit-logged) on the bot's next 2s check-in.
                 meeting.editQueue.push(parsed.op === 'edit' ? { op: 'edit', id: parsed.id, label } : { op: 'add', label });
                 console.log(`EDIT queued >>> (${meeting.id}) ${parsed.op} ${parsed.id ?? ''} "${label}"`);
             } else {
-                // No bot attached (demo mode) — apply directly to hub state.
+                // No bot attached (demo mode) - apply directly to hub state.
                 if (parsed.op === 'edit') {
                     const condition = meeting.conditions.find((c) => c.id === parsed.id);
                     if (condition.status === 'closed') {
@@ -1063,19 +1065,19 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // The hosted kill switch — per meeting. With a cloud bot attached the
+    // The hosted kill switch - per meeting. With a cloud bot attached the
     // shutdown is queued for its next 2s check-in; in demo mode (no bot)
     // the meeting's drawer is dropped on the spot.
     const killId = idFrom(url, '/kill');
     if ((url === '/kill' || killId) && req.method === 'POST') {
         const meeting = killId ? meetings.get(killId) : defaultMeeting();
         if (!meeting) {
-            answer(res, 404, { ok: false, error: 'meeting not found — it may have already ended' });
+            answer(res, 404, { ok: false, error: 'meeting not found - it may have already ended' });
             return;
         }
         if (meeting.briefClaimed) {
             meeting.killRequested = true;
-            console.log(`KILL queued >>> (${meeting.id}) "${meeting.meetingName}" — the bot wraps up on its next check-in`);
+            console.log(`KILL queued >>> (${meeting.id}) "${meeting.meetingName}" - the bot wraps up on its next check-in`);
         } else {
             meetings.delete(meeting.id);
             console.log(`KILL applied (demo) >>> (${meeting.id}) "${meeting.meetingName}" removed (${meetings.size} still running)`);
@@ -1084,7 +1086,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Steers — per meeting, with the ID-less legacy form (newest meeting).
+    // Steers - per meeting, with the ID-less legacy form (newest meeting).
     const commandId = idFrom(url, '/command');
     if ((url === '/command' || commandId) && req.method === 'POST') {
         const meeting = commandId ? meetings.get(commandId) : defaultMeeting();
@@ -1115,6 +1117,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
     // The chat-briefing state is in this line ON PURPOSE: "the chat is not
     // appearing" is answered by the first line of the deploy logs.
-    const chat = ANTHROPIC_API_KEY ? 'ON' : 'OFF — set ANTHROPIC_API_KEY on this service to enable it';
+    const chat = ANTHROPIC_API_KEY ? 'ON' : 'OFF - set ANTHROPIC_API_KEY on this service to enable it';
     console.log(`Clarus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS}, chat briefing: ${chat})`);
 });

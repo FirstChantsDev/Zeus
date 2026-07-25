@@ -138,7 +138,7 @@ export class JoinProcedure {
      * known candidate and skip quietly if it isn't on the page.
      */
     private async _ensureCameraAndMicOff() {
-        // If Teams offers to continue without devices, take that offer — it means no cam/mic at all.
+        // If Teams offers to continue without devices, take that offer - it means no cam/mic at all.
         const continueWithoutDevices = this.page.locator('button:has-text("Continue without audio or video")').first();
         if (await continueWithoutDevices.count() > 0) {
             await continueWithoutDevices.click();

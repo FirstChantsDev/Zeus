@@ -1,20 +1,20 @@
 /**
- * Hosted-hub Outlook calendar — a plain-JS port of the local connector
+ * Hosted-hub Outlook calendar - a plain-JS port of the local connector
  * (apps/teams-bot/src/lib/CalendarConnector.ts). Same deliberate scope:
  * delegated Calendars.Read only, read-only, sign-in and token handling
- * through Microsoft's own auth library (@azure/msal-node) — no
+ * through Microsoft's own auth library (@azure/msal-node) - no
  * hand-rolled OAuth.
  *
  * MULTI-ACCOUNT: the MSAL cache holds every account that has signed in
  * ("Add another Outlook" on the homepage). Meetings are fetched from ALL
  * of them and merged into one pick-list, each tagged with the account it
- * came from. Anyone who can open this cockpit sees the merged view —
+ * came from. Anyone who can open this cockpit sees the merged view -
  * per-person access control stays a parked later phase.
  *
  * Configuration (Railway service variables on the COCKPIT service):
- *   MS_CLIENT_ID / MS_CLIENT_SECRET  — the same Entra app as local
+ *   MS_CLIENT_ID / MS_CLIENT_SECRET  - the same Entra app as local
  *                                      (MICROSOFT_* spellings also accepted)
- *   MS_REDIRECT_URI                  — optional; when unset the redirect URI
+ *   MS_REDIRECT_URI                  - optional; when unset the redirect URI
  *                                      is derived from the incoming request
  *                                      (https://<cockpit-host>/auth/callback),
  *                                      which is right on Railway with zero
@@ -24,7 +24,7 @@
  *
  * The token cache is ONE plain file, calendar-token.json next to the
  * process (ZEUS_CAL_TOKEN_FILE overrides). Railway wipes the filesystem on
- * redeploy — same caveat as records/: mount a volume and point the
+ * redeploy - same caveat as records/: mount a volume and point the
  * override at it to keep the sign-in across deploys. If the file is lost,
  * nothing breaks: the briefing screen shows "Connect calendar" again.
  *
@@ -39,7 +39,7 @@ const GRAPH_SCOPES = ['Calendars.Read'];
 
 const tokenFile = () =>
     process.env.ZEUS_CAL_TOKEN_FILE
-    // On Railway, RECORDS_DIR points at the mounted volume — keeping the
+    // On Railway, RECORDS_DIR points at the mounted volume - keeping the
     // token there means the Outlook connection survives redeploys instead
     // of silently dropping on every deploy.
     || (process.env.RECORDS_DIR ? path.join(process.env.RECORDS_DIR, 'calendar-token.json') : null)
@@ -67,18 +67,18 @@ let msal = null;
 try {
     msal = require('@azure/msal-node');
 } catch {
-    /* not installed — the calendar stays off, everything else works */
+    /* not installed - the calendar stays off, everything else works */
 }
 
 const clientId = process.env.MS_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID || '';
 const clientSecret = process.env.MS_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET || '';
 
-/** MSAL cache <-> the token file — what makes the login survive restarts. */
+/** MSAL cache <-> the token file - what makes the login survive restarts. */
 const fileCachePlugin = {
     async beforeCacheAccess(context) {
         try {
             context.tokenCache.deserialize(fs.readFileSync(tokenFile(), 'utf8'));
-        } catch { /* no file yet — first run or disconnected */ }
+        } catch { /* no file yet - first run or disconnected */ }
     },
     async afterCacheAccess(context) {
         if (context.cacheHasChanged) {
@@ -101,14 +101,14 @@ const app = (msal && clientId && clientSecret)
         },
         cache: { cachePlugin: fileCachePlugin },
     })
-    : null; // not configured — the UI simply never shows the calendar
+    : null; // not configured - the UI simply never shows the calendar
 
 /** The redirect URI Microsoft sends the owner back to after sign-in. */
-let lastAuthRedirectUri = null; // what the auth URL actually used — the exchange MUST match it
+let lastAuthRedirectUri = null; // what the auth URL actually used - the exchange MUST match it
 const redirectUriFor = (req) => {
     const fromEnv = process.env.MS_REDIRECT_URI || process.env.MICROSOFT_REDIRECT_URI;
     if (fromEnv) return fromEnv;
-    // Railway terminates TLS upstream — trust its forwarded headers first.
+    // Railway terminates TLS upstream - trust its forwarded headers first.
     const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
     return `${proto}://${host}/auth/callback`;
@@ -160,14 +160,14 @@ const authUrl = async (req) => {
     lastAuthRedirectUri = redirectUriFor(req);
     console.log(`CALENDAR AUTH >>> redirect URI in play: ${lastAuthRedirectUri}`);
     // select_account: without it Microsoft silently reuses the browser's
-    // signed-in account — a second person could never add THEIR calendar.
+    // signed-in account - a second person could never add THEIR calendar.
     return app.getAuthCodeUrl({ scopes: GRAPH_SCOPES, redirectUri: lastAuthRedirectUri, prompt: 'select_account' });
 };
 
 /** Finishes the sign-in; MSAL stores the token (incl. refresh) in the file cache */
 const handleCallback = async (req, code) => {
     if (!app) throw new Error('Calendar is not configured.');
-    // The exchange must present the EXACT URI the auth URL used — prefer
+    // The exchange must present the EXACT URI the auth URL used - prefer
     // what authUrl remembered over re-deriving from this request's headers.
     const redirectUri = lastAuthRedirectUri || redirectUriFor(req);
     const result = await app.acquireTokenByCode({ code, scopes: GRAPH_SCOPES, redirectUri });
@@ -189,7 +189,7 @@ const accessTokenFor = async (account) => {
 
 /**
  * The next two weeks of meetings (max 25 per account), soonest first,
- * merged across EVERY signed-in account — each tagged with the account
+ * merged across EVERY signed-in account - each tagged with the account
  * it came from. Events without a Teams join link come back with
  * joinUrl: null so the UI can grey them out. A meeting both accounts
  * were invited to appears once (deduped by its join link).
@@ -221,7 +221,7 @@ const upcomingMeetings = async () => {
             const response = await fetch(url, {
                 headers: {
                     authorization: `Bearer ${token}`,
-                    prefer: 'outlook.timezone="UTC"', // Graph answers in UTC — parsing stays simple
+                    prefer: 'outlook.timezone="UTC"', // Graph answers in UTC - parsing stays simple
                 },
             });
             if (!response.ok) {
@@ -270,7 +270,7 @@ const toMeeting = (event) => {
 };
 
 /**
- * One event by id — the live truth for a meeting a waiting agent tracks.
+ * One event by id - the live truth for a meeting a waiting agent tracks.
  * Returns null when the event was cancelled or deleted. Event ids live in
  * ONE mailbox, so every signed-in account is tried until one knows it.
  */
@@ -288,7 +288,7 @@ const getEvent = async (id) => {
         const response = await fetch(url, {
             headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="UTC"' },
         });
-        if (response.status === 404) { anyAnswered = true; continue; } // not this mailbox — try the next
+        if (response.status === 404) { anyAnswered = true; continue; } // not this mailbox - try the next
         if (!response.ok) {
             const body = await response.text().catch(() => '(no body)');
             lastError = new Error(`Graph answered ${response.status}: ${body.slice(0, 300)}`);

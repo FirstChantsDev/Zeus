@@ -1,7 +1,7 @@
 /**
  * One start file for both Railway services (run as: node deploy/start.js).
  * Railway executes Dockerfile start commands WITHOUT a shell, so shell
- * branching (if/else) is not available — this plain-Node launcher branches
+ * branching (if/else) is not available - this plain-Node launcher branches
  * instead. The bot service has HUB_URL set; the cockpit does not.
  */
 const { spawn } = require('child_process');

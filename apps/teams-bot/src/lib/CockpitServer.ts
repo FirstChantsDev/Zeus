@@ -32,11 +32,11 @@ export type BriefChatHandler = (
  *   1. Keeps the live meeting state in memory: the transcript so far and
  *      every nudge the agent has fired. (The conditions array itself is
  *      shared with the Nudger, which mutates it.)
- *   2. Runs a tiny web server — GET / serves the cockpit page, and
+ *   2. Runs a tiny web server - GET / serves the cockpit page, and
  *      GET /state answers with the current state as JSON, which the page
  *      polls every ~1.5 seconds.
  *
- * Built on Node's built-in http module — no dependencies, per project
+ * Built on Node's built-in http module - no dependencies, per project
  * constraints.
  */
 
@@ -60,13 +60,13 @@ export type Brief = {
     lengthMinutes: number;
     /** Phase 5: the owner's name, so the agent can flag when the room needs them ('' if not given) */
     ownerName: string;
-    /** Phase 10: the meeting link to join — from a calendar pick, a pasted
+    /** Phase 10: the meeting link to join - from a calendar pick, a pasted
      *  link in the form, or (fallback) the URL the bot was launched with. */
     meetingUrl: string;
-    /** Phase 12: ISO start time from the calendar pick — null when unknown.
+    /** Phase 12: ISO start time from the calendar pick - null when unknown.
      *  A future start makes the bot WAIT and join ~2 min before. */
     meetingStart: string | null;
-    /** Phase 12: the calendar event's id — lets the waiting bot follow the
+    /** Phase 12: the calendar event's id - lets the waiting bot follow the
      *  event when it is moved or cancelled. Null for pasted links. */
     calendarEventId: string | null;
 };
@@ -87,7 +87,7 @@ export type MentionRecord = {
 /** One nudge the agent posted to the meeting chat */
 export type NudgeRecord = {
     text: string;
-    /** The condition it pushes on — null for a pure owner directive */
+    /** The condition it pushes on - null for a pure owner directive */
     conditionId: string | null;
     at: string;
     /** true if the owner's private steer produced this message */
@@ -102,8 +102,8 @@ export class CockpitServer {
     private readonly port: number;
     private readonly logger: Logger;
     private readonly startedAt = new Date().toISOString();
-    /** Phase 5: the Teams link the bot was launched with — the Join call button opens it */
-    /** Phase 10: no longer readonly — a calendar pick or pasted link at
+    /** Phase 5: the Teams link the bot was launched with - the Join call button opens it */
+    /** Phase 10: no longer readonly - a calendar pick or pasted link at
      *  brief time replaces the (now optional) launch-argument URL. */
     private meetingUrl: string;
     /** Phase 10: the owner's Outlook calendar, when configured (read-only) */
@@ -127,7 +127,7 @@ export class CockpitServer {
     private briefed = false;
     private briefedAt: string | null = null;
     private meetingName: string | null = null;
-    /** Phase 12: the picked meeting's ISO start — the page shows "starts …" until then */
+    /** Phase 12: the picked meeting's ISO start - the page shows "starts …" until then */
     private meetingStart: string | null = null;
     /** Phase 4: scheduled length from the brief, and when the bot got into the room */
     private scheduledMinutes = 30;
@@ -188,14 +188,14 @@ export class CockpitServer {
         });
     }
 
-    /** The last few transcript lines — context for steer execution */
+    /** The last few transcript lines - context for steer execution */
     public recentTranscript(count: number): TranscriptRecord[] {
         return this.transcript.slice(-count);
     }
 
     /** Phase 5: records that the room named the owner in a way that needs them */
     public addMention(mention: { speaker: string, quote: string }) {
-        // The same remark can be re-reported if captions repeat — keep it once.
+        // The same remark can be re-reported if captions repeat - keep it once.
         const duplicate = this.mentions.some((m) => m.speaker === mention.speaker && m.quote === mention.quote);
         if (duplicate) {
             return;
@@ -213,7 +213,7 @@ export class CockpitServer {
     }
 
     /**
-     * Phase 4: where the meeting stands against its scheduled length —
+     * Phase 4: where the meeting stands against its scheduled length -
      * fed into the agent's decision prompt so nudges get more urgent as
      * time runs out. remainingMinutes is null until the bot is in the
      * meeting, and goes negative once the meeting runs over.
@@ -247,7 +247,7 @@ export class CockpitServer {
             } else if (url === '/brief-chat' && req.method === 'POST') {
                 this._handleBriefChat(req, res);
             } else if (url === '/brief-chat/reset' && req.method === 'POST') {
-                // A freshly-loaded page starts a fresh conversation — without
+                // A freshly-loaded page starts a fresh conversation - without
                 // this, the page's empty thread and the server's remembered
                 // one drift apart after a reload (e.g. the OAuth round-trip).
                 this.chatHistory.length = 0;
@@ -256,7 +256,7 @@ export class CockpitServer {
             } else if (url === '/conditions' && req.method === 'POST') {
                 this._handleConditions(req, res);
             } else if (url === '/calendar/status') {
-                // Phase 10: {configured, connected, account} — drives which
+                // Phase 10: {configured, connected, account} - drives which
                 // calendar UI the briefing screen shows (or none at all).
                 void (async () => {
                     const status = this.calendar
@@ -299,7 +299,7 @@ export class CockpitServer {
                     } catch (error) {
                         this.logger.error({ message: 'Calendar auth URL failed', data: error });
                         res.writeHead(500, { 'content-type': 'text/plain' });
-                        res.end('Calendar is not configured — set MS_CLIENT_ID and MS_CLIENT_SECRET in .env');
+                        res.end('Calendar is not configured - set MS_CLIENT_ID and MS_CLIENT_SECRET in .env');
                     }
                 })();
             } else if (url === '/auth/callback') {
@@ -309,11 +309,11 @@ export class CockpitServer {
                         const code = new URL(req.url ?? '/', 'http://localhost').searchParams.get('code') ?? '';
                         const account = await this.calendar!.handleCallback(code);
                         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-                        res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${account.replace(/</g, '&lt;')}</b> — taking you back…</p></body>`);
+                        res.end(`<meta http-equiv="refresh" content="2;url=/"><body style="background:#0d1210;color:#eef4f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><p>Calendar connected as <b>${account.replace(/</g, '&lt;')}</b> - taking you back…</p></body>`);
                     } catch (error) {
                         this.logger.error({ message: 'Calendar sign-in failed', data: error });
                         res.writeHead(500, { 'content-type': 'text/plain' });
-                        res.end('Calendar sign-in failed — check the terminal log, then try Connect calendar again.');
+                        res.end('Calendar sign-in failed - check the terminal log, then try Connect calendar again.');
                     }
                 })();
             } else if (url === '/calendar/meetings') {
@@ -322,14 +322,14 @@ export class CockpitServer {
                     try {
                         const meetings = await this.calendar!.upcomingMeetings();
                         // The join links stay server-side knowledge as far as the
-                        // owner is concerned — the page gets them only to post
+                        // owner is concerned - the page gets them only to post
                         // back on /setup, and never displays them.
                         res.writeHead(200, { 'content-type': 'application/json' });
                         res.end(JSON.stringify({ meetings }));
                     } catch (error) {
                         this.logger.error({ message: 'Calendar fetch failed', data: error });
                         res.writeHead(409, { 'content-type': 'application/json' });
-                        res.end(JSON.stringify({ ok: false, error: 'Calendar not connected — click Connect calendar on the briefing screen.' }));
+                        res.end(JSON.stringify({ ok: false, error: 'Calendar not connected - click Connect calendar on the briefing screen.' }));
                     }
                 })();
             } else if (url === '/history') {
@@ -366,7 +366,7 @@ export class CockpitServer {
     /**
      * Receives the owner's brief from the briefing screen:
      * POST /setup with {"meetingName": "...", "conditions": ["...", ...], "context": "..."}
-     * Accepts 1-3 free-text condition labels. Only the FIRST brief counts —
+     * Accepts 1-3 free-text condition labels. Only the FIRST brief counts -
      * re-briefing mid-run is rejected so the board and feed never disagree.
      */
     private _handleSetup(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -400,7 +400,7 @@ export class CockpitServer {
         meetingStart?: unknown, calendarEventId?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
-            return { ok: false, status: 409, error: 'Agent is already briefed — restart the bot to brief it again.' };
+            return { ok: false, status: 409, error: 'Agent is already briefed - restart the bot to brief it again.' };
         }
         const labels = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
             .filter((label): label is string => typeof label === 'string')
@@ -413,16 +413,16 @@ export class CockpitServer {
             ? parsed.meetingName.trim()
             : 'Untitled meeting';
         const context = typeof parsed.context === 'string' ? parsed.context.trim() : '';
-        // Phase 4: scheduled length in minutes — default 30, clamped to something sane.
+        // Phase 4: scheduled length in minutes - default 30, clamped to something sane.
         const rawLength = Number(parsed.lengthMinutes);
         const lengthMinutes = Number.isFinite(rawLength) && rawLength > 0
             ? Math.min(480, Math.max(1, Math.round(rawLength)))
             : 30;
 
-        // Phase 5: the owner's name — optional, '' when left blank.
+        // Phase 5: the owner's name - optional, '' when left blank.
         const ownerName = typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '';
 
-        // Phase 10: the meeting link — a calendar pick or a pasted link
+        // Phase 10: the meeting link - a calendar pick or a pasted link
         // wins; otherwise fall back to the URL the bot was launched with.
         // Without any of the three there is nowhere to send the agent.
         const briefUrl = typeof parsed.meetingUrl === 'string' ? parsed.meetingUrl.trim() : '';
@@ -431,11 +431,11 @@ export class CockpitServer {
         }
         const meetingUrl = briefUrl || this.meetingUrl;
         if (!meetingUrl) {
-            return { ok: false, status: 400, error: 'Pick a meeting from your calendar or paste its Teams link — the agent needs to know where to go.' };
+            return { ok: false, status: 400, error: 'Pick a meeting from your calendar or paste its Teams link - the agent needs to know where to go.' };
         }
         this.meetingUrl = meetingUrl; // the Join call button uses this too
 
-        // Phase 12: the picked meeting's start time — lets the bot wait for
+        // Phase 12: the picked meeting's start time - lets the bot wait for
         // a later meeting instead of sitting in an empty lobby.
         const meetingStart = (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart)))
             ? parsed.meetingStart
@@ -452,7 +452,7 @@ export class CockpitServer {
         return { ok: true };
     }
 
-    /** Phase 12: a tracked calendar event moved — keep the page honest. */
+    /** Phase 12: a tracked calendar event moved - keep the page honest. */
     public updateMeetingStart(iso: string | null, durationMinutes?: number) {
         this.meetingStart = iso;
         if (durationMinutes && durationMinutes > 0) {
@@ -461,8 +461,8 @@ export class CockpitServer {
     }
 
     /**
-     * Phase 10 Milestone 3 — chat-mode briefing. Each owner message goes to
-     * the model along with the upcoming calendar meetings (by index — join
+     * Phase 10 Milestone 3 - chat-mode briefing. Each owner message goes to
+     * the model along with the upcoming calendar meetings (by index - join
      * links never leave the server); the model chats back, proposes a
      * matching meeting for one-tap confirmation, offers the tappable list
      * when unsure, and finally returns the assembled brief, which flows
@@ -482,7 +482,7 @@ export class CockpitServer {
                     return;
                 }
                 if (!this.onBriefChat) {
-                    answer(200, { reply: 'Chat briefing needs an ANTHROPIC_API_KEY in .env — use the form for now.', propose: null, showList: false, meetings: [], briefed: false });
+                    answer(200, { reply: 'Chat briefing needs an ANTHROPIC_API_KEY in .env - use the form for now.', propose: null, showList: false, meetings: [], briefed: false });
                     return;
                 }
                 let text = '';
@@ -497,7 +497,7 @@ export class CockpitServer {
                 this.chatHistory.push({ from: 'owner', text });
 
                 // Refresh the calendar view each turn (it may have just been
-                // connected in another tab). URLs stay in this.chatMeetings —
+                // connected in another tab). URLs stay in this.chatMeetings -
                 // the model and the page only ever see index + metadata.
                 let calendarConnected = false;
                 if (this.calendar) {
@@ -508,7 +508,7 @@ export class CockpitServer {
                             this.chatMeetings = await this.calendar.upcomingMeetings();
                         }
                     } catch (error) {
-                        // The convenience failing must not kill the chat — but
+                        // The convenience failing must not kill the chat - but
                         // say WHY in the terminal, or this is undebuggable.
                         console.error('BRIEF-CHAT >>> calendar fetch failed:', error instanceof Error ? error.message : error);
                     }
@@ -520,7 +520,7 @@ export class CockpitServer {
 
                 const result = await this.onBriefChat(this.chatHistory, meetingsMeta, calendarConnected);
                 if (!result) {
-                    const reply = 'Sorry — I tripped over myself there. Say that again?';
+                    const reply = 'Sorry - I tripped over myself there. Say that again?';
                     this.chatHistory.push({ from: 'agent', text: reply });
                     answer(200, { reply, propose: null, showList: false, meetings: [], briefed: false });
                     return;
@@ -548,7 +548,7 @@ export class CockpitServer {
                         briefedNow = true;
                     } else {
                         briefError = accepted.error;
-                        this.chatHistory.push({ from: 'agent', text: `Hmm — ${accepted.error}` });
+                        this.chatHistory.push({ from: 'agent', text: `Hmm - ${accepted.error}` });
                     }
                 }
 
@@ -576,7 +576,7 @@ export class CockpitServer {
         req.on('end', () => {
             if (!this.briefed) {
                 res.writeHead(409, { 'content-type': 'application/json' });
-                res.end(JSON.stringify({ ok: false, error: 'Brief the agent first — it is not in the meeting yet.' }));
+                res.end(JSON.stringify({ ok: false, error: 'Brief the agent first - it is not in the meeting yet.' }));
                 return;
             }
             try {
@@ -600,10 +600,10 @@ export class CockpitServer {
 
     /**
      * Live condition editing (POST /conditions):
-     *   {op:'edit', id, label} — rewords a condition. Editing a CLOSED one
+     *   {op:'edit', id, label} - rewords a condition. Editing a CLOSED one
      *   reopens it for re-evaluation with a fresh slate (note/why/evidence
      *   cleared, nudge count reset so it doesn't instantly flag NEEDS YOU).
-     *   {op:'add', label}      — adds a condition, up to MAX_CONDITIONS.
+     *   {op:'add', label}      - adds a condition, up to MAX_CONDITIONS.
      * The onConditionsChanged callback lets the bot audit-log the change
      * and immediately re-judge the whole transcript.
      */
@@ -645,7 +645,7 @@ export class CockpitServer {
                     }
                     const before = condition.label;
                     if (before === label) {
-                        answer(200, { ok: true }); // nothing changed — no event, no re-judge
+                        answer(200, { ok: true }); // nothing changed - no event, no re-judge
                         return;
                     }
                     const reopened = condition.status === 'closed';
@@ -662,7 +662,7 @@ export class CockpitServer {
                     answer(200, { ok: true });
                 } else if (parsed.op === 'add') {
                     if (this.conditions.length >= MAX_CONDITIONS) {
-                        answer(400, { ok: false, error: `The board is full — the agent tracks at most ${MAX_CONDITIONS} conditions.` });
+                        answer(400, { ok: false, error: `The board is full - the agent tracks at most ${MAX_CONDITIONS} conditions.` });
                         return;
                     }
                     // Next free cN id (ids are never reused within a meeting).
@@ -701,17 +701,17 @@ export class CockpitServer {
                 return;
             }
             // no-store: a phone must never show a cached page from before
-            // an update — that reads as "the fix didn't work".
+            // an update - that reads as "the fix didn't work".
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
             res.end(html);
         });
     }
 
     /** Work out each nudge's fate from current condition state:
-     *    sent    — a pure owner directive, not tied to any condition
-     *    landed  — the condition it pushed on is now closed
-     *    ignored — still open AND the agent has since nudged it again
-     *    waiting — still open, this is the latest nudge about it
+     *    sent    - a pure owner directive, not tied to any condition
+     *    landed  - the condition it pushed on is now closed
+     *    ignored - still open AND the agent has since nudged it again
+     *    waiting - still open, this is the latest nudge about it
      *  Chronological order (the feed reverses it; the record keeps it). */
     private _nudgesWithFates() {
         return this.nudges.map((nudge, index) => {
@@ -752,7 +752,7 @@ export class CockpitServer {
         return {
             startedAt: this.startedAt,
             meetingStatus: this.meetingStatus,
-            // Until briefed the agent has no conditions and won't join —
+            // Until briefed the agent has no conditions and won't join -
             // the page keeps showing the briefing screen while this is false.
             briefed: this.briefed,
             briefedAt: this.briefedAt,
@@ -774,7 +774,7 @@ export class CockpitServer {
             // Phase 9: chat briefing is the front door when a brain exists.
             chatBriefing: Boolean(this.onBriefChat),
             // Local bot only: tells the page to show the Kill bot button.
-            // The hosted cockpit server never sets this — the cloud bot has
+            // The hosted cockpit server never sets this - the cloud bot has
             // its own automatic wrap-up and the Railway Stop button.
             canShutdown: true,
         };

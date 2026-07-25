@@ -61,7 +61,7 @@ export class ChatProcedure {
             }
         }
 
-        // Fallback 2: a stray side panel may be displacing the toolbar — close it and retry once.
+        // Fallback 2: a stray side panel may be displacing the toolbar - close it and retry once.
         if (!clicked) {
             const closePane = this.page.locator('[data-tid="rail-header-close-button"]').first();
             if (await closePane.count() > 0 && await closePane.isVisible().catch(() => false)) {
@@ -111,7 +111,7 @@ export class ChatProcedure {
     }
 
     /**
-     * Phase 5: sends one message and CONFIRMS it went — used for the greeting,
+     * Phase 5: sends one message and CONFIRMS it went - used for the greeting,
      * which must be dependable (it becomes customisable later).
      * On a successful send Teams clears the compose box, so leftover text
      * means the Enter didn't take. Retries the whole flow (panel open
@@ -134,9 +134,9 @@ export class ChatProcedure {
                     this.logger.info({ message: `Confirmed chat message posted (attempt ${attempt}): ${text}` });
                     return true;
                 }
-                this.logger.warn({ message: `Message still sitting in the compose box after attempt ${attempt} — retrying.` });
+                this.logger.warn({ message: `Message still sitting in the compose box after attempt ${attempt} - retrying.` });
             } catch (error) {
-                this.logger.warn({ message: `Send attempt ${attempt} failed — retrying.`, data: error });
+                this.logger.warn({ message: `Send attempt ${attempt} failed - retrying.`, data: error });
             }
             await this.page.waitForTimeout(1500); // let the meeting UI settle before the next try
         }

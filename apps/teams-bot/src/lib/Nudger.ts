@@ -6,19 +6,19 @@ import { Condition } from '../conditions';
  *
  * It holds the meeting's conditions (the owner's brief) and, for every
  * finished caption line, makes ONE Anthropic API call that judges the
- * WHOLE conversation so far — not just the newest line — and answers:
+ * WHOLE conversation so far - not just the newest line - and answers:
  *
- *   1. JUDGE — for each open condition: is it now settled (a resolution
+ *   1. JUDGE - for each open condition: is it now settled (a resolution
  *      may unfold across several lines and speakers), a one-line reason
  *      for the board, and a fuller "why" the owner can expand.
- *   2. NUDGE — should the agent post one short chat message pushing the
+ *   2. NUDGE - should the agent post one short chat message pushing the
  *      room toward the most important condition still open? Remaining
  *      meeting time shapes how urgent that nudge is.
  *
  * A cooldown stops the agent from nagging: after any nudge it stays
  * quiet for NUDGE_COOLDOWN_MS no matter what the model suggests.
  *
- * Uses Node's built-in fetch — no SDK dependency, per project constraints.
+ * Uses Node's built-in fetch - no SDK dependency, per project constraints.
  */
 
 /** A nudge the agent wants posted to the meeting chat. */
@@ -36,11 +36,11 @@ export type LineDecision = {
     /** Conditions the conversation just closed (empty most of the time) */
     resolvedIds: string[];
     /** Phase 13: CLOSED conditions whose settled outcome the room REVISED
-     *  ("the budget is 50" → "make it 80") — they stay closed, but their
+     *  ("the budget is 50" → "make it 80") - they stay closed, but their
      *  note/why/evidence now carry the new agreement */
     revisedIds: string[];
     /** Phase 13: closed conditions the room explicitly UNSETTLED without a
-     *  replacement decision — flipped back to open */
+     *  replacement decision - flipped back to open */
     reopenedIds: string[];
     /** Phase 5: the newest line named the owner in a way that needs them */
     mention: { speaker: string, quote: string } | null;
@@ -62,7 +62,7 @@ export class Nudger {
     private readonly conditions: Condition[];
     /** Optional extra guidance from the briefing screen ("Maya holds the budget") */
     private context = '';
-    /** Phase 5: the owner's name from the briefing — lets the agent spot when the room needs them */
+    /** Phase 5: the owner's name from the briefing - lets the agent spot when the room needs them */
     private ownerName = '';
     private lastNudgeAt = 0;
 
@@ -85,19 +85,19 @@ export class Nudger {
     /**
      * Phase 4: judges the whole conversation so far (the caller passes a
      * rolling window of transcript lines, newest last) against every open
-     * condition, and decides whether to nudge — with urgency shaped by the
+     * condition, and decides whether to nudge - with urgency shaped by the
      * remaining meeting time.
      * Side effects: flips conditions to 'closed' when the room has settled
      * them, refreshes each open condition's one-line reason (note) and
      * fuller explanation (why), and increments nudge counts.
-     * Never throws — a failed API call just means no decision this line.
+     * Never throws - a failed API call just means no decision this line.
      */
     public async decide(args: {
         transcript: Array<{ speaker: string, text: string }>,
         time: TimeState,
     }): Promise<LineDecision> {
         const quiet: LineDecision = { nudge: null, resolvedIds: [], revisedIds: [], reopenedIds: [], mention: null };
-        // Phase 13: closed conditions are NOT frozen until the meeting ends —
+        // Phase 13: closed conditions are NOT frozen until the meeting ends -
         // the room revises decisions ("50" → "actually, make it 80"), so the
         // brain keeps watching even when everything is closed.
         if (this.conditions.length === 0) {
@@ -137,7 +137,8 @@ export class Nudger {
                 .filter((block) => block.type === 'text')
                 .map((block) => block.text ?? '')
                 .join('')
-                .trim();
+                .trim()
+                .replace(/\u2014/g, '-'); // the model must never put an em dash in front of the owner
 
             const decision = this._parseDecision(text);
             if (!decision) {
@@ -145,7 +146,7 @@ export class Nudger {
             }
 
             // 1. Apply the per-condition judgements: close what the room has
-            //    settled, refresh every open condition's reason + why — and
+            //    settled, refresh every open condition's reason + why - and
             //    (Phase 13) keep closed conditions honest: a REVISED decision
             //    updates the card in place, a RETRACTED one reopens it.
             const resolvedIds: string[] = [];
@@ -170,7 +171,7 @@ export class Nudger {
                     if (judged.status === 'closed') {
                         condition.status = 'closed';
                         resolvedIds.push(condition.id);
-                        console.log(`CONDITION CLOSED >>> ${condition.label} — ${condition.note ?? 'settled in the room'}`);
+                        console.log(`CONDITION CLOSED >>> ${condition.label} - ${condition.note ?? 'settled in the room'}`);
                         for (const line of condition.evidence ?? []) {
                             console.log(`  ⤷ ${line.speaker}: "${line.quote}"`);
                         }
@@ -179,12 +180,12 @@ export class Nudger {
                 }
                 // A condition that is currently CLOSED:
                 if (judged.status === 'revised') {
-                    // Still settled — but the agreed outcome changed. New facts, same jade card.
+                    // Still settled - but the agreed outcome changed. New facts, same jade card.
                     if (judged.reason) condition.note = judged.reason;
                     if (judged.why) condition.why = judged.why;
                     if (judged.evidence.length > 0) condition.evidence = judged.evidence;
                     revisedIds.push(condition.id);
-                    console.log(`CONDITION REVISED >>> ${condition.label} — ${condition.note ?? 'the agreed outcome changed'}`);
+                    console.log(`CONDITION REVISED >>> ${condition.label} - ${condition.note ?? 'the agreed outcome changed'}`);
                 } else if (judged.status === 'reopened' || judged.status === 'open') {
                     // The room walked the decision back without a replacement.
                     condition.status = 'open';
@@ -193,12 +194,12 @@ export class Nudger {
                     if (judged.why) condition.why = judged.why;
                     if (judged.evidence.length > 0) condition.evidence = judged.evidence;
                     reopenedIds.push(condition.id);
-                    console.log(`CONDITION REOPENED >>> ${condition.label} — ${condition.note ?? 'the room unsettled it'}`);
+                    console.log(`CONDITION REOPENED >>> ${condition.label} - ${condition.note ?? 'the room unsettled it'}`);
                 }
                 // status "closed" on an already-closed condition = unchanged; leave it be.
             }
 
-            // 2. Maybe nudge — but respect the cooldown, and never nudge a
+            // 2. Maybe nudge - but respect the cooldown, and never nudge a
             //    condition that just closed above.
             let nudge: NudgeDecision | null = null;
             if (decision.nudge) {
@@ -230,17 +231,18 @@ export class Nudger {
         // rolling window still contains it.
         const mentionTask = this.ownerName ? [
             '',
-            `3. MENTION: look ONLY at the LAST line — the one that just arrived. Does it name or clearly`,
+            `3. MENTION: look ONLY at the LAST line - the one that just arrived. Does it name or clearly`,
             `   refer to your owner, ${this.ownerName}, in a way that needs their input, decision, or`,
-            `   presence — e.g. "we can't confirm until ${this.ownerName} gets back to us" or "let's check`,
+            `   presence - e.g. "we can't confirm until ${this.ownerName} gets back to us" or "let's check`,
             `   with ${this.ownerName}"? If yes, report the speaker and their exact verbatim words.`,
             `   A mention that needs nothing from ${this.ownerName} (e.g. "${this.ownerName} already`,
-            `   approved this") is NOT an alert — use null.`,
+            `   approved this") is NOT an alert - use null.`,
         ] : [];
         return [
+            'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
             'You are Clarus bot, a quiet agent sitting in a live meeting. Your owner gave you a short list of',
             'conditions this meeting must settle before it ends. On every turn you receive the conversation',
-            'so far as live-caption lines, oldest first — the last line is the one that just arrived.',
+            'so far as live-caption lines, oldest first - the last line is the one that just arrived.',
             '',
             'Current conditions:',
             this._conditionLines(),
@@ -248,32 +250,32 @@ export class Nudger {
             ...Nudger._timeLines(time),
             '',
             `Do ${this.ownerName ? 'THREE' : 'TWO'} things, judging from the WHOLE conversation, not just the newest line. A resolution often`,
-            'unfolds across several lines and speakers — e.g. "what\'s the budget?" / "50k" / "yes, approved"',
+            'unfolds across several lines and speakers - e.g. "what\'s the budget?" / "50k" / "yes, approved"',
             'across three speakers clearly settles a budget condition even though no single line does.',
             '',
             '1. JUDGE every OPEN condition:',
-            '   - status: "closed" ONLY if the room has clearly settled it — a definite decision stated or',
+            '   - status: "closed" ONLY if the room has clearly settled it - a definite decision stated or',
             '     agreed out loud, possibly across several lines. A vague mention or an unanswered question',
             '     does NOT settle it. Otherwise "open".',
             '   - reason: ONE short line for the owner\'s board. If closed: who/what settled it. If open:',
             '     where it stands in the room right now (e.g. "Not raised yet", "Waiting on finance").',
-            '   - why: 1-2 plain-English sentences telling the fuller story — what is blocking it, who said',
+            '   - why: 1-2 plain-English sentences telling the fuller story - what is blocking it, who said',
             '     what, whether it depends on another condition; or, if closed, how it came together.',
             '   - evidence: the transcript line(s) that DIRECTLY drive your judgement, copied VERBATIM from',
-            '     the conversation — the speaker and their exact words, character for character. Never',
+            '     the conversation - the speaker and their exact words, character for character. Never',
             '     paraphrase, shorten, or invent a quote. At most 3 lines; use [] when no specific line',
             '     applies (e.g. the condition simply has not been raised yet).',
             '',
-            '1b. RE-CHECK every CLOSED condition — rooms revise their decisions ("the budget is 50" can',
+            '1b. RE-CHECK every CLOSED condition - rooms revise their decisions ("the budget is 50" can',
             '   later become "actually, make it 80"). Each closed condition below shows its currently',
             '   recorded outcome. For each one:',
-            '   - status "closed" if the recorded outcome still stands — and then OMIT reason/why/evidence',
+            '   - status "closed" if the recorded outcome still stands - and then OMIT reason/why/evidence',
             '     (nothing changes);',
-            '   - status "revised" if the room has clearly AGREED A DIFFERENT outcome — give the new',
+            '   - status "revised" if the room has clearly AGREED A DIFFERENT outcome - give the new',
             '     reason/why/evidence for the NEW agreement (the condition stays settled, with new facts).',
             '     Someone merely questioning or proposing a change is NOT a revision until the room agrees;',
             '   - status "reopened" ONLY if the room retracted the decision WITHOUT agreeing a replacement',
-            '     ("actually, let\'s not lock the budget yet") — give reason/why/evidence for why it is',
+            '     ("actually, let\'s not lock the budget yet") - give reason/why/evidence for why it is',
             '     unsettled again.',
             '',
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
@@ -283,8 +285,8 @@ export class Nudger {
             '   for a concrete decision.',
             '   URGENCY: let the remaining time shape your tone and eagerness. With plenty of time left,',
             '   nudge sparingly and gently. Once under a third of the meeting remains, be more direct and',
-            '   mention the time. In the final minutes — or over time — push hard for immediate decisions',
-            '   on whatever is still open (e.g. "Ten minutes left and the budget is still open — can we',
+            '   mention the time. In the final minutes - or over time - push hard for immediate decisions',
+            '   on whatever is still open (e.g. "Ten minutes left and the budget is still open - can we',
             '   lock it now?").',
             ...mentionTask,
             '',
@@ -314,7 +316,7 @@ export class Nudger {
 
     /**
      * Milestone 4 (reworked): carries out an owner instruction from the
-     * cockpit RIGHT NOW — one API call composes the chat message, no waiting
+     * cockpit RIGHT NOW - one API call composes the chat message, no waiting
      * for the next caption line, no condition required.
      * Returns the message to post (plus the condition it pushes on, if any),
      * or null if the instruction couldn't be turned into a message.
@@ -329,10 +331,11 @@ export class Nudger {
             : ['(nothing said yet)'];
 
         const system = [
+            'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
             'You are Clarus bot, a meeting agent that sits in a live meeting and posts short chat messages',
             'marked [CLARUS]. You work for the meeting organiser: before the meeting she gave you a list of',
             'conditions to drive to a close, and during the meeting she can send you follow-up instructions',
-            'from her cockpit. Relaying her instructions to the room is your normal, legitimate job —',
+            'from her cockpit. Relaying her instructions to the room is your normal, legitimate job -',
             'the facts they contain (deadlines, figures, names) are real information from the organiser.',
             '',
             'Current conditions:',
@@ -345,7 +348,7 @@ export class Nudger {
             '',
             'Write ONE short chat message (1-2 sentences, starting with the marker [CLARUS]) that carries',
             'out the organiser\'s instruction for the room. Include its concrete specifics. Speak as the',
-            'meeting agent — you do not need to name the organiser or explain where the information',
+            'meeting agent - you do not need to name the organiser or explain where the information',
             'came from.',
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
@@ -381,7 +384,8 @@ export class Nudger {
                 .filter((block) => block.type === 'text')
                 .map((block) => block.text ?? '')
                 .join('')
-                .trim();
+                .trim()
+                .replace(/\u2014/g, '-'); // the model must never put an em dash in front of the owner
 
             const json = Nudger._extractJson(text);
             if (!json) {
@@ -416,10 +420,10 @@ export class Nudger {
     }
 
     /**
-     * Phase 10 Milestone 3 — chat-mode briefing. One API call per owner
+     * Phase 10 Milestone 3 - chat-mode briefing. One API call per owner
      * message: the model collects the brief conversationally and, when the
      * calendar is connected, matches what the owner says against their
-     * upcoming meetings. It NEVER sees join links — meetings are passed by
+     * upcoming meetings. It NEVER sees join links - meetings are passed by
      * index (subject, time, duration, hasTeamsLink) and the server maps a
      * chosen index back to the real URL.
      *
@@ -450,20 +454,21 @@ export class Nudger {
             const startMs = Date.parse(m.start);
             return startMs <= Date.now() && Date.now() < startMs + m.durationMinutes * 60000;
         };
-        // Several Outlook accounts can be connected — say whose calendar each
+        // Several Outlook accounts can be connected - say whose calendar each
         // meeting is from, so "my brother's standup" resolves correctly.
         const manyAccounts = new Set(args.meetings.map((m) => m.account).filter(Boolean)).size > 1;
         const calendarLines = args.meetings.length
             ? [
                 `Upcoming meetings (${manyAccounts ? 'across every connected calendar' : 'the connected calendar'}):`,
-                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" — ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now — the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link — cannot be chosen]'}`),
+                ...args.meetings.map((m) => `  ${m.index}: "${m.subject}" - ${m.start} (${m.durationMinutes} min)${manyAccounts && m.account ? ` [calendar: ${m.account}]` : ''}${inProgress(m) ? ' [IN PROGRESS right now - the agent joins immediately]' : ''}${m.hasTeamsLink ? '' : ' [NO Teams link - cannot be chosen]'}`),
             ]
             : args.calendarConnected
-                ? ['The owner\'s calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting ("your calendar shows nothing in the next two weeks — is it on a different account? Paste the Teams link instead") and take a pasted link.']
-                : ['The owner\'s calendar is NOT connected — they must paste a Teams meeting link in the chat.'];
+                ? ['The owner\'s calendar IS connected but shows NOTHING in the next two weeks. Say so plainly if they describe a meeting ("your calendar shows nothing in the next two weeks - is it on a different account? Paste the Teams link instead") and take a pasted link.']
+                : ['The owner\'s calendar is NOT connected - they must paste a Teams meeting link in the chat.'];
 
         const system = [
-            'You are Clarus bot\'s briefing assistant. Your owner — a busy person, often on their phone — is',
+            'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
+            'You are Clarus bot\'s briefing assistant. Your owner - a busy person, often on their phone - is',
             'briefing you, by chat, for a meeting you will attend and drive for them. Keep every message',
             'short and direct: 1-2 sentences, one question at a time. Do NOT over-interview.',
             '',
@@ -472,24 +477,24 @@ export class Nudger {
             '   and only if the answer would materially change the conditions (e.g. "Who holds the budget',
             '   decision?" or "Is there a figure already in play?"). If their first message is enough, skip',
             '   questions entirely.',
-            '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions — things that',
+            '2. PROPOSE CONDITIONS. Set proposeConditions to 2-3 specific, concrete conditions - things that',
             '   must be TRUE by the end of the meeting, framed as outcomes.',
             '   Good: "Event budget confirmed with a number" / "Launch date agreed" / "Owner assigned for follow-ups".',
             '   Bad: "Discuss the budget" / "Talk about the timeline".',
-            '   The owner sees them as editable cards with a confirm button — your reply should invite',
-            '   tweaks ("Here\'s what I\'ll drive the room to close — edit anything"). When their next',
-            '   message starts "Confirmed conditions:", those exact conditions are final — do not re-propose.',
+            '   The owner sees them as editable cards with a confirm button - your reply should invite',
+            '   tweaks ("Here\'s what I\'ll drive the room to close - edit anything"). When their next',
+            '   message starts "Confirmed conditions:", those exact conditions are final - do not re-propose.',
             '3. WHICH MEETING. If their words clearly match exactly ONE meeting in the calendar list below,',
             '   set proposeMeeting to its index and ask for confirmation, naming it with its day and time',
-            '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 — right?"). NEVER guess between',
-            '   several plausible matches and never invent meetings — if nothing matches confidently, set',
+            '   ("I\'ll assume you mean \'Marketing Launch Sync\', Thu 15:00 - right?"). NEVER guess between',
+            '   several plausible matches and never invent meetings - if nothing matches confidently, set',
             '   showList true and ask them to tap one. A pasted Teams link also works; without a calendar,',
-            '   ask them to paste the link ("Last thing — paste the meeting link and I\'ll send the agent',
+            '   ask them to paste the link ("Last thing - paste the meeting link and I\'ll send the agent',
             '   in."). Meetings marked [NO Teams link] cannot be chosen. When the owner confirms your',
             '   proposal (yes / that one / correct), the meeting is resolved.',
-            '   You may resolve the meeting before or after the conditions — take whichever the owner gives',
+            '   You may resolve the meeting before or after the conditions - take whichever the owner gives',
             '   first, but never skip the condition-confirm step.',
-            '4. Their name and extra context are optional — fold at most ONE ask for them into another',
+            '4. Their name and extra context are optional - fold at most ONE ask for them into another',
             '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
             '   pasted link default to 30 unless they say otherwise.',
             '',
@@ -504,7 +509,7 @@ export class Nudger {
             '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
             '   "context": "..."}}',
             'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
-            'has confirmed the conditions. Its reply is still shown — make it the send-off ("Sending the',
+            'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
             'agent in now. You\'ll see it on your board.").',
         ].join('\n');
 
@@ -535,7 +540,8 @@ export class Nudger {
                 .filter((block) => block.type === 'text')
                 .map((block) => block.text ?? '')
                 .join('')
-                .trim();
+                .trim()
+                .replace(/\u2014/g, '-'); // the model must never put an em dash in front of the owner
             const cleaned = Nudger._extractJson(text);
             if (!cleaned) {
                 this.logger.warn({ message: 'Could not parse brief-chat JSON', data: text });
@@ -580,7 +586,7 @@ export class Nudger {
 
     /**
      * ONE API call at meeting end: a short, factual plain-English summary
-     * for the meeting's persisted record — what was decided, what stayed
+     * for the meeting's persisted record - what was decided, what stayed
      * open, who was involved. Never throws; null means "no summary" and
      * the record is saved without one.
      */
@@ -593,7 +599,7 @@ export class Nudger {
     }): Promise<string | null> {
         const boardLines = this.conditions.map((c) => {
             const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
-            return `- ${c.label} — ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+            return `- ${c.label} - ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
         }).join('\n');
         const eventLines = args.events
             .filter((e) => e.type !== 'speaker-seen') // participants are passed separately
@@ -612,14 +618,15 @@ export class Nudger {
                     model: 'claude-opus-4-8',
                     max_tokens: 500,
                     system: [
+                        'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
                         'You are Clarus bot. A meeting you attended for your owner has just ended. Write the short,',
-                        'factual summary that goes into its permanent record — the thing your owner actually reads',
+                        'factual summary that goes into its permanent record - the thing your owner actually reads',
                         'afterwards.',
                         '',
                         'Cover, in plain English prose (a short paragraph or two, no headings, no bullet lists):',
                         'what was decided (with the deciding words where you have them), which conditions closed and',
                         'which stayed open (and why, if known), anything that needed the owner, and who was involved.',
-                        'Only state what the record shows — do not embellish or guess. Keep it under 150 words.',
+                        'Only state what the record shows - do not embellish or guess. Keep it under 150 words.',
                     ].join('\n'),
                     messages: [{
                         role: 'user',
@@ -647,7 +654,8 @@ export class Nudger {
                 .filter((block) => block.type === 'text')
                 .map((block) => block.text ?? '')
                 .join('')
-                .trim();
+                .trim()
+                .replace(/\u2014/g, '-'); // the model must never put an em dash in front of the owner
             return text || null;
         } catch (error) {
             this.logger.error({ message: 'Summary generation failed', data: error });
@@ -668,7 +676,7 @@ export class Nudger {
         // Closed conditions carry their recorded outcome so the model can
         // tell "still stands" from "the room revised it" (Phase 13).
         return this.conditions.map((c) =>
-            `- id "${c.id}": ${c.label} — ${c.status.toUpperCase()}${c.status === 'open'
+            `- id "${c.id}": ${c.label} - ${c.status.toUpperCase()}${c.status === 'open'
                 ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
                 : ` (recorded outcome: ${c.note ?? 'settled in the room'})`}`
         ).join('\n');

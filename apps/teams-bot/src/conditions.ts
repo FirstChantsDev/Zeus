@@ -4,7 +4,7 @@
  *
  *  Phase 3: conditions are NO LONGER edited here. They start empty and
  *  are filled in from the "Brief your agent" screen at
- *  http://localhost:4300 — whatever you type there is what the agent
+ *  http://localhost:4300 - whatever you type there is what the agent
  *  drives. The bot waits for the brief before joining the meeting.
  * ═══════════════════════════════════════════════════════════════════
  */
@@ -15,7 +15,7 @@ export const MAX_CONDITIONS = 5;
 
 /**
  * Replaces the conditions with the owner's typed brief. Mutates the
- * shared array IN PLACE — the Nudger and CockpitServer both hold a
+ * shared array IN PLACE - the Nudger and CockpitServer both hold a
  * reference to it, so it must never be reassigned.
  */
 export const applyBrief = (labels: string[]) => {
@@ -38,10 +38,10 @@ export type Condition = {
     /** One-line reason shown on the card: how it closed, or where it stands */
     note?: string;
     /** Phase 4: the agent's fuller plain-English explanation of the current
-     *  state — why it's still pending, or how it came together. Shown when
+     *  state - why it's still pending, or how it came together. Shown when
      *  the owner expands the card. Refreshed on every decision call. */
     why?: string;
-    /** Phase 5: the verbatim transcript line(s) behind the current judgement —
+    /** Phase 5: the verbatim transcript line(s) behind the current judgement -
      *  speaker + exact words, shown as the receipt in the expanded card.
      *  Freezes when the condition closes (closed conditions are never re-judged). */
     evidence?: Array<{ speaker: string, quote: string }>;

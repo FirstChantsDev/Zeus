@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#faf8f3">
-<title>Clarus — Command Centre</title>
+<title>Clarus - Command Centre</title>
 <!-- media="print" + onload flip = non-blocking fonts: on a slow or flaky
      connection (phones!) a hanging stylesheet must never delay the page's
-     script — system fonts render first and the web fonts swap in. -->
+     script - system fonts render first and the web fonts swap in. -->
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -18,7 +18,7 @@ button,input,textarea{font-family:inherit;}
    ink text on cream, white cards, one confident blue accent. */
 :root{
   /* Surfaces */
-  --bg:#faf8f3;            /* page background — cream */
+  --bg:#faf8f3;            /* page background - cream */
   --bg-2:#f4f1e8;          /* slightly darker section background */
   --s1:#ffffff;            /* card / surface */
   --s2:#fcfbf7;            /* faint card */
@@ -28,23 +28,23 @@ button,input,textarea{font-family:inherit;}
   --line2:#e3ded2;         /* hairline */
   --dash:#cfc9ba;          /* dashed / softer borders */
   /* Text */
-  --ink:#1c1a16;           /* primary text — near-black ink */
+  --ink:#1c1a16;           /* primary text - near-black ink */
   --t1:#1c1a16;            /* primary text (alias) */
   --t2:#5d5849;            /* secondary text */
   --t3:#8a8474;            /* muted text / labels */
   --t4:#a39d8f;            /* faint text */
-  /* The single accent — blue. The agent's presence, primary actions,
+  /* The single accent - blue. The agent's presence, primary actions,
      active states, links, progress. */
   --blue:#2b3fc4;
   --blue-bg:#eef0fb;       /* tint background for agent/active surfaces */
   --blue-bd:#c7cdf0;       /* tint border */
   --blue-2:#4a5fb0;        /* darker blue for secondary text on blue tint */
   --blue-track:#d8ddf5;    /* progress track on blue tint */
-  /* Status colours — same meanings as always, Clarus hues */
+  /* Status colours - same meanings as always, Clarus hues */
   --green:#1f7659;  --green-bg:#e9f4ef; --green-bd:#b7d9cb;   /* closed / done */
   --amber:#a07826;  --amber-bg:#fdf7ea; --amber-bd:#e8c98f;   /* open / waiting (text) */
   --amber-2:#c9932e;                                          /* open / waiting (accents) */
-  --red:#a8503a;    --red-bg:#f8ece6;  --red-bd:#dfb4a3;      /* needs you / stalled — clay */
+  --red:#a8503a;    --red-bg:#f8ece6;  --red-bd:#dfb4a3;      /* needs you / stalled - clay */
   /* Type & shape */
   --head:'Newsreader',Georgia,serif;
   --body:'Instrument Sans',sans-serif;
@@ -58,13 +58,17 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--bo
 a{color:var(--blue);}
 body{display:flex;flex-direction:column;overflow:hidden;}
 
-/* ══ BRIEFING SCREEN (Phase 3 — markup/CSS from the reference mock) ══ */
+/* ══ BRIEFING SCREEN (Phase 3 - markup/CSS from the reference mock) ══ */
 #briefing{
   position:fixed;inset:0;z-index:100;background:var(--bg);
   display:flex;align-items:center;justify-content:center;
   transition:opacity .6s, visibility .6s;
 }
 #briefing.gone{opacity:0;visibility:hidden;}
+/* While the page is deciding which view it is (homepage vs briefing vs a
+   meeting cockpit), show NOTHING - stops the briefing screen flashing for
+   a beat before the dashboard takes over after login. */
+body.booting #briefing{opacity:0;visibility:hidden;}
 .brief-card{width:min(560px,92vw);max-height:92vh;overflow-y:auto;padding:8px 4px;}
 .brief-mark{font-family:var(--head);font-style:italic;font-weight:600;font-size:23px;letter-spacing:-.02em;margin-bottom:22px;}
 .brief-mark em{font-style:italic;color:var(--blue);}
@@ -91,13 +95,13 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .cal-item.nolink{opacity:.42;cursor:not-allowed;}
 .cal-item .cal-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .cal-item .cal-when{font-family:var(--mono);font-size:11px;color:var(--t2);white-space:nowrap;}
-/* Brief-by-chat — the only briefing flow */
+/* Brief-by-chat - the only briefing flow */
 .bc-thread{
   display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto;
   padding:4px 2px;margin:14px 0 10px;
 }
 .bc-msg{max-width:86%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;}
-/* The agent talks in its quote style — blue left border, not a bubble.
+/* The agent talks in its quote style - blue left border, not a bubble.
    The owner's replies are quiet white cards, right-aligned. */
 .bc-msg.agent{align-self:flex-start;background:var(--blue-bg);border:none;border-left:3px solid var(--blue);border-radius:0 12px 12px 0;}
 .bc-msg.owner{align-self:flex-end;background:var(--s1);border:1px solid var(--dash);border-bottom-right-radius:4px;}
@@ -118,7 +122,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   font-family:var(--body);font-weight:600;font-size:13px;color:#fff;cursor:pointer;
 }
 .bc-row button:disabled{opacity:.5;}
-/* Phase 9: browser-native voice input (Web Speech API) — mobile only */
+/* Phase 9: browser-native voice input (Web Speech API) - mobile only */
 .bc-mic{
   flex:0 0 46px !important;height:46px;background:var(--s1) !important;color:var(--blue) !important;
   border:1px solid var(--blue) !important;border-radius:50%;font-size:18px;position:relative;padding:0 !important;
@@ -128,7 +132,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 @keyframes micring{0%{opacity:.7;transform:scale(.95);}100%{opacity:0;transform:scale(1.18);}}
 .bc-listen-hint{font-family:var(--mono);font-size:10.5px;color:var(--blue);letter-spacing:.6px;text-align:center;margin-bottom:6px;display:none;}
 .bc-listen-hint.on{display:block;}
-/* Phase 9: proposed conditions as editable chips — amber until confirmed, jade after */
+/* Phase 9: proposed conditions as editable chips - amber until confirmed, jade after */
 .bc-chips{align-self:stretch;display:flex;flex-direction:column;gap:8px;}
 .bchip{display:flex;align-items:center;gap:9px;border:1px solid var(--amber-bd);background:var(--amber-bg);border-radius:13px;padding:11px 12px;}
 .bchip.ok{border-color:var(--green-bd);background:var(--green-bg);}
@@ -145,7 +149,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   .bc-row input,.bc-row textarea{font-size:16px;min-height:46px;} /* 16px stops iPhone zoom */
   .bc-row button{min-height:46px;}
 }
-/* Back to the homepage without submitting — only shown when the briefing
+/* Back to the homepage without submitting - only shown when the briefing
    is a sub-view of the all-agents homepage. */
 .brief-back{
   background:none;border:none;padding:10px 0;margin-bottom:6px;cursor:pointer;
@@ -154,7 +158,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 }
 .brief-back:hover{color:var(--blue);}
 
-/* ══ OVERSEER DASHBOARD (Phase 7c) — all running agents at a glance ══ */
+/* ══ OVERSEER DASHBOARD (Phase 7c) - all running agents at a glance ══ */
 #dashboard{position:fixed;inset:0;z-index:90;background:var(--bg);display:none;overflow-y:auto;padding:0 22px 24px;}
 #dashboard.show{display:block;}
 .dash-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap;}
@@ -272,7 +276,7 @@ header{
 }
 .hist-btn:hover{color:var(--blue);border-color:var(--blue);}
 
-/* ══ LIVE BOARD EDITING — edit a condition / add one mid-call ══ */
+/* ══ LIVE BOARD EDITING - edit a condition / add one mid-call ══ */
 .cond-edit-btn{
   flex:0 0 auto;background:none;border:1px solid var(--line2);border-radius:6px;
   width:22px;height:22px;color:var(--t3);cursor:pointer;font-size:11px;line-height:1;padding:0;
@@ -298,7 +302,7 @@ header{
 .cond-editor-err{font-size:11.5px;color:var(--red);min-height:14px;}
 .cond-editor-hint{font-size:11px;color:var(--t3);line-height:1.4;}
 
-/* ══ HISTORY — past meetings, their records, and the metrics strip ══ */
+/* ══ HISTORY - past meetings, their records, and the metrics strip ══ */
 #history{position:fixed;inset:0;z-index:120;background:var(--bg);display:none;overflow-y:auto;padding:0 22px 28px;}
 #history.show{display:block;}
 .hist-head{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:1;}
@@ -356,7 +360,7 @@ header{
 .owner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
 .owner-chip{width:26px;height:26px;border-radius:50%;background:var(--blue-bg);display:flex;align-items:center;justify-content:center;font-family:var(--body);font-size:11px;font-weight:700;color:var(--blue);}
 
-/* ══ ATTENTION STRIP (Phase 5 — the room needs the owner) ══ */
+/* ══ ATTENTION STRIP (Phase 5 - the room needs the owner) ══ */
 .attention-strip{
   flex:0 0 auto;display:flex;flex-direction:column;gap:8px;
   padding:10px 22px;border-bottom:1px solid var(--blue-bd);border-left:3px solid var(--blue);
@@ -390,7 +394,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .cond-label{font-family:var(--body);font-weight:600;font-size:14px;letter-spacing:-.1px;}
 /* Clarus badges: small, uppercase, letter-spaced, bold, coloured by
-   state — quiet text, not filled pills. */
+   state - quiet text, not filled pills. */
 .badge{font-family:var(--body);font-weight:700;font-size:10px;letter-spacing:.08em;white-space:nowrap;border:none;padding:0;background:none;}
 .cond-meta{font-size:12px;color:var(--t2);line-height:1.45;min-height:34px;}
 .cond-foot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--t4);}
@@ -405,7 +409,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 }
 .cond-expand:hover{color:var(--blue);border-color:var(--blue-bd);}
 .cond-why{font-size:12px;color:var(--t2);line-height:1.5;border-top:1px solid var(--line);padding-top:8px;}
-/* Phase 5: the verbatim transcript quote(s) behind a judgement — the receipt */
+/* Phase 5: the verbatim transcript quote(s) behind a judgement - the receipt */
 .cond-quote{font-family:var(--mono);font-size:11px;color:var(--green);line-height:1.5;margin-top:6px;}
 .cond-quote .spk{color:var(--t2);}
 .cond.exception{border-color:var(--red-bd);background:var(--red-bg);animation:breathe 2.2s ease infinite;}
@@ -413,10 +417,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(168,80,58,0);}50%{box-shadow:0 0 0 5px rgba(168,80,58,.10);}}
 
 /* ══ NUDGE FEED ══ */
-/* Phase 7a: real top padding — the newest item used to sit clipped
+/* Phase 7a: real top padding - the newest item used to sit clipped
    against the scroll edge. */
 .feed{flex:1;overflow-y:auto;padding:8px 16px 14px;display:flex;flex-direction:column;gap:9px;}
-/* The agent's posts: quote-style — a blue left border on the blue tint,
+/* The agent's posts: quote-style - a blue left border on the blue tint,
    not a chat bubble. Matches the Clarus reference exactly. */
 .nudge{border-left:3px solid var(--blue);background:var(--blue-bg);border-radius:0 10px 10px 0;padding:10px 13px;}
 .nudge-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
@@ -468,13 +472,13 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .dot-row{display:none;}
 
 /* ══ RESPONSIVE (Phase 7a) ══ */
-/* Tablet and down: one column — conditions, then agent activity, then
+/* Tablet and down: one column - conditions, then agent activity, then
    transcript. The page scrolls as a whole; each feed keeps its own
    bounded scroll so no panel can swallow the screen. */
 @media (max-width:860px){
   /* No grid at all when stacked: grid rows compressed the panels and let
      their content spill underneath the next one. Plain stacked blocks
-     cannot overlap — each panel takes its full content height and the
+     cannot overlap - each panel takes its full content height and the
      page scrolls. */
   main{display:block;overflow-y:auto;padding:12px 14px 4px;}
   .panel{margin-bottom:12px;}
@@ -482,7 +486,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .feed,.transcript{flex:0 0 auto;max-height:45vh;}
   .transcript{max-height:40vh;}
 }
-/* Phone: the reference-mock cockpit — compact ‹ Clarus. • STATUS header with
+/* Phone: the reference-mock cockpit - compact ‹ Clarus. • STATUS header with
    the meeting name + countdown on a second row, conditions as the page,
    and the feed/transcript/steer bar inside the bottom sheet. 16px inputs
    (anything smaller makes iPhones zoom the whole page). */
@@ -529,7 +533,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     max-height:82dvh;transition:transform .22s ease;
   }
   #sheet.dragging{transition:none;}
-  #sheetGrip,#sheetPeek{touch-action:none;} /* the drag owns these — not page scroll */
+  #sheetGrip,#sheetPeek{touch-action:none;} /* the drag owns these - not page scroll */
   #sheet.open{height:78dvh;}
   #sheetGrip{padding:10px 0 4px;display:flex;justify-content:center;cursor:pointer;flex:0 0 auto;}
   .grip-bar{width:46px;height:4px;border-radius:2px;background:var(--dash);}
@@ -580,9 +584,9 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 }
 </style>
 </head>
-<body>
+<body class="booting">
 
-<!-- ══ BRIEFING (pre-meeting) — the agent only joins once this is submitted ══ -->
+<!-- ══ BRIEFING (pre-meeting) - the agent only joins once this is submitted ══ -->
 <div id="briefing">
   <div class="brief-card">
     <button class="brief-back" id="briefBack" onclick="closeBriefing()">← Back to all agents</button>
@@ -590,16 +594,16 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
     <div class="brief-title">Brief your agent</div>
     <div class="brief-sub">Tell it what this meeting must produce. It will drive the room toward these outcomes and only pull you in when one won't close.</div>
 
-    <!-- Shown when this server has no chat brain (no ANTHROPIC_API_KEY) —
+    <!-- Shown when this server has no chat brain (no ANTHROPIC_API_KEY) -
          chat is the only way to brief, so say why it isn't working. -->
-    <div class="brief-note" id="chatOffNote" style="display:none;text-align:left;margin-top:14px">Briefing is unavailable — this server has no ANTHROPIC_API_KEY, which the briefing chat needs. Set it and restart the server.</div>
+    <div class="brief-note" id="chatOffNote" style="display:none;text-align:left;margin-top:14px">Briefing is unavailable - this server has no ANTHROPIC_API_KEY, which the briefing chat needs. Set it and restart the server.</div>
 
-    <!-- The chat briefing — the only way in. The agent matches what you say
+    <!-- The chat briefing - the only way in. The agent matches what you say
          against your calendar and proposes the meeting it thinks you mean,
          with a one-tap confirm. -->
     <div id="briefChatView">
       <div class="bc-thread" id="bcThread"></div>
-      <div class="bc-listen-hint" id="bcHint">LISTENING — TAP MIC TO STOP</div>
+      <div class="bc-listen-hint" id="bcHint">LISTENING - TAP MIC TO STOP</div>
       <div class="bc-row">
         <button class="bc-mic" id="bcMic" style="display:none" onclick="bcMicTap()" title="Speak instead of typing">🎙</button>
         <textarea class="f-input" id="bcInput" rows="1" placeholder="Type or tap the mic…"></textarea>
@@ -607,12 +611,12 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       </div>
     </div>
 
-    <div class="brief-note">The agent joins as a participant. Your cockpit — and every steer you make — stays private to you.</div>
+    <div class="brief-note">The agent joins as a participant. Your cockpit - and every steer you make - stays private to you.</div>
     <div class="brief-note"><a href="#" onclick="openHistory();return false;" style="color:var(--t2)">View past meetings →</a></div>
   </div>
 </div>
 
-<!-- ══ HISTORY (Part B) — past meetings, their audit records, metrics ══ -->
+<!-- ══ HISTORY (Part B) - past meetings, their audit records, metrics ══ -->
 <div id="history">
   <div class="hist-head">
     <button class="hist-back" id="histBack" onclick="historyBack()">‹ Back</button>
@@ -621,7 +625,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   <div id="histBody"></div>
 </div>
 
-<!-- ══ OVERSEER DASHBOARD (Phase 7c) — shown on the bare URL when agents are running ══ -->
+<!-- ══ OVERSEER DASHBOARD (Phase 7c) - shown on the bare URL when agents are running ══ -->
 <div id="dashboard">
   <div class="dash-head">
     <div class="wordmark">Clarus<em>.</em></div>
@@ -629,7 +633,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="dash-title">All running agents</div>
       <div class="dash-sub" id="dashCount"></div>
     </div>
-    <button class="hist-btn" id="dashHist" onclick="openHistory()" title="Past meetings — summaries, final boards, and the full audit trail">History</button>
+    <button class="hist-btn" id="dashHist" onclick="openHistory()" title="Past meetings - summaries, final boards, and the full audit trail">History</button>
     <button class="dash-new" id="dashNew" onclick="openBriefing()">+ Add agent to a meeting</button>
   </div>
   <!-- Outlook, right on the homepage: connect once, then a quiet status line. -->
@@ -647,20 +651,20 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </div>
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
-  <button class="hist-btn" id="histBtn" onclick="openHistory()" title="Past meetings — summaries, final boards, and the full audit trail">History</button>
+  <button class="hist-btn" id="histBtn" onclick="openHistory()" title="Past meetings - summaries, final boards, and the full audit trail">History</button>
   <button class="join-btn" id="joinBtn" style="display:none" onclick="joinCall()" title="Open the meeting link so you join as yourself">Join call</button>
-  <button class="kill-btn" id="killBtn" style="display:none" onclick="killBot()" title="Shut the agent down — it leaves the meeting and stops making API calls">Kill bot</button>
+  <button class="kill-btn" id="killBtn" style="display:none" onclick="killBot()" title="Shut the agent down - it leaves the meeting and stops making API calls">Kill bot</button>
   <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
 </header>
 
-<!-- ══ ATTENTION (Phase 5) — shown only when the room says it needs the owner ══ -->
+<!-- ══ ATTENTION (Phase 5) - shown only when the room says it needs the owner ══ -->
 <div class="attention-strip" id="attention" style="display:none"></div>
 
 <main>
   <section class="panel" id="conditions">
     <div class="panel-head">
       <span class="panel-title">Conditions to close</span>
-      <span class="panel-sub">Set by you before the call. The agent drives these — you step in only when one turns red.</span>
+      <span class="panel-sub">Set by you before the call. The agent drives these - you step in only when one turns red.</span>
     </div>
     <div class="cond-row" id="condRow"></div>
   </section>
@@ -671,7 +675,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <span class="panel-sub">What it said in the room, and whether it landed</span>
     </div>
     <div class="feed" id="feed"><div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div></div>
-    <div class="steer-hint" id="steerHint">Steer the agent privately — the room never sees this.</div>
+    <div class="steer-hint" id="steerHint">Steer the agent privately - the room never sees this.</div>
     <div class="steer-bar">
       <input id="steerInput" type="text" placeholder='e.g. "push harder on the metric, mention Friday deadline"'>
       <button id="steerBtn" onclick="steer()">Steer agent</button>
@@ -687,7 +691,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   </section>
 </main>
 
-<!-- ══ PHONE BOTTOM SHEET (Phase 11 — from the reference mocks) ══
+<!-- ══ PHONE BOTTOM SHEET (Phase 11 - from the reference mocks) ══
      On small screens the agent-activity feed, the transcript and the steer
      bar live in this sheet; #feed / #transcript / .steer-bar are MOVED here
      (same nodes, listeners intact) so both layouts share one render path. -->
@@ -711,7 +715,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 // endpoint every 1.5s and re-renders the three panels from real data.
 const POLL_MS = 1500;
 let startedAt = null; // set from the first /state answer; drives the clock
-let briefed = false;  // mirrors /state — flips the page from briefing to live cockpit
+let briefed = false;  // mirrors /state - flips the page from briefing to live cockpit
 
 // ══ MEETING ROUTING (Phase 7c) ═════════════════════════════
 // Hosted, each meeting lives at /?m=<id>; /?new forces a fresh briefing
@@ -741,7 +745,7 @@ function adoptMeeting(id){
 }
 syncBackBtn();
 
-// ══ OVERSEER DASHBOARD — the hosted homepage ═══════════════
+// ══ OVERSEER DASHBOARD - the hosted homepage ═══════════════
 // On the hosted hub, the bare URL is ALWAYS the homepage: the all-agents
 // view when meetings run, a clean empty state when none do. The briefing
 // screen is a sub-view reached from the "+ Add agent" button. Locally
@@ -759,13 +763,13 @@ async function detectDashboard(){
     document.getElementById('dashboard').classList.add('show');
     renderDashboard(sum);
     renderDashCalendar();
-  }catch(e){ /* local — stay in single-meeting mode */ }
+  }catch(e){ /* local - stay in single-meeting mode */ }
 }
 
 // The homepage's Outlook line: a Connect button until a calendar is
 // linked, then each connected account as a chip (with its own sign-out),
 // a dropdown choosing WHICH calendar feeds the meeting pick-list, and a
-// way to add another — several people (e.g. a sibling) can each sign in
+// way to add another - several people (e.g. a sibling) can each sign in
 // with their own Microsoft account.
 let calAccounts = []; // the chips' click handlers point in here by index
 async function renderDashCalendar(){
@@ -778,7 +782,7 @@ async function renderDashCalendar(){
     if(!s.connected){
       el.innerHTML =
         `<button class="cal-connect" onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
-         <span>one sign-in — then briefs pick meetings straight from your calendar</span>`;
+         <span>one sign-in - then briefs pick meetings straight from your calendar</span>`;
       return;
     }
     const chips = calAccounts.map((a, i) =>
@@ -794,11 +798,11 @@ async function renderDashCalendar(){
     el.innerHTML =
       `<span>Outlook · read-only</span>${chips}${picker}
        <button class="cal-connect" onclick="location.href='/calendar/auth'">Add another account</button>`;
-  }catch(e){ /* no calendar plumbing on this server — say nothing */ }
+  }catch(e){ /* no calendar plumbing on this server - say nothing */ }
 }
 
 // The dropdown's choice is stored server-side, so the briefing chat's
-// pick-list follows it too — not just this homepage line.
+// pick-list follows it too - not just this homepage line.
 async function calSelect(account){
   try{
     await fetch('/calendar/select', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ account }) });
@@ -862,7 +866,7 @@ function renderDashboard(sum){
   newBtn.textContent = newBtn.disabled ? `All ${sum.maxMeetings} agent slots busy` : '+ Add agent to a meeting';
   const grid = document.getElementById('dashGrid');
   if(!sum.meetings.length){
-    // The zero-state a fresh visitor sees — never a blank page.
+    // The zero-state a fresh visitor sees - never a blank page.
     grid.innerHTML = `<div class="dash-empty-state">
       <div class="brief-mark">Clarus<em>.</em></div>
       <div class="empty-title">No agents running</div>
@@ -899,7 +903,7 @@ function renderDashboard(sum){
       (!m.needsYou && !m.mentioned) ? '<span class="flag ok">ON TRACK</span>' : '',
     ].join('');
     // Phone card extras (hidden on desktop): the status pill and one dot
-    // per condition — jade closed, red needs-you, amber open.
+    // per condition - jade closed, red needs-you, amber open.
     const pill = m.needsYou ? '<span class="mob-pill needs">NEEDS YOU</span>'
       : scheduled ? '<span class="mob-pill sched">SCHEDULED</span>'
       : m.meetingStatus === 'in-meeting' ? '<span class="mob-pill live">LIVE</span>'
@@ -915,11 +919,11 @@ function renderDashboard(sum){
   }).join('');
 }
 
-// ══ BRIEFING — chat only ═══════════════════════════════════
+// ══ BRIEFING - chat only ═══════════════════════════════════
 // The form is gone: the chat gathers the meeting, the conditions and the
 // context, and the server accepts the brief when the owner confirms.
 const MAX_CONDITIONS = 5;
-// A meeting happening RIGHT NOW says so — you can send the agent into a
+// A meeting happening RIGHT NOW says so - you can send the agent into a
 // call that's already in progress and it joins immediately.
 const calWhen = (iso, mins) => {
   const startMs = Date.parse(iso);
@@ -927,7 +931,7 @@ const calWhen = (iso, mins) => {
   return (live ? 'NOW · ' : '')
     + new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' · ' + mins + 'm';
 };
-// ══ BRIEF BY CHAT — the only way to brief ═════════════════
+// ══ BRIEF BY CHAT - the only way to brief ═════════════════
 let bcStarted = false;
 let chatAvailable = false;  // the server has a chat brain (API key present)
 let chatAutoOpened = false; // chat auto-start applied once (single-meeting flow)
@@ -943,12 +947,12 @@ function startBriefChat(){
 }
 
 // The chat's opening moves. A fresh page = a fresh conversation (the
-// server forgets the old thread — otherwise a reload, e.g. the Outlook
+// server forgets the old thread - otherwise a reload, e.g. the Outlook
 // sign-in round-trip, leaves the page blank while the server remembers).
 // Then: connect-the-calendar comes FIRST when it isn't connected yet;
 // when it is, say what the agent can actually see.
 async function bcIntro(){
-  try{ await fetch('/brief-chat/reset', { method: 'POST' }); }catch(e){ /* older server — harmless */ }
+  try{ await fetch('/brief-chat/reset', { method: 'POST' }); }catch(e){ /* older server - harmless */ }
   let calLine = null, needsConnect = false;
   try{
     const s = await (await fetch('/calendar/status')).json();
@@ -959,18 +963,18 @@ async function bcIntro(){
         const meetings = ((await (await fetch('/calendar/meetings')).json()).meetings) || [];
         const linked = meetings.filter((m) => m.joinUrl).length;
         calLine = linked
-          ? `Calendar connected (${s.account}) — I can see ${linked} upcoming Teams meeting${linked === 1 ? '' : 's'}, so just describe the one you mean.`
-          : `Calendar connected (${s.account}) — but I see no Teams meetings in the next two weeks. If yours is on a different account, paste its link instead.`;
+          ? `Calendar connected (${s.account}) - I can see ${linked} upcoming Teams meeting${linked === 1 ? '' : 's'}, so just describe the one you mean.`
+          : `Calendar connected (${s.account}) - but I see no Teams meetings in the next two weeks. If yours is on a different account, paste its link instead.`;
       }catch(e){
-        calLine = 'Calendar connected, but I could not read it just now — you can still paste the meeting link.';
+        calLine = 'Calendar connected, but I could not read it just now - you can still paste the meeting link.';
       }
     }
-  }catch(e){ /* no calendar plumbing at all (hosted hub) — say nothing */ }
+  }catch(e){ /* no calendar plumbing at all (hosted hub) - say nothing */ }
   if(needsConnect){
-    bcAddMsg('agent', "First things first — connect your Outlook calendar (read-only) and you'll never paste a meeting link: describe the meeting and I'll find it.");
+    bcAddMsg('agent', "First things first - connect your Outlook calendar (read-only) and you'll never paste a meeting link: describe the meeting and I'll find it.");
     bcAddActions(`
       <button onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
-      <button class="alt" onclick="bcSkipConnect()">Skip — I'll paste the link</button>`);
+      <button class="alt" onclick="bcSkipConnect()">Skip - I'll paste the link</button>`);
     return; // the greeting follows their choice (or the reload after sign-in)
   }
   if(calLine) bcAddMsg('agent', calLine);
@@ -1004,7 +1008,7 @@ function bcClearActions(){
   document.querySelectorAll('#bcThread .bc-actions, #bcThread .bc-list, #bcThread .bc-chips:not(.confirmed)').forEach((el) => el.remove());
 }
 
-// ── Phase 9: the condition chips — the moment chat becomes structured ──
+// ── Phase 9: the condition chips - the moment chat becomes structured ──
 function renderCondChips(labels){
   const thread = document.getElementById('bcThread');
   const wrap = document.createElement('div');
@@ -1047,18 +1051,18 @@ function bcConfirmChips(btn){
   bcSend('Confirmed conditions: ' + labels.map((l, i) => `${i + 1}) ${l}`).join(' '));
 }
 
-// ── Phase 9: voice input — the browser's OWN speech recognition (Web
+// ── Phase 9: voice input - the browser's OWN speech recognition (Web
 // Speech API), no external service, no library, no audio leaves the
 // normal browser pipeline. Mobile only; hidden when unsupported. ──
 // The mic runs CONTINUOUSLY until tapped off: without `continuous` the
 // browser ends recognition at the first pause, losing everything after
-// it. Android still ends sessions on longer silences — the onend hook
+// it. Android still ends sessions on longer silences - the onend hook
 // restarts recognition (keeping the text so far) until the owner stops.
 const BcSR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let bcRec = null, bcMicOn = false, bcStopRequested = false, bcDictationBase = '';
 // Committed (final) speech this session, and which result slots were
 // already committed. Android reports interim guesses as CUMULATIVE
-// snapshots and leaves the stale ones in the list — so only FINAL
+// snapshots and leaves the stale ones in the list - so only FINAL
 // results are appended (each exactly once), and of the interim guesses
 // only the newest is shown, as the live tail.
 let bcCommitted = '';
@@ -1066,7 +1070,7 @@ let bcSeenFinals = new Set();
 if(BcSR && matchMedia('(pointer: coarse)').matches){
   document.getElementById('bcMic').style.display = '';
 }
-// The chat box grows with what's in it (tap the mic and talk for a while —
+// The chat box grows with what's in it (tap the mic and talk for a while -
 // a one-line box hides most of it). Capped by CSS max-height, then scrolls.
 function bcAutoGrow(){
   const el = document.getElementById('bcInput');
@@ -1104,7 +1108,7 @@ function bcMicTap(){
         if(r.isFinal){
           if(!bcSeenFinals.has(i)){ bcSeenFinals.add(i); bcCommitted += r[0].transcript.trim() + ' '; }
         } else {
-          interim = r[0].transcript; // cumulative on Android — the newest wins
+          interim = r[0].transcript; // cumulative on Android - the newest wins
         }
       }
       input.value = (bcDictationBase + bcCommitted + interim).replace(/ {2,}/g, ' ');
@@ -1118,7 +1122,7 @@ function bcMicTap(){
     };
     bcRec.onend = () => {
       if(!bcStopRequested && bcMicOn){
-        // The browser gave up on a silence — carry on where we left off.
+        // The browser gave up on a silence - carry on where we left off.
         // Everything so far becomes the base; the NEW session starts with
         // a clean committed buffer and fresh result indices.
         bcDictationBase = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
@@ -1132,13 +1136,13 @@ function bcMicTap(){
     document.getElementById('bcMic').classList.add('on');
     document.getElementById('bcHint').classList.add('on');
     bcRec.start();
-  }catch(e){ /* unsupported after all — type instead */ }
+  }catch(e){ /* unsupported after all - type instead */ }
 }
 async function bcSend(presetText){
   const input = document.getElementById('bcInput');
   const text = (presetText ?? input.value).trim();
   if(!text) return;
-  if(bcMicOn) bcMicTap(); // sending ends the dictation — otherwise it keeps writing into the cleared box
+  if(bcMicOn) bcMicTap(); // sending ends the dictation - otherwise it keeps writing into the cleared box
   bcClearActions();
   bcAddMsg('owner', text);
   input.value = '';
@@ -1149,12 +1153,12 @@ async function bcSend(presetText){
   try{
     const r = await fetch('/brief-chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
     const answer = await r.json();
-    thinking.textContent = answer.reply || answer.error || 'Something went wrong — try again.';
+    thinking.textContent = answer.reply || answer.error || 'Something went wrong - try again.';
     if(answer.error){ bcAddMsg('agent', answer.error); }
     // The agent proposes a specific calendar meeting → one tap to confirm.
     if(answer.propose){
       bcAddActions(`
-        <button onclick="bcSend('Yes — that one.')">✓ Yes, ${esc(answer.propose.subject)}</button>
+        <button onclick="bcSend('Yes - that one.')">✓ Yes, ${esc(answer.propose.subject)}</button>
         <button class="alt" onclick="bcSend('Show me the list, please.')">Pick a different one</button>`);
     }
     // Not confident → the tappable list (join links never come to the page).
@@ -1185,7 +1189,7 @@ async function bcSend(presetText){
       }
     }
   }catch(e){
-    thinking.textContent = 'Could not reach the agent — is the bot running?';
+    thinking.textContent = 'Could not reach the agent - is the bot running?';
   }
   send.disabled = false;
   document.getElementById('bcInput').focus();
@@ -1207,7 +1211,7 @@ function renderHeader(state){
   if(!state.briefed){ badge.className='live warn'; text.textContent='AWAITING YOUR BRIEF'; }
   else if(state.meetingStatus === 'in-meeting'){ badge.className='live'; text.textContent='AGENT IN MEETING'; }
   else if(state.meetingStatus === 'lobby'){ badge.className='live warn'; text.textContent='AGENT IN LOBBY'; }
-  else if(state.meetingStatus === 'scheduled'){ badge.className='live warn'; text.textContent='SCHEDULED — JOINS BEFORE START'; }
+  else if(state.meetingStatus === 'scheduled'){ badge.className='live warn'; text.textContent='SCHEDULED - JOINS BEFORE START'; }
   else { badge.className='live warn'; text.textContent='AGENT CONNECTING…'; }
   if(state.meetingName){ document.getElementById('hdrMeet').textContent = state.meetingName; }
   // Phase 5: the cockpit belongs to whoever briefed the agent.
@@ -1215,12 +1219,12 @@ function renderHeader(state){
     document.getElementById('ownerLabel').textContent = `${state.ownerName}'s cockpit`;
     document.getElementById('ownerChip').textContent = state.ownerName[0].toUpperCase();
   }
-  // Phase 5: Join call — shown as soon as the bot has told us the link.
+  // Phase 5: Join call - shown as soon as the bot has told us the link.
   if(state.meetingUrl){
     meetingLink = state.meetingUrl;
     document.getElementById('joinBtn').style.display = '';
   }
-  // Kill switch — only the local bot offers it (the hosted cockpit doesn't).
+  // Kill switch - only the local bot offers it (the hosted cockpit doesn't).
   if(state.canShutdown){
     document.getElementById('killBtn').style.display = '';
   }
@@ -1231,7 +1235,7 @@ function renderHeader(state){
 let killed = false;
 async function killBot(){
   if(!confirm('Shut the agent down? It leaves the meeting and stops making API calls.')) return;
-  try{ await fetch(killUrl, { method: 'POST' }); }catch(e){ /* it may die mid-reply — fine */ }
+  try{ await fetch(killUrl, { method: 'POST' }); }catch(e){ /* it may die mid-reply - fine */ }
   killed = true;
   const badge = document.getElementById('liveBadge');
   const text = document.getElementById('liveText');
@@ -1240,7 +1244,7 @@ async function killBot(){
   document.getElementById('killBtn').style.display = 'none';
 }
 
-// ══ HISTORY (Part B) — past meetings, records, metrics ═════
+// ══ HISTORY (Part B) - past meetings, records, metrics ═════
 let historyView = 'list';
 function openHistory(){
   document.getElementById('history').classList.add('show');
@@ -1278,10 +1282,10 @@ async function loadHistoryList(){
             <span class="${e.conditionsClosed === 0 ? 'none-closed' : 'closed'}">${e.conditionsClosed}/${e.conditionsTotal} closed</span>
           </span>
         </div>`).join('') + '</div>'
-      : '<div class="hist-empty">No past meetings yet. When a meeting ends, its record — the summary, the final board with closing quotes, and the full audit trail — lands here and survives restarts.</div>';
+      : '<div class="hist-empty">No past meetings yet. When a meeting ends, its record - the summary, the final board with closing quotes, and the full audit trail - lands here and survives restarts.</div>';
     body.innerHTML = metricsHtml + listHtml;
   }catch(e){
-    body.innerHTML = '<div class="hist-empty">Could not load history — is the bot running?</div>';
+    body.innerHTML = '<div class="hist-empty">Could not load history - is the bot running?</div>';
   }
 }
 
@@ -1323,13 +1327,13 @@ function renderRecordDetail(rec){
     ${rec.summary ? `<div class="hd-summary">${esc(rec.summary)}</div>` : '<div class="hd-summary missing">No summary was generated for this meeting.</div>'}
     <div class="hd-section">Final board</div>
     <div class="hd-board">${boardHtml || '<div class="hist-empty">No conditions.</div>'}</div>
-    <div class="hd-section">What happened — the audit trail</div>
+    <div class="hd-section">What happened - the audit trail</div>
     <div class="hd-events">${eventsHtml || '<div class="hist-empty">No events recorded.</div>'}</div>
   </div>`;
   document.getElementById('history').scrollTop = 0;
 }
 
-// Phase 5: open the meeting in the owner's own browser — they join as
+// Phase 5: open the meeting in the owner's own browser - they join as
 // themselves via the normal Teams flow, entirely separate from the bot.
 let meetingLink = null;
 function joinCall(){
@@ -1367,7 +1371,7 @@ function dismissMention(index){
 
 // Phase 4: which cards the owner has expanded to read the agent's fuller
 // "why". Kept here (by condition id) because the cards are re-rendered on
-// every poll — the Set survives, so an open panel stays open.
+// every poll - the Set survives, so an open panel stays open.
 const expandedWhys = new Set();
 let lastConditions = [];
 function toggleWhy(id){
@@ -1376,7 +1380,7 @@ function toggleWhy(id){
 }
 
 // Live board editing state. While an editor is open the board render is
-// frozen — the 1.5s poll would otherwise rebuild the cards and wipe the
+// frozen - the 1.5s poll would otherwise rebuild the cards and wipe the
 // owner's typing mid-word.
 let editingCondId = null;   // condition id being edited, or '+' for the add card
 let editorError = '';
@@ -1385,7 +1389,7 @@ function condCardEditor(c){
   const current = c ? c.label : '';
   const hint = c
     ? (c.status === 'closed' ? 'Editing a closed condition reopens it for re-evaluation.' : 'The agent re-judges the whole conversation as soon as you save.')
-    : 'Judged against everything said so far — if the room already settled it, it closes immediately.';
+    : 'Judged against everything said so far - if the room already settled it, it closes immediately.';
   return `<div class="cond open">
     <div class="cond-editor">
       <input class="f-input" id="condEditInput" value="${esc(current)}" placeholder="e.g. Budget signed off" maxlength="200">
@@ -1419,7 +1423,7 @@ async function saveCondEdit(){
   try{
     const r = await fetch(conditionsUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const answer = await r.json().catch(() => ({}));
-    if(!r.ok){ editorError = answer.error || 'Could not save — try again.'; renderConditions(lastConditions, true); return; }
+    if(!r.ok){ editorError = answer.error || 'Could not save - try again.'; renderConditions(lastConditions, true); return; }
     editingCondId = null;
     editorError = '';
     // Optimistic local update so the board doesn't flash stale for a poll.
@@ -1431,7 +1435,7 @@ async function saveCondEdit(){
     }
     renderConditions(lastConditions, true);
   }catch(e){
-    editorError = 'Could not reach the agent — is the bot running?';
+    editorError = 'Could not reach the agent - is the bot running?';
     renderConditions(lastConditions, true);
   }
 }
@@ -1445,7 +1449,7 @@ function renderConditions(conditions, force){
   const addCard = (briefed && conditions.length < MAX_CONDITIONS)
     ? (editingCondId === '+'
         ? condCardEditor(null)
-        : `<div class="cond add-card" onclick="startCondEdit('+')" title="Add a condition mid-call — judged against everything said so far">+ Add condition</div>`)
+        : `<div class="cond add-card" onclick="startCondEdit('+')" title="Add a condition mid-call - judged against everything said so far">+ Add condition</div>`)
     : '';
   row.innerHTML = conditions.map((c) => {
     if(editingCondId === c.id){ return condCardEditor(c); }
@@ -1456,7 +1460,7 @@ function renderConditions(conditions, force){
 function condCardHtml(c){
   return [c].map((c) => {
     // 2+ nudges while still open = exception. The agent has pushed twice
-    // and the room keeps moving past it — the owner's cue to step in.
+    // and the room keeps moving past it - the owner's cue to step in.
     const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
     const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS YOU' : 'OPEN';
     // The one-line reason: the agent's live judgement when it has one,
@@ -1464,17 +1468,17 @@ function condCardHtml(c){
     const meta = c.note ? c.note
       : status === 'closed' ? 'Settled in the room.'
       : status === 'exception'
-        ? (c.nudges === 2 ? 'Nudged twice — the room keeps moving past it.' : `Nudged ${c.nudges} times — the room keeps moving past it.`)
-        : (c.nudges > 0 ? 'Agent has raised it — waiting on the room.' : 'Not yet raised in the room.');
+        ? (c.nudges === 2 ? 'Nudged twice - the room keeps moving past it.' : `Nudged ${c.nudges} times - the room keeps moving past it.`)
+        : (c.nudges > 0 ? 'Agent has raised it - waiting on the room.' : 'Not yet raised in the room.');
     // Phase 4: collapsed by default; ＋ reveals the agent's fuller explanation.
     const expanded = expandedWhys.has(c.id);
-    const why = c.why || 'The agent has not formed a fuller view on this yet — it updates as the room talks.';
+    const why = c.why || 'The agent has not formed a fuller view on this yet - it updates as the room talks.';
     // Phase 5: the verbatim quote(s) that drove the judgement, shown as the receipt.
     const quotes = (c.evidence || []).map((line) =>
       `<div class="cond-quote">⤷ <span class="spk">${esc(line.speaker)}:</span> “${esc(line.quote)}”</div>`
     ).join('');
     return `<div class="cond ${status}">
-      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-edit-btn" title="Edit this condition — the agent picks up the change" onclick="startCondEdit('${esc(c.id)}')">✎</button><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-edit-btn" title="Edit this condition - the agent picks up the change" onclick="startCondEdit('${esc(c.id)}')">✎</button><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
       ${expanded ? `<div class="cond-why">${esc(why)}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>
@@ -1494,7 +1498,7 @@ function renderNudges(nudges){
   // The phone sheet's collapsed peek: the newest nudge and the count.
   document.getElementById('peekText').textContent = nudges.length
     ? stripAgentMarker(nudges[0].text)
-    : 'Agent is listening — it will speak when a condition needs a push.';
+    : 'Agent is listening - it will speak when a condition needs a push.';
   document.getElementById('peekCount').textContent = nudges.length
     ? `${nudges.length} nudge${nudges.length === 1 ? '' : 's'}`
     : '';
@@ -1503,7 +1507,7 @@ function renderNudges(nudges){
     return;
   }
   // Server already sends newest first. Re-rendering keeps the old scroll
-  // position, which used to leave the newest item half-hidden — if the
+  // position, which used to leave the newest item half-hidden - if the
   // reader is near the top, snap back to the very top after rendering.
   const nearTop = feed.scrollTop < 40;
   feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
@@ -1528,7 +1532,7 @@ function renderTranscript(lines){
 // A steer is a directive: the agent acts on it immediately, and the
 // resulting message appears in the feed within seconds, tagged
 // "shaped by your steer".
-const DEFAULT_HINT = 'Steer the agent privately — the room never sees this.';
+const DEFAULT_HINT = 'Steer the agent privately - the room never sees this.';
 let hintResetTimer = null;
 async function steer(){
   const input = document.getElementById('steerInput');
@@ -1543,12 +1547,12 @@ async function steer(){
     });
     if(response.ok){
       input.value = '';
-      hint.innerHTML = 'Steer sent — the agent is acting on it now. <span style="color:var(--blue)">The room sees nothing of this.</span>';
+      hint.innerHTML = 'Steer sent - the agent is acting on it now. <span style="color:var(--blue)">The room sees nothing of this.</span>';
       clearTimeout(hintResetTimer);
       hintResetTimer = setTimeout(() => { hint.textContent = DEFAULT_HINT; }, 12000);
     }
   }catch(e){
-    hint.textContent = 'Could not reach the agent — is the bot running?';
+    hint.textContent = 'Could not reach the agent - is the bot running?';
   }
 }
 document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') steer(); });
@@ -1557,7 +1561,7 @@ document.getElementById('steerInput').addEventListener('keydown', (e) => { if(e.
 // A 401 means the hub no longer knows this session (the server restarted,
 // or the 12-hour cookie expired). Phones hit this constantly: Safari
 // restores a days-old tab and the page used to keep polling into the void,
-// showing a dead briefing form instead of the chat — or anything. Reload
+// showing a dead briefing form instead of the chat - or anything. Reload
 // once: the server answers with the access-code screen.
 let authReloaded = false;
 function authExpired(){
@@ -1566,7 +1570,7 @@ function authExpired(){
   location.reload();
 }
 async function poll(){
-  // Killed from this page: the process is gone on purpose — freeze the
+  // Killed from this page: the process is gone on purpose - freeze the
   // header on AGENT SHUT DOWN instead of flipping to "cockpit offline".
   if(killed) return;
   // The overseer view refreshes from /summary instead of a single meeting.
@@ -1575,7 +1579,7 @@ async function poll(){
       const r = await fetch('/summary');
       if(r.status === 401){ authExpired(); return; }
       if(r.ok) renderDashboard(await r.json());
-    }catch(e){ /* transient — next poll retries */ }
+    }catch(e){ /* transient - next poll retries */ }
     return;
   }
   try{
@@ -1609,7 +1613,7 @@ async function poll(){
     scheduledMinutes = state.scheduledMinutes || 30;
     meetingJoinedAt = state.meetingJoinedAt ? new Date(state.meetingJoinedAt) : null;
     meetingStartIso = state.meetingStart || null; // "starts …" until the bot heads in
-    // Keep the page and the bot agreeing on whether the brief happened —
+    // Keep the page and the bot agreeing on whether the brief happened -
     // covers a refresh mid-meeting (skip the form) without ever bringing
     // the overlay back once it has faded.
     if(state.briefed && !briefed){
@@ -1627,12 +1631,14 @@ async function poll(){
     const badge = document.getElementById('liveBadge');
     const text = document.getElementById('liveText');
     badge.className='live bad';
-    text.textContent='COCKPIT OFFLINE — IS THE BOT RUNNING?';
+    text.textContent='COCKPIT OFFLINE - IS THE BOT RUNNING?';
   }
 }
 // Decide the view first (dashboard vs single meeting), then start polling.
+// Only then does anything become visible - the booting class keeps the
+// screen blank so the wrong view never flashes while we decide.
 (async () => {
-  await detectDashboard();
+  try{ await detectDashboard(); } finally { document.body.classList.remove('booting'); }
   poll();
   setInterval(poll, POLL_MS);
 })();
@@ -1645,7 +1651,7 @@ document.addEventListener('visibilitychange', () => { if(!document.hidden) poll(
 
 // ══ THE PHONE BOTTOM SHEET (Phase 11) ═════════════════════
 // On small screens the feed, the transcript and the steer bar MOVE into
-// the sheet (same DOM nodes — every renderer and listener keeps working);
+// the sheet (same DOM nodes - every renderer and listener keeps working);
 // on wide screens they move back into their panels. Collapsed, the sheet
 // peeks the newest nudge; open, it shows tabs and the steer bar.
 const mobileMq = matchMedia('(max-width:640px)');
@@ -1681,7 +1687,7 @@ function toggleSheet(){
   document.getElementById('sheet').classList.toggle('open');
 }
 // Drag the sheet like a native drawer: the grip/peek area follows the
-// finger — release past the threshold to open or close, else it snaps
+// finger - release past the threshold to open or close, else it snaps
 // back. A tap (no real movement) still just toggles.
 (() => {
   const sheet = document.getElementById('sheet');
@@ -1741,7 +1747,7 @@ function sheetTab(which){
 // ══ CLOCK + COUNTDOWN ═════════════════════════════════════
 let scheduledMinutes = 30;
 let meetingJoinedAt = null; // set from /state once the bot is in the room
-let meetingStartIso = null; // the picked meeting's start — shown until joined
+let meetingStartIso = null; // the picked meeting's start - shown until joined
 
 const mmss = (secs) => {
   const m = String(Math.floor(secs / 60)).padStart(2, '0');
@@ -1749,7 +1755,7 @@ const mmss = (secs) => {
   return `${m}:${s}`;
 };
 
-// "Thu 17 Jul, 14:05" — for scheduled meetings on cards and in the header.
+// "Thu 17 Jul, 14:05" - for scheduled meetings on cards and in the header.
 const whenShort = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 setInterval(() => {

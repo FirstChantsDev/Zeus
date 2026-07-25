@@ -2,19 +2,19 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * MeetingRecord is the audit trail for one meeting — the project's first
+ * MeetingRecord is the audit trail for one meeting - the project's first
  * durable state.
  *
  * Events are appended AS THEY HAPPEN (never reconstructed afterwards):
  * the brief, the join, every condition close (with its verbatim evidence),
  * every nudge, steer, mid-call condition edit/addition, owner mention,
- * and the end of the meeting. When the meeting ends the record — events
+ * and the end of the meeting. When the meeting ends the record - events
  * plus the final board, the nudge log with outcomes, the participants
- * seen, and the plain-English summary — is written to ONE JSON file per
+ * seen, and the plain-English summary - is written to ONE JSON file per
  * meeting in the records directory.
  *
  * Scope honesty (documented in NOTES.md): this is a faithful, persisted,
- * readable history. It is NOT tamper-proof or cryptographically signed —
+ * readable history. It is NOT tamper-proof or cryptographically signed -
  * that is a deliberately parked, enterprise-grade later phase.
  *
  * The full transcript is deliberately NOT stored: the evidence quotes on
@@ -98,7 +98,7 @@ export class MeetingRecord {
         this.ownerName = brief.ownerName;
         this.scheduledMinutes = brief.lengthMinutes;
         this.briefedAt = new Date().toISOString();
-        this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) — ${brief.labels.join(' | ')}`, {
+        this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}`, {
             labels: brief.labels,
             context: brief.context,
         });
@@ -174,7 +174,7 @@ export class MeetingRecord {
 
     /**
      * Builds the final record and writes it to <dir>/<endedAt>-<id>.json.
-     * Returns the full path written. Never throws — a persistence failure
+     * Returns the full path written. Never throws - a persistence failure
      * must not take down a meeting that otherwise ended cleanly.
      */
     public save(args: Parameters<MeetingRecord['build']>[0] & { dir?: string }): string | null {
@@ -206,7 +206,7 @@ export const writeRecordFile = (record: MeetingRecordFile, dir?: string): string
 
 /** One row in the history list */
 export type HistoryEntry = {
-    file: string; // the record's filename — the ID used by /history/<file>
+    file: string; // the record's filename - the ID used by /history/<file>
     meetingName: string;
     ownerName: string;
     endedAt: string;
@@ -224,7 +224,7 @@ export const listRecords = (dir?: string): HistoryEntry[] => {
     try {
         files = fs.readdirSync(base).filter((f) => f.endsWith('.json'));
     } catch {
-        return []; // no records directory yet — no history
+        return []; // no records directory yet - no history
     }
     const entries: HistoryEntry[] = [];
     for (const file of files) {
@@ -246,7 +246,7 @@ export const listRecords = (dir?: string): HistoryEntry[] => {
     return entries.sort((a, b) => b.endedAt.localeCompare(a.endedAt));
 };
 
-/** One full record by filename; null if missing/unreadable. Filename is validated — no path tricks. */
+/** One full record by filename; null if missing/unreadable. Filename is validated - no path tricks. */
 export const readRecord = (file: string, dir?: string): MeetingRecordFile | null => {
     if (!/^[0-9A-Za-z\-]+\.json$/.test(file)) return null;
     try {
