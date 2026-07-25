@@ -191,9 +191,25 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 /* The homepage's History button sits with the add-agent action. */
 #dashHist{margin-left:auto;}
 .dash-head .dash-new{margin-left:0;}
-/* Outlook on the homepage: connect once, then a quiet status line. */
-.dash-cal{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;font-size:11.5px;color:var(--t3);}
+/* Outlook on the homepage: connect once, then account chips + a source picker. */
+.dash-cal{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 16px;font-size:11.5px;color:var(--t3);}
 .dash-cal .cal-connect{width:auto;padding:9px 14px;font-size:12.5px;}
+.cal-acct{
+  display:inline-flex;align-items:center;gap:6px;background:var(--s2);
+  border:1px solid var(--line2);border-radius:999px;padding:5px 6px 5px 11px;
+  font-size:11.5px;color:var(--t2);max-width:100%;
+}
+.cal-acct button{
+  background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px;
+  line-height:1;padding:2px 5px;border-radius:999px;
+}
+.cal-acct button:hover{color:var(--red, #b3402e);background:var(--s1);}
+.cal-pick{display:inline-flex;align-items:center;gap:7px;color:var(--t3);}
+.cal-select{
+  background:var(--s2);border:1px solid var(--line2);border-radius:8px;
+  padding:6px 8px;color:var(--t1);font-family:var(--body);font-size:12px;outline:none;cursor:pointer;
+}
+.cal-select:focus{border-color:var(--blue);}
 /* The zero-state: centred, calm, one obvious action */
 .dash-empty-state{
   grid-column:1 / -1;display:flex;flex-direction:column;align-items:center;
@@ -747,22 +763,58 @@ async function detectDashboard(){
 }
 
 // The homepage's Outlook line: a Connect button until a calendar is
-// linked, then the connected accounts plus a way to add another —
-// several people (e.g. a sibling) can each sign in with their own
-// Microsoft account and their calendars merge into one pick-list.
+// linked, then each connected account as a chip (with its own sign-out),
+// a dropdown choosing WHICH calendar feeds the meeting pick-list, and a
+// way to add another — several people (e.g. a sibling) can each sign in
+// with their own Microsoft account.
+let calAccounts = []; // the chips' click handlers point in here by index
 async function renderDashCalendar(){
   try{
     const s = await (await fetch('/calendar/status')).json();
     const el = document.getElementById('dashCal');
     if(!s.configured){ el.style.display = 'none'; return; }
     el.style.display = '';
-    const names = (s.accounts && s.accounts.length ? s.accounts : [s.account]).filter(Boolean);
-    el.innerHTML = s.connected
-      ? `<span>Outlook connected: ${names.map(esc).join(' + ')} · read-only</span>
-         <button class="cal-connect" onclick="location.href='/calendar/auth'">Add another account</button>`
-      : `<button class="cal-connect" onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
+    calAccounts = (s.accounts && s.accounts.length ? s.accounts : [s.account]).filter(Boolean);
+    if(!s.connected){
+      el.innerHTML =
+        `<button class="cal-connect" onclick="location.href='/calendar/auth'">Connect Outlook calendar</button>
          <span>one sign-in — then briefs pick meetings straight from your calendar</span>`;
+      return;
+    }
+    const chips = calAccounts.map((a, i) =>
+      `<span class="cal-acct">${esc(a)}<button title="Disconnect this account" aria-label="Disconnect ${esc(a)}" onclick="calDisconnect(${i})">&times;</button></span>`).join('');
+    const picker = calAccounts.length > 1
+      ? `<label class="cal-pick">Meetings from
+           <select class="cal-select" onchange="calSelect(this.value)">
+             <option value="all"${s.selected === 'all' ? ' selected' : ''}>All calendars</option>
+             ${calAccounts.map((a) => `<option value="${esc(a)}"${s.selected === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}
+           </select>
+         </label>`
+      : '';
+    el.innerHTML =
+      `<span>Outlook · read-only</span>${chips}${picker}
+       <button class="cal-connect" onclick="location.href='/calendar/auth'">Add another account</button>`;
   }catch(e){ /* no calendar plumbing on this server — say nothing */ }
+}
+
+// The dropdown's choice is stored server-side, so the briefing chat's
+// pick-list follows it too — not just this homepage line.
+async function calSelect(account){
+  try{
+    await fetch('/calendar/select', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ account }) });
+  }catch(e){ /* the status re-render below shows what actually stuck */ }
+  renderDashCalendar();
+}
+
+async function calDisconnect(i){
+  const account = calAccounts[i];
+  if(!account) return;
+  if(!confirm(`Disconnect ${account}? Its meetings disappear from the pick list until it signs in again.`)) return;
+  try{
+    const r = await (await fetch('/calendar/disconnect', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ account }) })).json();
+    if(!r.ok) alert(r.error || 'Could not disconnect that account.');
+  }catch(e){ alert('Could not disconnect that account.'); }
+  renderDashCalendar();
 }
 
 // The briefing screen as a sub-view of the homepage: opened by the

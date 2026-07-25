@@ -45,6 +45,24 @@ const tokenFile = () =>
     || (process.env.RECORDS_DIR ? path.join(process.env.RECORDS_DIR, 'calendar-token.json') : null)
     || path.join(process.cwd(), 'calendar-token.json');
 
+/** Which account feeds the meeting pick-list: 'all' or one username.
+ *  Lives beside the token file so the choice survives redeploys too. */
+const prefsFile = () => path.join(path.dirname(tokenFile()), 'calendar-prefs.json');
+const readSelected = () => {
+    try {
+        return String(JSON.parse(fs.readFileSync(prefsFile(), 'utf8')).selected || 'all');
+    } catch {
+        return 'all';
+    }
+};
+const writeSelected = (selected) => {
+    try {
+        fs.writeFileSync(prefsFile(), JSON.stringify({ selected }), { mode: 0o600 });
+    } catch (error) {
+        console.error('Could not persist the calendar selection:', error);
+    }
+};
+
 let msal = null;
 try {
     msal = require('@azure/msal-node');
@@ -99,16 +117,41 @@ const redirectUriFor = (req) => {
 /** configured = env credentials present; connected = at least one signed-in account */
 const status = async () => {
     if (!app) {
-        return { configured: false, connected: false, account: null, accounts: [] };
+        return { configured: false, connected: false, account: null, accounts: [], selected: 'all' };
     }
     const accounts = (await app.getTokenCache().getAllAccounts()).map((a) => a.username);
+    // A selection pointing at a disconnected account silently falls back to 'all'.
+    const stored = readSelected();
+    const selected = accounts.includes(stored) ? stored : 'all';
     return {
         configured: true,
         connected: accounts.length > 0,
         // Kept for older UI strings: every connected account, human-joined.
         account: accounts.length ? accounts.join(' + ') : null,
         accounts,
+        selected,
     };
+};
+
+/** The dropdown's choice: 'all' or one signed-in username. */
+const setSelected = async (choice) => {
+    if (!app) throw new Error('Calendar is not configured.');
+    const accounts = (await app.getTokenCache().getAllAccounts()).map((a) => a.username);
+    const selected = accounts.includes(choice) ? choice : 'all';
+    writeSelected(selected);
+    console.log(`CALENDAR SOURCE >>> ${selected === 'all' ? 'all calendars' : selected}`);
+    return selected;
+};
+
+/** Signs one account out (its tokens are dropped from the cache). */
+const removeAccount = async (username) => {
+    if (!app) throw new Error('Calendar is not configured.');
+    const cache = app.getTokenCache();
+    const account = (await cache.getAllAccounts()).find((a) => a.username === username);
+    if (!account) throw new Error(`${username} is not connected.`);
+    await cache.removeAccount(account);
+    if (readSelected() === username) writeSelected('all');
+    console.log(`CALENDAR DISCONNECTED >>> ${username}`);
 };
 
 /** Where "Connect calendar" sends the owner: Microsoft's own sign-in page */
@@ -153,8 +196,13 @@ const accessTokenFor = async (account) => {
  */
 const upcomingMeetings = async () => {
     if (!app) throw new Error('Calendar is not connected.');
-    const accounts = await app.getTokenCache().getAllAccounts();
+    let accounts = await app.getTokenCache().getAllAccounts();
     if (accounts.length === 0) throw new Error('Calendar is not connected.');
+    // The homepage dropdown narrows the pick-list to one calendar.
+    const selected = readSelected();
+    if (accounts.some((a) => a.username === selected)) {
+        accounts = accounts.filter((a) => a.username === selected);
+    }
     const now = new Date();
     const horizon = new Date(now.getTime() + 14 * 24 * 3600_000);
     const url = 'https://graph.microsoft.com/v1.0/me/calendarView'
@@ -255,4 +303,4 @@ const getEvent = async (id) => {
     throw lastError ?? new Error('Calendar is not connected.');
 };
 
-module.exports = { status, authUrl, handleCallback, upcomingMeetings, getEvent };
+module.exports = { status, authUrl, handleCallback, upcomingMeetings, getEvent, setSelected, removeAccount };

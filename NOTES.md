@@ -340,8 +340,13 @@ each person signs in with their own Microsoft login (the sign-in page
 always asks which account, so it never silently reuses the browser's
 session). All accounts share the same MSAL token cache file; upcoming
 meetings are fetched from every account, tagged with whose calendar they
-came from, merged and deduped (same join link = same meeting). Honesty
-note: anyone who can open the cockpit sees the merged view — per-person
+came from, merged and deduped (same join link = same meeting). With two
+or more accounts the homepage grows a **"Meetings from" dropdown** — the
+choice is stored server-side (`calendar-prefs.json`, beside the token
+file) so the briefing chat's pick-list follows it too — and each account
+chip has its own **✕ disconnect** (drops that account's tokens from the
+cache; one sign-in reconnects it). Honesty note: anyone who can open the
+cockpit sees the merged view and can switch the dropdown — per-person
 access control inside the cockpit is a parked later phase.
 
 **One-time Entra app registration** (portal clicks, ~5 minutes):

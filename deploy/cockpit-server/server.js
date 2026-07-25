@@ -919,7 +919,30 @@ const server = http.createServer(async (req, res) => {
     // access code (the OAuth callback is a top-level redirect, so the
     // SameSite=Lax session cookie rides along).
     if (url === '/calendar/status') {
-        answer(res, 200, await calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [] })));
+        answer(res, 200, await calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [], selected: 'all' })));
+        return;
+    }
+    // Which calendar feeds the pick-list: 'all' or one signed-in account.
+    if (url === '/calendar/select' && req.method === 'POST') {
+        try {
+            const choice = String(JSON.parse(await readBody(req)).account || 'all');
+            answer(res, 200, { ok: true, selected: await calendar.setSelected(choice) });
+        } catch (error) {
+            console.error('Calendar select failed:', error);
+            answer(res, 400, { ok: false, error: error instanceof Error ? error.message : 'select failed' });
+        }
+        return;
+    }
+    // Sign one account out; its meetings drop from the pick-list.
+    if (url === '/calendar/disconnect' && req.method === 'POST') {
+        try {
+            const username = String(JSON.parse(await readBody(req)).account || '');
+            await calendar.removeAccount(username);
+            answer(res, 200, { ok: true });
+        } catch (error) {
+            console.error('Calendar disconnect failed:', error);
+            answer(res, 400, { ok: false, error: error instanceof Error ? error.message : 'disconnect failed' });
+        }
         return;
     }
     if (url === '/calendar/auth') {

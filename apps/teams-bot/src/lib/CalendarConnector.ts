@@ -51,19 +51,41 @@ export type UpcomingMeeting = {
 
 /** What the cockpit needs from a calendar — the harness fakes this shape */
 export interface CalendarLike {
-    status(): Promise<{ configured: boolean, connected: boolean, account: string | null, accounts: string[] }>;
+    status(): Promise<{ configured: boolean, connected: boolean, account: string | null, accounts: string[], selected: string }>;
     authUrl(): Promise<string>;
     handleCallback(code: string): Promise<string>; // returns the signed-in account name
     upcomingMeetings(): Promise<UpcomingMeeting[]>;
     /** One event by id — null when it was cancelled/deleted. Lets a waiting
      *  agent follow a meeting that gets MOVED (earlier or later). */
     getEvent(id: string): Promise<UpcomingMeeting | null>;
+    /** The dropdown's choice: 'all' or one signed-in username. Returns what stuck. */
+    setSelected(choice: string): Promise<string>;
+    /** Signs one account out — its meetings drop from the pick-list. */
+    removeAccount(username: string): Promise<void>;
 }
 
 const GRAPH_SCOPES = ['Calendars.Read'];
 
 const tokenFile = (): string =>
     process.env.ZEUS_CAL_TOKEN_FILE || path.join(process.cwd(), 'calendar-token.json');
+
+/** Which account feeds the meeting pick-list: 'all' or one username.
+ *  Lives beside the token file so the choice survives restarts too. */
+const prefsFile = (): string => path.join(path.dirname(tokenFile()), 'calendar-prefs.json');
+const readSelected = (): string => {
+    try {
+        return String((JSON.parse(fs.readFileSync(prefsFile(), 'utf8')) as { selected?: string }).selected || 'all');
+    } catch {
+        return 'all';
+    }
+};
+const writeSelected = (selected: string) => {
+    try {
+        fs.writeFileSync(prefsFile(), JSON.stringify({ selected }), { mode: 0o600 });
+    } catch (error) {
+        console.error('Could not persist the calendar selection:', error);
+    }
+};
 
 /** MSAL cache <-> the token file. This is what makes the login survive restarts. */
 const fileCachePlugin: ICachePlugin = {
@@ -109,16 +131,40 @@ export class CalendarConnector implements CalendarLike {
     /** configured = env credentials present; connected = at least one signed-in account */
     public async status() {
         if (!this.msal) {
-            return { configured: false, connected: false, account: null, accounts: [] as string[] };
+            return { configured: false, connected: false, account: null, accounts: [] as string[], selected: 'all' };
         }
         const accounts = (await this.msal.getTokenCache().getAllAccounts()).map((a) => a.username);
+        // A selection pointing at a disconnected account silently falls back to 'all'.
+        const stored = readSelected();
         return {
             configured: true,
             connected: accounts.length > 0,
             // Kept for older UI strings: every connected account, human-joined.
             account: accounts.length ? accounts.join(' + ') : null,
             accounts,
+            selected: accounts.includes(stored) ? stored : 'all',
         };
+    }
+
+    /** The dropdown's choice: 'all' or one signed-in username. */
+    public async setSelected(choice: string): Promise<string> {
+        if (!this.msal) throw new Error('Calendar is not configured.');
+        const accounts = (await this.msal.getTokenCache().getAllAccounts()).map((a) => a.username);
+        const selected = accounts.includes(choice) ? choice : 'all';
+        writeSelected(selected);
+        console.log(`CALENDAR SOURCE >>> ${selected === 'all' ? 'all calendars' : selected}`);
+        return selected;
+    }
+
+    /** Signs one account out (its tokens are dropped from the cache). */
+    public async removeAccount(username: string): Promise<void> {
+        if (!this.msal) throw new Error('Calendar is not configured.');
+        const cache = this.msal.getTokenCache();
+        const account = (await cache.getAllAccounts()).find((a) => a.username === username);
+        if (!account) throw new Error(`${username} is not connected.`);
+        await cache.removeAccount(account);
+        if (readSelected() === username) writeSelected('all');
+        console.log(`CALENDAR DISCONNECTED >>> ${username}`);
     }
 
     /** Where "Connect calendar" sends the owner: Microsoft's own sign-in page */
@@ -159,8 +205,13 @@ export class CalendarConnector implements CalendarLike {
      */
     public async upcomingMeetings(): Promise<UpcomingMeeting[]> {
         if (!this.msal) throw new Error('Calendar is not connected.');
-        const accounts = await this.msal.getTokenCache().getAllAccounts();
+        let accounts = await this.msal.getTokenCache().getAllAccounts();
         if (accounts.length === 0) throw new Error('Calendar is not connected.');
+        // The homepage dropdown narrows the pick-list to one calendar.
+        const selected = readSelected();
+        if (accounts.some((a) => a.username === selected)) {
+            accounts = accounts.filter((a) => a.username === selected);
+        }
         const now = new Date();
         const horizon = new Date(now.getTime() + 14 * 24 * 3600_000);
         const url = 'https://graph.microsoft.com/v1.0/me/calendarView'

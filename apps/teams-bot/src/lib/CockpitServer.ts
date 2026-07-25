@@ -260,11 +260,35 @@ export class CockpitServer {
                 // calendar UI the briefing screen shows (or none at all).
                 void (async () => {
                     const status = this.calendar
-                        ? await this.calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [] as string[] }))
-                        : { configured: false, connected: false, account: null, accounts: [] as string[] };
+                        ? await this.calendar.status().catch(() => ({ configured: true, connected: false, account: null, accounts: [] as string[], selected: 'all' }))
+                        : { configured: false, connected: false, account: null, accounts: [] as string[], selected: 'all' };
                     res.writeHead(200, { 'content-type': 'application/json' });
                     res.end(JSON.stringify(status));
                 })();
+            } else if (url === '/calendar/select' && req.method === 'POST') {
+                // Which calendar feeds the pick-list: 'all' or one account.
+                void this._readJson(req).then(async (body) => {
+                    try {
+                        const selected = await this.calendar!.setSelected(String((body as { account?: string }).account || 'all'));
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: true, selected }));
+                    } catch (error) {
+                        res.writeHead(400, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : 'select failed' }));
+                    }
+                });
+            } else if (url === '/calendar/disconnect' && req.method === 'POST') {
+                // Sign one account out; its meetings drop from the pick-list.
+                void this._readJson(req).then(async (body) => {
+                    try {
+                        await this.calendar!.removeAccount(String((body as { account?: string }).account || ''));
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: true }));
+                    } catch (error) {
+                        res.writeHead(400, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : 'disconnect failed' }));
+                    }
+                });
             } else if (url === '/calendar/auth') {
                 // "Connect calendar" → bounce to Microsoft's own sign-in page.
                 void (async () => {
@@ -583,6 +607,17 @@ export class CockpitServer {
      * The onConditionsChanged callback lets the bot audit-log the change
      * and immediately re-judge the whole transcript.
      */
+    /** One POST body as parsed JSON ({} on empty/broken input). */
+    private _readJson(req: http.IncomingMessage): Promise<unknown> {
+        return new Promise((resolve) => {
+            let body = '';
+            req.on('data', (chunk) => { body += chunk; });
+            req.on('end', () => {
+                try { resolve(JSON.parse(body)); } catch { resolve({}); }
+            });
+        });
+    }
+
     private _handleConditions(req: http.IncomingMessage, res: http.ServerResponse) {
         let body = '';
         req.on('data', (chunk) => { body += chunk; });
