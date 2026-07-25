@@ -1002,7 +1002,9 @@ const server = http.createServer(async (req, res) => {
     // Past-meeting history + the metrics strip (read from the records dir).
     if (url === '/history') {
         const entries = listRecords();
-        answer(res, 200, { entries, metrics: computeMetrics(entries) });
+        // durable: false = no volume behind RECORDS_DIR, so Railway wipes
+        // history on every redeploy. The page shows a warning saying so.
+        answer(res, 200, { entries, metrics: computeMetrics(entries), durable: Boolean(process.env.RECORDS_DIR) });
         return;
     }
     if (url.startsWith('/history/')) {
@@ -1119,4 +1121,7 @@ server.listen(PORT, () => {
     // appearing" is answered by the first line of the deploy logs.
     const chat = ANTHROPIC_API_KEY ? 'ON' : 'OFF - set ANTHROPIC_API_KEY on this service to enable it';
     console.log(`Clarus hosted cockpit listening on port ${PORT} (demo mode: ${DEMO_MODE ? 'ON' : 'off'}, max meetings: ${MAX_MEETINGS}, chat briefing: ${chat})`);
+    if (!process.env.RECORDS_DIR) {
+        console.warn('WARNING >>> RECORDS_DIR is not set: meeting history (and the Outlook sign-in) is WIPED on every redeploy. Attach a Volume to this service (mount path /data) and set RECORDS_DIR=/data.');
+    }
 });
