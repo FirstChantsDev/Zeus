@@ -1059,10 +1059,10 @@ function bcConfirmChips(btn){
 // ── Phase 9: voice input - the browser's OWN speech recognition (Web
 // Speech API), no external service, no library, no audio leaves the
 // normal browser pipeline. Mobile only; hidden when unsupported. ──
-// The mic runs CONTINUOUSLY until tapped off: without `continuous` the
-// browser ends recognition at the first pause, losing everything after
-// it. Android still ends sessions on longer silences - the onend hook
-// restarts recognition (keeping the text so far) until the owner stops.
+// The mic stays on until tapped off, but each browser session handles
+// ONE utterance: the onend hook restarts recognition after every pause,
+// keeping the text so far. (Session-per-utterance because Android's
+// continuous mode is where the repeated-words bugs live.)
 const BcSR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let bcRec = null, bcMicOn = false, bcStopRequested = false, bcDictationBase = '';
 // Committed (final) speech this session. Android reports interim guesses
@@ -1072,25 +1072,39 @@ let bcRec = null, bcMicOn = false, bcStopRequested = false, bcDictationBase = ''
 // every final goes through the overlap merge below, which is idempotent -
 // a re-sent or grown snapshot contributes only its genuinely new words.
 let bcCommitted = '';
-// Android's other repeat bug: new FINAL results are often cumulative
-// snapshots too ("hello", then "hello world", then "hello world how are
-// you") - blind appending repeats every word. So a chunk is never
-// appended whole: find the longest run of words where the end of what's
-// already written matches the start of the chunk, and keep only what
-// follows it - the genuinely new words.
+// Android's other repeat bugs: FINAL results arrive as cumulative
+// snapshots ("hello", "hello world", "hello world how are you"), and
+// whole EARLIER sentences are sometimes re-delivered again later.
+// So a chunk is never appended whole. Two guards, in order:
+//  1. if the chunk already appears word-for-word in the recent text,
+//     it adds nothing - drop it entirely;
+//  2. otherwise trim the longest run of words where the end of the
+//     written text matches the start of the chunk, and keep only the
+//     genuinely new words after it.
+// Comparison ignores case and punctuation - the engine re-punctuates
+// the same words differently between deliveries.
 function bcAddition(written, chunk){
   const clean = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
-  const b = written.trim().split(/\s+/).filter(Boolean);
-  const c = chunk.trim().split(/\s+/).filter(Boolean);
-  if(!b.length || !c.length) return c.join(' ');
+  const chunkWords = chunk.trim().split(/\s+/).filter(Boolean);
+  const b = written.trim().split(/\s+/).filter(Boolean).map(clean).filter(Boolean);
+  const c = chunkWords.map(clean);
+  if(!b.length || !c.length) return chunkWords.join(' ');
+  const recent = b.slice(-Math.max(c.length * 2, 30));
+  for(let s = 0; s + c.length <= recent.length; s++){
+    let contained = true;
+    for(let i = 0; i < c.length; i++){
+      if(recent[s + i] !== c[i]){ contained = false; break; }
+    }
+    if(contained) return ''; // a re-delivered sentence - already written
+  }
   for(let n = Math.min(b.length, c.length); n > 0; n--){
     let match = true;
     for(let i = 0; i < n; i++){
-      if(clean(b[b.length - n + i]) !== clean(c[i])){ match = false; break; }
+      if(b[b.length - n + i] !== c[i]){ match = false; break; }
     }
-    if(match) return c.slice(n).join(' ');
+    if(match) return chunkWords.slice(n).join(' ');
   }
-  return c.join(' ');
+  return chunkWords.join(' ');
 }
 if(BcSR && matchMedia('(pointer: coarse)').matches){
   document.getElementById('bcMic').style.display = '';
@@ -1119,7 +1133,12 @@ function bcMicTap(){
     bcRec = new BcSR();
     bcRec.lang = navigator.language || 'en-GB';
     bcRec.interimResults = true;
-    bcRec.continuous = true; // keep listening through pauses
+    // NOT continuous, on purpose: continuous mode is where Android's
+    // repeat bugs live (cumulative snapshots, re-delivered sentences,
+    // re-fired slots). One utterance per session behaves; the onend hook
+    // restarts the session after every pause, so it still FEELS
+    // continuous - the mic stays on until tapped off.
+    bcRec.continuous = false;
     bcStopRequested = false;
     const input = document.getElementById('bcInput');
     // Dictation appends to whatever is already typed.
