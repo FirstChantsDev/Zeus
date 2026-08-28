@@ -69,6 +69,9 @@ export type Brief = {
     /** Phase 12: the calendar event's id - lets the waiting bot follow the
      *  event when it is moved or cancelled. Null for pasted links. */
     calendarEventId: string | null;
+    /** Phase 14: the event's attendee list - follow-up recipient suggestions.
+     *  Empty for pasted links (names heard in the room still apply). */
+    attendees?: Array<{ name: string, email: string | null }>;
 };
 
 /** A live board change made from the cockpit (edit an existing condition, or add one) */
@@ -399,7 +402,7 @@ export class CockpitServer {
     private _acceptBrief(parsed: {
         meetingName?: unknown, conditions?: unknown, context?: unknown,
         lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
-        meetingStart?: unknown, calendarEventId?: unknown,
+        meetingStart?: unknown, calendarEventId?: unknown, attendees?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
             return { ok: false, status: 409, error: 'Agent is already briefed - restart the bot to brief it again.' };
@@ -445,12 +448,21 @@ export class CockpitServer {
         this.meetingStart = meetingStart;
         const calendarEventId = typeof parsed.calendarEventId === 'string' && parsed.calendarEventId ? parsed.calendarEventId : null;
 
+        // Phase 14: attendees ride along when the calendar pick supplied them.
+        const attendees = (Array.isArray(parsed.attendees) ? parsed.attendees : [])
+            .filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === 'object')
+            .map((a) => ({
+                name: typeof a.name === 'string' ? a.name : '',
+                email: typeof a.email === 'string' && a.email.includes('@') ? a.email : null,
+            }))
+            .filter((a) => a.name);
+
         this.briefed = true;
         this.briefedAt = new Date().toISOString();
         this.meetingName = meetingName;
         this.scheduledMinutes = lengthMinutes;
         this.ownerName = ownerName;
-        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId }); // populates the shared conditions array
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees }); // populates the shared conditions array
         return { ok: true };
     }
 
@@ -545,6 +557,7 @@ export class CockpitServer {
                         meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
                         meetingStart: picked?.start,
                         calendarEventId: picked?.id,
+                        attendees: picked?.attendees, // Phase 14: follow-up recipient suggestions
                     });
                     if (accepted.ok) {
                         briefedNow = true;

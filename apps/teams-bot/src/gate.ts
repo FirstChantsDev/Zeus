@@ -21,7 +21,7 @@ import { CaptionsProcedure } from './procedures/captions-procedure';
 import { Nudger, LineDecision } from './lib/Nudger';
 import { CockpitServer, TranscriptRecord } from './lib/CockpitServer';
 import { CalendarConnector } from './lib/CalendarConnector';
-import { MeetingRecord } from './lib/MeetingRecord';
+import { MeetingRecord, MeetingAction } from './lib/MeetingRecord';
 import { conditions, applyBrief } from './conditions';
 
 /** The cockpit's local address: http://localhost:4300 */
@@ -90,11 +90,17 @@ const main = async () => {
             if (wasBriefed) {
                 const snapshot = cockpit.snapshotForRecord();
                 let summary: string | null = null;
+                let actions: MeetingAction[] = [];
                 if (nudger && cockpit.recentTranscript(1).length > 0) {
                     console.log('Writing the meeting summary (one API call)...');
                     summary = await nudger.summarise(record.summaryInput());
+                    // Phase 14: draft the follow-up actions the record implies
+                    // (one more call). Display-only until the owner approves.
+                    console.log('Drafting follow-up actions (one API call)...');
+                    actions = await nudger.generateActions(record.summaryInput(), summary);
+                    console.log(`ACTIONS >>> ${actions.length} drafted${actions.length ? ': ' + actions.map((a) => `[${a.type}] ${a.title}`).join(' | ') : ' (nothing to follow up)'}`);
                 }
-                record.save({ endReason: reason, ...snapshot, summary });
+                record.save({ endReason: reason, ...snapshot, summary, actions });
             }
         } catch (error) {
             console.error('Could not persist the meeting record:', error);
@@ -203,6 +209,13 @@ const main = async () => {
             trackedEventId = brief.calendarEventId;
             wasBriefed = true;
             record.briefed(brief);             // the audit trail starts here
+            // Phase 14: the attendee list feeds follow-up recipient suggestions.
+            // When the pick didn't carry it, fetch it by event id in the background.
+            if (brief.calendarEventId && !(brief.attendees && brief.attendees.length)) {
+                void calendar.getEvent(brief.calendarEventId)
+                    .then((event) => { if (event?.attendees?.length) record.setAttendees(event.attendees); })
+                    .catch(() => { /* attendees are a nice-to-have, never a blocker */ });
+            }
             console.log(`\nBRIEFED >>> "${brief.meetingName}" (${brief.lengthMinutes} min) - the agent is driving:`);
             for (const condition of conditions) {
                 console.log(`  - ${condition.label}`);

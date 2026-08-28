@@ -146,7 +146,7 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
@@ -161,6 +161,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         meetingUrl,
         meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
         calendarEventId: calendarEventId || null, // lets the hub follow the event if it moves
+        attendees: Array.isArray(attendees) ? attendees : [], // Phase 14: follow-up recipient suggestions
         killReason: null, // set when the hub itself stands the agent down (e.g. event cancelled)
         context,
         conditions: labels.map((label, index) => ({ id: `c${index}`, label, status: 'open', nudges: 0 })),
@@ -666,6 +667,7 @@ const server = http.createServer(async (req, res) => {
                         ownerName: unclaimed.ownerName,
                         meetingUrl: unclaimed.meetingUrl,
                         meetingStart: unclaimed.meetingStart, // the bot holds off joining until near this
+                        attendees: unclaimed.attendees, // Phase 14: follow-up recipient suggestions
                     },
                 });
             } else {
@@ -800,6 +802,13 @@ const server = http.createServer(async (req, res) => {
                 meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
                 calendarEventId: typeof parsed.calendarEventId === 'string' ? parsed.calendarEventId : null,
             });
+            // Phase 14: the form pick doesn't carry attendees - fetch them by
+            // event id in the background for follow-up recipient suggestions.
+            if (meeting.calendarEventId && !meeting.attendees.length) {
+                calendar.getEvent(meeting.calendarEventId)
+                    .then((event) => { if (event && Array.isArray(event.attendees) && event.attendees.length) meeting.attendees = event.attendees; })
+                    .catch(() => { /* attendees are a nice-to-have, never a blocker */ });
+            }
             console.log(`BRIEFED >>> ${meeting.id} "${meeting.meetingName}" - ${labels.join(' | ')}${DEMO_MODE ? ' (demo meeting starting)' : ''} (${meetings.size}/${MAX_MEETINGS} running)`);
             // A future-start brief stays "scheduled" - the demo playback
             // would contradict the card, so it only runs for now-meetings.
@@ -900,6 +909,7 @@ const server = http.createServer(async (req, res) => {
                     meetingUrl,
                     meetingStart: (picked && picked.start) || null,
                     calendarEventId: (picked && picked.id) || null,
+                    attendees: (picked && picked.attendees) || [], // Phase 14
                 });
                 console.log(`BRIEFED (chat) >>> ${meeting.id} "${meeting.meetingName}" - ${labels.join(' | ')} (${meetings.size}/${MAX_MEETINGS} running)`);
                 if (DEMO_MODE && meeting.meetingStatus !== 'scheduled') runDemoMeeting(meeting);

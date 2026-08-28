@@ -25,7 +25,7 @@ import { JoinProcedure } from '../../../apps/teams-bot/src/procedures/join-proce
 import { ChatProcedure } from '../../../apps/teams-bot/src/procedures/chat-procedure';
 import { CaptionsProcedure } from '../../../apps/teams-bot/src/procedures/captions-procedure';
 import { Nudger, TimeState, LineDecision } from '../../../apps/teams-bot/src/lib/Nudger';
-import { MeetingRecord } from '../../../apps/teams-bot/src/lib/MeetingRecord';
+import { MeetingRecord, MeetingAction } from '../../../apps/teams-bot/src/lib/MeetingRecord';
 import { Condition, MAX_CONDITIONS } from '../../../apps/teams-bot/src/conditions';
 
 const HUB_URL = (process.env.HUB_URL ?? '').replace(/\/$/, '');
@@ -62,6 +62,8 @@ type BriefFromHub = {
     meetingUrl: string;
     /** ISO start time from the calendar pick - null when unknown (pasted link) */
     meetingStart?: string | null;
+    /** Phase 14: the event's attendee list (empty for pasted links) */
+    attendees?: Array<{ name: string, email: string | null }>;
 };
 
 /** How long before the scheduled start the bot actually heads for the lobby */
@@ -509,9 +511,18 @@ const runMeeting = async (brief: BriefFromHub) => {
                 return { ...nudge, conditionLabel: condition?.label ?? 'your steer', status };
             });
             let summary: string | null = null;
+            let actions: MeetingAction[] = [];
             if (transcript.length > 0 && underCap()) {
                 console.log('Writing the meeting summary (one API call)...');
                 summary = await nudger.summarise(record.summaryInput());
+                // Phase 14: draft the follow-up actions the record implies
+                // (one more call, also under the daily cap). Display-only
+                // until the owner approves - nothing is ever sent from here.
+                if (underCap()) {
+                    console.log('Drafting follow-up actions (one API call)...');
+                    actions = await nudger.generateActions(record.summaryInput(), summary);
+                    console.log(`ACTIONS >>> ${actions.length} drafted${actions.length ? ': ' + actions.map((a) => `[${a.type}] ${a.title}`).join(' | ') : ' (nothing to follow up)'}`);
+                }
             }
             await hub.sendRecord(brief.meetingId, record.build({
                 endReason,
@@ -519,6 +530,7 @@ const runMeeting = async (brief: BriefFromHub) => {
                 nudges: nudgesWithFates,
                 mentions,
                 summary,
+                actions,
             }));
         } catch (error) {
             console.error('Could not persist the meeting record:', error);

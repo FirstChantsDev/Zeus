@@ -44,6 +44,33 @@ export type AuditEvent = {
     data?: Record<string, unknown>;
 };
 
+/** Phase 14: one drafted follow-up action, generated from the finished
+ *  record and shown for the owner's approval. NOTHING is ever sent without
+ *  an explicit approval tap (Milestone 2+); in Milestone 1 these are
+ *  display-only drafts. */
+export type MeetingAction = {
+    id: string; // a1, a2, ... within the record
+    type: 'email' | 'calendar' | 'share';
+    /** One-line headline for the card */
+    title: string;
+    /** The full draft, written in the OWNER'S voice (email text, or the
+     *  invite description for calendar actions) */
+    body: string;
+    /** The decision or open condition that caused this action, quoted */
+    source: string;
+    /** Suggested recipients - calendar attendees carry emails; names heard
+     *  in the room may have none (owner fills them in when sending) */
+    recipients: Array<{ name: string, email: string | null }>;
+    /** calendar actions: suggested length of the follow-up */
+    suggestedDurationMinutes?: number | null;
+    /** Milestone 1 always 'proposed'; approve/dismiss arrive in Milestone 2 */
+    status: 'proposed';
+};
+
+/** One person on the calendar event's attendee list (Calendars.Read already
+ *  returns these - no scope change) */
+export type Attendee = { name: string, email: string | null };
+
 /** The finished, persisted record of one meeting */
 export type MeetingRecordFile = {
     /** Record-format version, for future readers */
@@ -67,6 +94,12 @@ export type MeetingRecordFile = {
     editedMidCall: boolean;
     /** The one-call plain-English summary; null if it could not be generated */
     summary: string | null;
+    /** Phase 14: the calendar event's attendees, when the meeting was picked
+     *  from the calendar (empty for pasted links) */
+    attendees?: Attendee[];
+    /** Phase 14: drafted follow-up actions awaiting the owner (may be empty -
+     *  an honest "nothing to do" beats filler). Missing on pre-Phase-14 records. */
+    actions?: MeetingAction[];
     events: AuditEvent[];
 };
 
@@ -83,6 +116,8 @@ export class MeetingRecord {
     private briefedAt = new Date().toISOString();
     private scheduledMinutes = 30;
     private joinedAt: string | null = null;
+    /** Phase 14: the calendar event's attendee list (empty for pasted links) */
+    private attendees: Attendee[] = [];
 
     constructor(id: string) {
         this.id = id;
@@ -93,15 +128,22 @@ export class MeetingRecord {
         this.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
     }
 
-    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number }) {
+    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[] }) {
         this.meetingName = brief.meetingName;
         this.ownerName = brief.ownerName;
         this.scheduledMinutes = brief.lengthMinutes;
+        this.attendees = brief.attendees ?? [];
         this.briefedAt = new Date().toISOString();
         this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}`, {
             labels: brief.labels,
             context: brief.context,
         });
+    }
+
+    /** Phase 14: late attendee enrichment (e.g. fetched by event id after the
+     *  brief was accepted). Safe any time before the record is built. */
+    public setAttendees(list: Attendee[]) {
+        if (list.length) this.attendees = list;
     }
 
     public joined() {
@@ -123,6 +165,7 @@ export class MeetingRecord {
         return {
             meetingName: this.meetingName,
             ownerName: this.ownerName,
+            attendees: this.attendees,
             participants: [...this.seenSpeakers],
             durationMinutes: this.joinedAt
                 ? Math.round((Date.now() - Date.parse(this.joinedAt)) / 60000)
@@ -146,6 +189,7 @@ export class MeetingRecord {
         nudges: Array<Record<string, unknown>>,
         mentions: Array<Record<string, unknown>>,
         summary: string | null,
+        actions?: MeetingAction[],
     }): MeetingRecordFile {
         const endedAt = new Date().toISOString();
         this.log('meeting-ended', `Meeting ended: ${args.endReason}.`, { reason: args.endReason });
@@ -167,6 +211,8 @@ export class MeetingRecord {
             mentions: args.mentions,
             editedMidCall: this.editedMidCall,
             summary: args.summary,
+            attendees: this.attendees,
+            actions: args.actions ?? [],
             events: this.events,
         };
         return record;

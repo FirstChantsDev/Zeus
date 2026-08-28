@@ -209,7 +209,7 @@ const upcomingMeetings = async () => {
         + `?startDateTime=${encodeURIComponent(now.toISOString())}`
         + `&endDateTime=${encodeURIComponent(horizon.toISOString())}`
         + '&$orderby=start/dateTime&$top=25'
-        + '&$select=subject,start,end,isOnlineMeeting,onlineMeeting';
+        + '&$select=subject,start,end,isOnlineMeeting,onlineMeeting,attendees';
 
     const merged = [];
     let anySucceeded = false;
@@ -266,6 +266,13 @@ const toMeeting = (event) => {
         end,
         durationMinutes: duration,
         joinUrl: event.onlineMeeting?.joinUrl ?? null,
+        // Phase 14: invited people, for follow-up recipient suggestions.
+        attendees: (event.attendees ?? [])
+            .map((a) => ({
+                name: a.emailAddress?.name || a.emailAddress?.address || '',
+                email: a.emailAddress?.address ?? null,
+            }))
+            .filter((a) => a.name),
     };
 };
 
@@ -279,7 +286,7 @@ const getEvent = async (id) => {
     const accounts = await app.getTokenCache().getAllAccounts();
     if (accounts.length === 0) throw new Error('Calendar is not connected.');
     const url = `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(id)}`
-        + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting';
+        + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting,attendees';
     let lastError = null;
     let anyAnswered = false;
     for (const account of accounts) {

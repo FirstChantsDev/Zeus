@@ -1,5 +1,6 @@
 import { Logger } from './Logger';
 import { Condition } from '../conditions';
+import { MeetingAction } from './MeetingRecord';
 
 /**
  * Nudger is the agent's decision brain (Phase 4 version).
@@ -680,6 +681,146 @@ export class Nudger {
                 ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
                 : ` (recorded outcome: ${c.note ?? 'settled in the room'})`}`
         ).join('\n');
+    }
+
+    /**
+     * Phase 14: reads the finished meeting (final board, events, summary,
+     * attendees) and drafts 0-5 follow-up actions for the owner to approve.
+     * Email bodies are written AS THE OWNER, first person - they send them
+     * from their own mailbox. An empty list is a legitimate answer: a clean
+     * meeting may honestly need no follow-up. One paid API call.
+     * Never throws - a failure just means no drafted actions in the record.
+     */
+    public async generateActions(args: {
+        meetingName: string,
+        ownerName: string,
+        attendees: Array<{ name: string, email: string | null }>,
+        participants: string[],
+        durationMinutes: number | null,
+        events: Array<{ at: string, type: string, detail: string }>,
+    }, summary: string | null): Promise<MeetingAction[]> {
+        const boardLines = this.conditions.map((c) => {
+            const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
+            return `- ${c.label} - ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+        }).join('\n');
+        const eventLines = args.events
+            .filter((e) => e.type !== 'speaker-seen')
+            .map((e) => `- ${e.at.slice(11, 19)} ${e.detail}`)
+            .join('\n');
+        const attendeeLines = args.attendees.length
+            ? args.attendees.map((a) => `- ${a.name}${a.email ? ` <${a.email}>` : ''}`).join('\n')
+            : '(no calendar attendee list - only the names heard in the room)';
+
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'claude-opus-4-8',
+                    max_tokens: 1500,
+                    system: [
+                        'Punctuation rule: NEVER use an em dash ("—") anywhere you write. Use a comma, full stop, or hyphen instead.',
+                        'You are Clarus bot. A meeting you attended for your owner has just ended. Propose the',
+                        'follow-up ACTIONS the finished record implies - each one drafted and ready for the owner',
+                        'to approve. Nothing is sent without their approval; you only draft.',
+                        '',
+                        'Action types:',
+                        '- "email": someone (often outside the room) needs telling or confirming something that was',
+                        '  decided. Draft the ACTUAL email body, written AS THE OWNER in the first person, plain and',
+                        `  brief, signed off with the owner's name${args.ownerName ? ` (${args.ownerName})` : ''}. No placeholders like [DATE] - use the real`,
+                        '  decided facts from the record.',
+                        '- "calendar": a condition stayed open or a decision needs a follow-up conversation - propose',
+                        '  the short meeting that settles it: a title, a body that states exactly what must be decided,',
+                        '  suggested attendees from the people involved, and suggestedDurationMinutes (15 or 30).',
+                        '- "share": the decision record should go to the participants so everyone leaves with one',
+                        '  version. At most ONE share action, and only when real decisions were made.',
+                        '',
+                        'Rules:',
+                        '- 0 to 4 actions, hard cap 5. An EMPTY list is correct when the meeting honestly needs no',
+                        '  follow-up - never pad with filler.',
+                        '- Every action names its source: the exact decision or open condition that causes it.',
+                        '- Recipients: prefer people from the attendee list (with their email). People only heard in',
+                        '  the room get email null. Never invent email addresses.',
+                        '- Do not duplicate: one action per underlying decision/condition.',
+                        '',
+                        'Reply with ONLY strict JSON, no other text:',
+                        '{"actions": [{"type": "email|calendar|share", "title": "...", "body": "...", "source": "...",',
+                        '  "recipients": [{"name": "...", "email": "... or null"}], "suggestedDurationMinutes": 15}]}',
+                        'Omit suggestedDurationMinutes for non-calendar actions.',
+                    ].join('\n'),
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            `Meeting: "${args.meetingName}"${args.ownerName ? ` (owner: ${args.ownerName})` : ''}`,
+                            args.durationMinutes !== null ? `Duration: about ${args.durationMinutes} minutes.` : 'The agent never made it into the room.',
+                            `Participants heard: ${args.participants.length ? args.participants.join(', ') : 'none'}`,
+                            '',
+                            'Calendar attendees:',
+                            attendeeLines,
+                            '',
+                            'Final condition board:',
+                            boardLines || '(no conditions)',
+                            '',
+                            'What happened, in order:',
+                            eventLines || '(no events)',
+                            '',
+                            'Meeting summary:',
+                            summary ?? '(no summary was generated)',
+                        ].join('\n'),
+                    }],
+                }),
+            });
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => '(no body)');
+                this.logger.error({ message: `Anthropic API error ${response.status} (actions)`, data: errorBody });
+                return [];
+            }
+            const data = await response.json() as { content?: Array<{ type: string, text?: string }> };
+            const text = (data.content ?? [])
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text ?? '')
+                .join('')
+                .trim();
+            const json = Nudger._extractJson(text);
+            if (!json) {
+                this.logger.warn({ message: 'Could not parse actions reply', data: text });
+                return [];
+            }
+            const parsed = JSON.parse(json) as { actions?: unknown };
+            const raw = Array.isArray(parsed.actions) ? parsed.actions : [];
+            const actions: MeetingAction[] = [];
+            for (const item of raw.slice(0, 5)) { // hard cap 5
+                if (!item || typeof item !== 'object') continue;
+                const a = item as Record<string, unknown>;
+                const type = a.type === 'email' || a.type === 'calendar' || a.type === 'share' ? a.type : null;
+                if (!type || typeof a.title !== 'string' || typeof a.body !== 'string') continue;
+                const recipients = (Array.isArray(a.recipients) ? a.recipients : [])
+                    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object')
+                    .map((r) => ({
+                        name: typeof r.name === 'string' ? r.name : '',
+                        email: typeof r.email === 'string' && r.email.includes('@') ? r.email : null,
+                    }))
+                    .filter((r) => r.name);
+                actions.push({
+                    id: `a${actions.length + 1}`,
+                    type,
+                    title: a.title.trim(),
+                    body: a.body.trim(),
+                    source: typeof a.source === 'string' ? a.source.trim() : '',
+                    recipients,
+                    ...(type === 'calendar' ? { suggestedDurationMinutes: Number.isFinite(Number(a.suggestedDurationMinutes)) ? Math.max(5, Math.min(120, Math.round(Number(a.suggestedDurationMinutes)))) : 15 } : {}),
+                    status: 'proposed',
+                });
+            }
+            return actions;
+        } catch (error) {
+            this.logger.error({ message: 'Action generation failed', data: error });
+            return [];
+        }
     }
 
     /** Digs the {...} out of a model reply that may carry fences or prose around it */

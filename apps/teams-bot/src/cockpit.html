@@ -343,6 +343,19 @@ header{
 .hist-detail{max-width:860px;}
 .hd-sub{font-size:11.5px;color:var(--t3);margin-bottom:16px;line-height:1.8;}
 .hd-section{font-weight:600;font-size:10.5px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:22px 0 10px;}
+/* ── Phase 14: drafted follow-up actions (display-only in Milestone 1) ── */
+.hd-section .act-count{color:var(--blue);font-weight:700;float:right;letter-spacing:.08em;}
+.action-card{background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);padding:13px 14px;margin-bottom:10px;}
+.action-hd{display:flex;gap:9px;align-items:center;margin-bottom:6px;}
+.action-ic{flex:none;width:24px;height:24px;border-radius:8px;background:var(--blue-bg);display:grid;place-items:center;font-size:12px;}
+.action-k{font-size:9.5px;letter-spacing:.1em;font-weight:700;color:var(--blue-2);text-transform:uppercase;}
+.action-title{font-size:13.5px;font-weight:700;line-height:1.4;margin-bottom:4px;}
+.action-body{font-size:12.5px;line-height:1.55;color:var(--t2);white-space:pre-wrap;}
+.action-why{font-size:11.5px;color:var(--t3);margin-top:7px;font-style:italic;font-family:var(--head);}
+.action-rcpt{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.rcpt-chip{font-size:10.5px;color:var(--t2);background:var(--s3);border:1px solid var(--line2);border-radius:999px;padding:3px 9px;}
+.rcpt-chip.mail{color:var(--blue-2);background:var(--blue-bg);border-color:var(--blue-bd);}
+.actions-none{font-size:12px;color:var(--t3);font-style:italic;font-family:var(--head);padding:4px 2px;}
 .hd-summary{
   background:var(--blue-bg);border-left:3px solid var(--blue);
   border-radius:0 12px 12px 0;padding:14px 16px;font-size:13.5px;line-height:1.65;color:var(--ink);max-width:720px;
@@ -1361,6 +1374,28 @@ async function openRecord(file){
   }catch(e){ /* stay on the list */ }
 }
 
+// Phase 14: one drafted follow-up action as a card - icon chip, kicker
+// (type · recipients/duration), the draft itself, and the decision behind
+// it. Display-only in Milestone 1; approve/edit arrive in Milestone 2.
+function renderActionCard(a){
+  const icon = a.type === 'email' ? '✉' : a.type === 'calendar' ? '📅' : '⇪';
+  const kicker = a.type === 'calendar'
+    ? `CALENDAR · ${a.suggestedDurationMinutes || 15} MIN`
+    : a.type === 'email'
+      ? `EMAIL${a.recipients && a.recipients.length ? ' · ' + esc(a.recipients[0].name.toUpperCase()) : ''}`
+      : 'SHARE THE RECORD';
+  const chips = (a.recipients || []).map((r) =>
+    `<span class="rcpt-chip${r.email ? ' mail' : ''}">${esc(r.name)}${r.email ? ` · ${esc(r.email)}` : ''}</span>`
+  ).join('');
+  return `<div class="action-card">
+    <div class="action-hd"><span class="action-ic">${icon}</span><span class="action-k">${kicker}</span></div>
+    <div class="action-title">${esc(a.title)}</div>
+    <div class="action-body">${esc(a.body)}</div>
+    ${a.source ? `<div class="action-why">${esc(a.source)}</div>` : ''}
+    ${chips ? `<div class="action-rcpt">${chips}</div>` : ''}
+  </div>`;
+}
+
 function renderRecordDetail(rec){
   historyView = 'detail';
   document.getElementById('histTitle').textContent = rec.meetingName || 'Untitled meeting';
@@ -1389,6 +1424,11 @@ function renderRecordDetail(rec){
     </div>
     <div class="hd-section">Summary</div>
     ${rec.summary ? `<div class="hd-summary">${esc(rec.summary)}</div>` : '<div class="hd-summary missing">No summary was generated for this meeting.</div>'}
+    ${Array.isArray(rec.actions) ? `
+    <div class="hd-section">Actions ready<span class="act-count">${rec.actions.length ? rec.actions.length + ' drafted' : ''}</span></div>
+    ${rec.actions.length
+      ? rec.actions.map(renderActionCard).join('')
+      : '<div class="actions-none">No follow-ups needed - everything this meeting produced is settled.</div>'}` : ''}
     <div class="hd-section">Final board</div>
     <div class="hd-board">${boardHtml || '<div class="hist-empty">No conditions.</div>'}</div>
     <div class="hd-section">What happened - the audit trail</div>

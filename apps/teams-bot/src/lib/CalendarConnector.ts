@@ -47,6 +47,9 @@ export type UpcomingMeeting = {
     joinUrl: string | null;
     /** Which signed-in account's calendar this came from */
     account?: string;
+    /** Phase 14: who is invited - Calendars.Read already returns this.
+     *  Used only to suggest follow-up recipients; never shown pre-meeting. */
+    attendees?: Array<{ name: string, email: string | null }>;
 };
 
 /** What the cockpit needs from a calendar - the harness fakes this shape */
@@ -218,7 +221,7 @@ export class CalendarConnector implements CalendarLike {
             + `?startDateTime=${encodeURIComponent(now.toISOString())}`
             + `&endDateTime=${encodeURIComponent(horizon.toISOString())}`
             + '&$orderby=start/dateTime&$top=25'
-            + '&$select=subject,start,end,isOnlineMeeting,onlineMeeting';
+            + '&$select=subject,start,end,isOnlineMeeting,onlineMeeting,attendees';
 
         const merged: UpcomingMeeting[] = [];
         let anySucceeded = false;
@@ -281,7 +284,7 @@ export class CalendarConnector implements CalendarLike {
         const accounts = await this.msal.getTokenCache().getAllAccounts();
         if (accounts.length === 0) throw new Error('Calendar is not connected.');
         const url = `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(id)}`
-            + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting';
+            + '?$select=subject,start,end,isCancelled,isOnlineMeeting,onlineMeeting,attendees';
         let lastError: unknown = null;
         let anyAnswered = false;
         for (const account of accounts) {
@@ -312,6 +315,7 @@ export class CalendarConnector implements CalendarLike {
         start?: { dateTime?: string },
         end?: { dateTime?: string },
         onlineMeeting?: { joinUrl?: string } | null,
+        attendees?: Array<{ emailAddress?: { name?: string, address?: string } }>,
     }): UpcomingMeeting {
         const start = event.start?.dateTime ? `${event.start.dateTime}Z`.replace(/Z+$/, 'Z') : '';
         const end = event.end?.dateTime ? `${event.end.dateTime}Z`.replace(/Z+$/, 'Z') : '';
@@ -325,6 +329,13 @@ export class CalendarConnector implements CalendarLike {
             end,
             durationMinutes: duration,
             joinUrl: event.onlineMeeting?.joinUrl ?? null,
+            // Phase 14: invited people, for follow-up recipient suggestions.
+            attendees: (event.attendees ?? [])
+                .map((a) => ({
+                    name: a.emailAddress?.name || a.emailAddress?.address || '',
+                    email: a.emailAddress?.address ?? null,
+                }))
+                .filter((a) => a.name),
         };
     }
 }
