@@ -312,6 +312,10 @@ const runMeeting = async (brief: BriefFromHub) => {
 
         browser = await chromium.launch({
             headless: false, // headed on the container's virtual screen (xvfb)
+            // Same guard as gate.ts: the container sets ZEUS_BROWSER_CHANNEL=bundled
+            // (image Chromium); anywhere else uses installed Chrome — which lets
+            // this launcher ALSO run on a home PC when the datacenter IP is blocked.
+            channel: process.env.ZEUS_BROWSER_CHANNEL === 'bundled' ? undefined : 'chrome',
             args: [
                 '--use-fake-ui-for-media-stream',
                 '--use-fake-device-for-media-stream',
