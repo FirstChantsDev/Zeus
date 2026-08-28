@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
-import { listRecords, readRecord, computeMetrics } from './MeetingRecord';
+import { listRecords, readRecord, computeMetrics, applyActionUpdate } from './MeetingRecord';
 import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
 
 /** Phase 10 M3: one turn of the chat-mode briefing, answered by the model
@@ -341,6 +341,28 @@ export class CockpitServer {
                 const entries = listRecords();
                 res.writeHead(200, { 'content-type': 'application/json' });
                 res.end(JSON.stringify({ entries, metrics: computeMetrics(entries) }));
+            } else if (url.startsWith('/history/') && url.endsWith('/action') && req.method === 'POST') {
+                // Phase 14 M2: the owner's verdict on one drafted action -
+                // approve / dismiss / edit / Add-Clarus toggle, audit-logged.
+                const file = url.slice('/history/'.length, -'/action'.length);
+                let body = '';
+                req.on('data', (chunk) => { body += chunk; });
+                req.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(body) as { actionId?: unknown, op?: unknown, body?: unknown, addClarus?: unknown };
+                        const result = applyActionUpdate(file, {
+                            actionId: typeof parsed.actionId === 'string' ? parsed.actionId : '',
+                            op: typeof parsed.op === 'string' ? parsed.op : '',
+                            body: parsed.body,
+                            addClarus: parsed.addClarus,
+                        });
+                        res.writeHead(result.ok ? 200 : result.status, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify(result.ok ? { ok: true, record: result.record } : { ok: false, error: result.error }));
+                    } catch {
+                        res.writeHead(400, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: 'body must be JSON' }));
+                    }
+                });
             } else if (url.startsWith('/history/')) {
                 const record = readRecord(url.slice('/history/'.length));
                 res.writeHead(record ? 200 : 404, { 'content-type': 'application/json' });

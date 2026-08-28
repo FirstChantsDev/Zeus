@@ -37,7 +37,12 @@ export type AuditEvent = {
         | 'nudge-sent'
         | 'steer-received'
         | 'owner-mentioned'
-        | 'meeting-ended';
+        | 'meeting-ended'
+        // Phase 14: the owner's verdicts on drafted follow-up actions
+        | 'action-approved'
+        | 'action-dismissed'
+        | 'action-edited'
+        | 'action-toggled';
     /** Human-readable one-liner, so the history view needs no per-type logic */
     detail: string;
     /** Type-specific extras (before/after text, quotes, ...) */
@@ -63,8 +68,12 @@ export type MeetingAction = {
     recipients: Array<{ name: string, email: string | null }>;
     /** calendar actions: suggested length of the follow-up */
     suggestedDurationMinutes?: number | null;
-    /** Milestone 1 always 'proposed'; approve/dismiss arrive in Milestone 2 */
-    status: 'proposed';
+    /** calendar actions: whether the booked follow-up carries a pre-briefed
+     *  agent (the Add Clarus toggle - default on; every flip is recorded) */
+    addClarus?: boolean;
+    /** The owner's verdict. Approving hands them the sendable content;
+     *  nothing is ever sent without that explicit tap. */
+    status: 'proposed' | 'approved' | 'dismissed';
 };
 
 /** One person on the calendar event's attendee list (Calendars.Read already
@@ -300,6 +309,61 @@ export const readRecord = (file: string, dir?: string): MeetingRecordFile | null
     } catch {
         return null;
     }
+};
+
+/**
+ * Phase 14 Milestone 2: applies one owner verdict (approve / dismiss /
+ * edit / Add-Clarus toggle) to an action inside a saved record, appending
+ * the matching audit event, and writes the file back in place.
+ * The hub carries a plain-JS mirror of this - change BOTH.
+ */
+export const applyActionUpdate = (
+    file: string,
+    update: { actionId: string, op: string, body?: unknown, addClarus?: unknown },
+    dir?: string,
+): { ok: true, record: MeetingRecordFile } | { ok: false, status: number, error: string } => {
+    const record = readRecord(file, dir);
+    if (!record) return { ok: false, status: 404, error: 'record not found' };
+    const action = (record.actions ?? []).find((a) => a.id === update.actionId);
+    if (!action) return { ok: false, status: 404, error: 'action not found' };
+    const stamp = (type: AuditEvent['type'], detail: string, data?: Record<string, unknown>) => {
+        record.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
+    };
+    if (update.op === 'edit') {
+        if (action.status !== 'proposed') return { ok: false, status: 409, error: 'only a proposed action can be edited' };
+        const body = typeof update.body === 'string' ? update.body.trim() : '';
+        if (!body) return { ok: false, status: 400, error: 'the edited draft cannot be empty' };
+        stamp('action-edited', `Action draft edited: [${action.type}] ${action.title}`, { actionId: action.id, before: action.body, after: body });
+        action.body = body;
+    } else if (update.op === 'approve') {
+        if (action.status === 'dismissed') return { ok: false, status: 409, error: 'this action was dismissed' };
+        if (action.status !== 'approved') {
+            action.status = 'approved';
+            stamp('action-approved', `Action approved: [${action.type}] ${action.title}`, {
+                actionId: action.id, type: action.type,
+                ...(action.type === 'calendar' ? { addClarus: action.addClarus !== false } : {}),
+            });
+        }
+    } else if (update.op === 'dismiss') {
+        if (action.status === 'approved') return { ok: false, status: 409, error: 'this action was already approved' };
+        if (action.status !== 'dismissed') {
+            action.status = 'dismissed';
+            stamp('action-dismissed', `Action dismissed: [${action.type}] ${action.title}`, { actionId: action.id });
+        }
+    } else if (update.op === 'toggle-clarus') {
+        if (action.type !== 'calendar') return { ok: false, status: 400, error: 'only calendar actions carry the Add Clarus toggle' };
+        const on = Boolean(update.addClarus);
+        action.addClarus = on;
+        stamp('action-toggled', `Add Clarus turned ${on ? 'ON' : 'OFF'} for: ${action.title}`, { actionId: action.id, addClarus: on });
+    } else {
+        return { ok: false, status: 400, error: 'unknown op' };
+    }
+    try {
+        fs.writeFileSync(path.join(dir ?? recordsDir(), file), JSON.stringify(record, null, 2));
+    } catch {
+        return { ok: false, status: 500, error: 'could not write the record' };
+    }
+    return { ok: true, record };
 };
 
 /** The small honest metrics strip across all past meetings */

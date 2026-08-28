@@ -1030,6 +1030,62 @@ const server = http.createServer(async (req, res) => {
         answer(res, 200, { entries, metrics: computeMetrics(entries), durable: Boolean(process.env.RECORDS_DIR) });
         return;
     }
+    if (url.startsWith('/history/') && url.endsWith('/action') && req.method === 'POST') {
+        // Phase 14 M2: the owner's verdict on one drafted action - approve /
+        // dismiss / edit / Add-Clarus toggle, audit-logged into the record.
+        // Plain-JS mirror of applyActionUpdate in MeetingRecord.ts - change BOTH.
+        const file = url.slice('/history/'.length, -'/action'.length);
+        try {
+            const parsed = JSON.parse(await readBody(req));
+            const record = readRecord(file);
+            if (!record) { answer(res, 404, { ok: false, error: 'record not found' }); return; }
+            const action = (record.actions || []).find((a) => a.id === parsed.actionId);
+            if (!action) { answer(res, 404, { ok: false, error: 'action not found' }); return; }
+            const stamp = (type, detail, data) => {
+                record.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
+            };
+            if (parsed.op === 'edit') {
+                if (action.status !== 'proposed') { answer(res, 409, { ok: false, error: 'only a proposed action can be edited' }); return; }
+                const body = typeof parsed.body === 'string' ? parsed.body.trim() : '';
+                if (!body) { answer(res, 400, { ok: false, error: 'the edited draft cannot be empty' }); return; }
+                stamp('action-edited', `Action draft edited: [${action.type}] ${action.title}`, { actionId: action.id, before: action.body, after: body });
+                action.body = body;
+            } else if (parsed.op === 'approve') {
+                if (action.status === 'dismissed') { answer(res, 409, { ok: false, error: 'this action was dismissed' }); return; }
+                if (action.status !== 'approved') {
+                    action.status = 'approved';
+                    stamp('action-approved', `Action approved: [${action.type}] ${action.title}`, {
+                        actionId: action.id, type: action.type,
+                        ...(action.type === 'calendar' ? { addClarus: action.addClarus !== false } : {}),
+                    });
+                }
+            } else if (parsed.op === 'dismiss') {
+                if (action.status === 'approved') { answer(res, 409, { ok: false, error: 'this action was already approved' }); return; }
+                if (action.status !== 'dismissed') {
+                    action.status = 'dismissed';
+                    stamp('action-dismissed', `Action dismissed: [${action.type}] ${action.title}`, { actionId: action.id });
+                }
+            } else if (parsed.op === 'toggle-clarus') {
+                if (action.type !== 'calendar') { answer(res, 400, { ok: false, error: 'only calendar actions carry the Add Clarus toggle' }); return; }
+                const on = Boolean(parsed.addClarus);
+                action.addClarus = on;
+                stamp('action-toggled', `Add Clarus turned ${on ? 'ON' : 'OFF'} for: ${action.title}`, { actionId: action.id, addClarus: on });
+            } else {
+                answer(res, 400, { ok: false, error: 'unknown op' });
+                return;
+            }
+            try {
+                fs.writeFileSync(path.join(RECORDS_DIR, file), JSON.stringify(record, null, 2));
+            } catch {
+                answer(res, 500, { ok: false, error: 'could not write the record' });
+                return;
+            }
+            answer(res, 200, { ok: true, record });
+        } catch {
+            answer(res, 400, { ok: false, error: 'body must be JSON' });
+        }
+        return;
+    }
     if (url.startsWith('/history/')) {
         const record = readRecord(url.slice('/history/'.length));
         answer(res, record ? 200 : 404, record ?? { ok: false, error: 'record not found' });

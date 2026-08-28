@@ -812,7 +812,10 @@ export class Nudger {
                     body: a.body.trim(),
                     source: typeof a.source === 'string' ? a.source.trim() : '',
                     recipients,
-                    ...(type === 'calendar' ? { suggestedDurationMinutes: Number.isFinite(Number(a.suggestedDurationMinutes)) ? Math.max(5, Math.min(120, Math.round(Number(a.suggestedDurationMinutes)))) : 15 } : {}),
+                    ...(type === 'calendar' ? {
+                        suggestedDurationMinutes: Number.isFinite(Number(a.suggestedDurationMinutes)) ? Math.max(5, Math.min(120, Math.round(Number(a.suggestedDurationMinutes)))) : 15,
+                        addClarus: true, // the Add Clarus toggle defaults ON; the owner can flip it
+                    } : {}),
                     status: 'proposed',
                 });
             }

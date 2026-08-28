@@ -343,7 +343,38 @@ header{
 .hist-detail{max-width:860px;}
 .hd-sub{font-size:11.5px;color:var(--t3);margin-bottom:16px;line-height:1.8;}
 .hd-section{font-weight:600;font-size:10.5px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:22px 0 10px;}
-/* ── Phase 14: drafted follow-up actions (display-only in Milestone 1) ── */
+/* ── Phase 14: drafted follow-up actions - approve / edit / dismiss ── */
+.action-badge{margin-left:auto;font-size:9px;letter-spacing:.1em;font-weight:700;white-space:nowrap;}
+.action-card.approved{background:var(--green-bg);border-color:var(--green-bd);}
+.action-card.approved .action-ic{background:var(--s1);}
+.action-card.approved .action-badge{color:var(--green);}
+.action-card.dismissed{opacity:.55;}
+.action-card.dismissed .action-badge{color:var(--t3);}
+.action-btns{display:flex;gap:7px;margin-top:10px;}
+.abtn{flex:1;border:none;border-radius:9px;padding:11px;font-family:var(--body);font-size:12.5px;font-weight:700;cursor:pointer;background:var(--blue);color:#fff;min-height:40px;}
+.abtn:active{transform:translateY(1px);}
+.abtn.ghost{flex:0 0 auto;padding:11px 14px;background:transparent;border:1px solid var(--line2);color:var(--t2);font-weight:600;}
+.abtn.ghost:hover{border-color:var(--blue-bd);color:var(--blue);}
+.action-body[contenteditable="true"]{outline:2px solid var(--blue-bd);border-radius:8px;padding:6px;background:var(--s1);}
+/* the Add Clarus toggle - from the approved mobile mock */
+.addc{margin-top:10px;border:1px solid var(--blue-bd);background:var(--blue-bg);border-radius:11px;padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;transition:.2s;}
+.addc.off{border-color:var(--line2);background:transparent;}
+.addc .sw{flex:none;width:34px;height:19px;border-radius:999px;background:var(--blue);position:relative;transition:.2s;}
+.addc.off .sw{background:var(--dash);}
+.addc .sw i{position:absolute;top:2px;left:17px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.2s;}
+.addc.off .sw i{left:2px;}
+.addc .lb{flex:1;min-width:0;}
+.addc .lb b{display:block;font-size:12.5px;color:var(--ink);}
+.addc .lb span{font-size:10.5px;color:var(--blue-2);}
+.addc.off .lb span{color:var(--t3);}
+.precond{margin-top:7px;display:flex;gap:6px;align-items:center;font-size:11px;color:var(--blue-2);border:1px dashed var(--blue-bd);border-radius:8px;padding:7px 10px;background:var(--s1);}
+.addc.off + .precond{display:none;}
+/* the approved handoff: mailto / .ics / copy */
+.handoff{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;align-items:center;}
+.handoff .abtn{flex:1 1 150px;text-decoration:none;text-align:center;display:block;line-height:1.2;}
+.handoff .abtn.ghost{flex:0 1 auto;}
+.time-input{border:1px solid var(--line2);border-radius:9px;padding:9px 10px;font-family:var(--body);font-size:12.5px;color:var(--ink);background:var(--s1);min-height:40px;}
+.copy-done{color:var(--green);font-size:11.5px;font-weight:700;}
 .hd-section .act-count{color:var(--blue);font-weight:700;float:right;letter-spacing:.08em;}
 .action-card{background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);padding:13px 14px;margin-bottom:10px;}
 .action-hd{display:flex;gap:9px;align-items:center;margin-bottom:6px;}
@@ -1370,13 +1401,16 @@ async function openRecord(file){
   try{
     const r = await fetch('/history/' + file);
     if(!r.ok) return;
-    renderRecordDetail(await r.json());
+    renderRecordDetail(await r.json(), file);
   }catch(e){ /* stay on the list */ }
 }
 
 // Phase 14: one drafted follow-up action as a card - icon chip, kicker
 // (type · recipients/duration), the draft itself, and the decision behind
-// it. Display-only in Milestone 1; approve/edit arrive in Milestone 2.
+// it. Milestone 2: inline edit, Approve (which hands over mailto / .ics /
+// copy), Dismiss, and the Add Clarus toggle on calendar cards. Every
+// verdict is written into the record as an audit event by the server.
+let currentRecordFile = null;
 function renderActionCard(a){
   const icon = a.type === 'email' ? '✉' : a.type === 'calendar' ? '📅' : '⇪';
   const kicker = a.type === 'calendar'
@@ -1384,20 +1418,149 @@ function renderActionCard(a){
     : a.type === 'email'
       ? `EMAIL${a.recipients && a.recipients.length ? ' · ' + esc(a.recipients[0].name.toUpperCase()) : ''}`
       : 'SHARE THE RECORD';
+  const badge = a.status === 'approved' ? '✓ APPROVED' : a.status === 'dismissed' ? 'DISMISSED' : '';
   const chips = (a.recipients || []).map((r) =>
     `<span class="rcpt-chip${r.email ? ' mail' : ''}">${esc(r.name)}${r.email ? ` · ${esc(r.email)}` : ''}</span>`
   ).join('');
-  return `<div class="action-card">
-    <div class="action-hd"><span class="action-ic">${icon}</span><span class="action-k">${kicker}</span></div>
+  // The Add Clarus toggle (calendar only) - visible until dismissed.
+  const toggle = (a.type === 'calendar' && a.status !== 'dismissed') ? `
+    <div class="addc${a.addClarus === false ? ' off' : ''}" onclick="toggleClarus('${esc(a.id)}')">
+      <span class="sw"><i></i></span>
+      <span class="lb"><b>Add Clarus to this meeting</b><span>${a.addClarus === false ? 'Not attending - book as a normal meeting' : 'Attending · 1 condition pre-loaded'}</span></span>
+    </div>
+    ${a.source ? `<div class="precond">◆ ${esc(a.source.replace(/^Open condition:\s*/i, ''))}</div>` : ''}` : '';
+  // Proposed: Edit / Dismiss / Approve. Approved: the usable handoff.
+  const controls = a.status === 'proposed'
+    ? `<div class="action-btns">
+        <button class="abtn ghost" id="edit-${esc(a.id)}" onclick="editAction('${esc(a.id)}')">Edit</button>
+        <button class="abtn ghost" onclick="actionOp('${esc(a.id)}', 'dismiss')">Dismiss</button>
+        <button class="abtn" onclick="actionOp('${esc(a.id)}', 'approve')">Approve${a.type === 'email' ? '' : a.type === 'calendar' ? ' booking' : ''}</button>
+      </div>`
+    : a.status === 'approved' ? renderHandoff(a) : '';
+  return `<div class="action-card ${a.status}" id="action-${esc(a.id)}">
+    <div class="action-hd"><span class="action-ic">${icon}</span><span class="action-k">${kicker}</span><span class="action-badge">${badge}</span></div>
     <div class="action-title">${esc(a.title)}</div>
-    <div class="action-body">${esc(a.body)}</div>
+    <div class="action-body" id="body-${esc(a.id)}">${esc(a.body)}</div>
     ${a.source ? `<div class="action-why">${esc(a.source)}</div>` : ''}
     ${chips ? `<div class="action-rcpt">${chips}</div>` : ''}
+    ${toggle}
+    ${controls}
   </div>`;
 }
 
-function renderRecordDetail(rec){
+// The approved card hands the owner the finished content in a usable form.
+function renderHandoff(a){
+  if(a.type === 'email'){
+    const to = (a.recipients || []).filter((r) => r.email).map((r) => r.email).join(',');
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(a.title)}&body=${encodeURIComponent(a.body)}`;
+    return `<div class="handoff">
+      <a class="abtn" href="${mailto}">Open in your mail app</a>
+      <button class="abtn ghost" onclick="copyAction('${esc(a.id)}', this)">Copy draft</button>
+    </div>`;
+  }
+  if(a.type === 'calendar'){
+    return `<div class="handoff">
+      <input class="time-input" type="datetime-local" id="when-${esc(a.id)}" value="${defaultFollowUpTime()}">
+      <button class="abtn" onclick="downloadIcs('${esc(a.id)}')">Download invite (.ics)</button>
+      <button class="abtn ghost" onclick="copyAction('${esc(a.id)}', this)">Copy</button>
+    </div>`;
+  }
+  return `<div class="handoff"><button class="abtn" onclick="copyAction('${esc(a.id)}', this)">Copy the record summary</button></div>`;
+}
+
+// Next weekday at 10:00, as a datetime-local value.
+function defaultFollowUpTime(){
+  const d = new Date(Date.now() + 24 * 3600_000);
+  while(d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`;
+}
+
+function findAction(id){
+  return ((lastRecord && lastRecord.actions) || []).find((a) => a.id === id) || null;
+}
+
+// One verdict to the server; the answered record re-renders the view -
+// the server's copy is the truth, and the audit trail rides inside it.
+async function actionOp(id, op, extra){
+  if(!currentRecordFile) return;
+  try{
+    const r = await fetch(`/history/${currentRecordFile}/action`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ actionId: id, op, ...(extra || {}) }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if(r.ok && body.record){ renderRecordDetail(body.record, currentRecordFile); }
+  }catch(e){ /* leave the card as it was */ }
+}
+
+function editAction(id){
+  const bodyEl = document.getElementById(`body-${id}`);
+  const btn = document.getElementById(`edit-${id}`);
+  if(!bodyEl || !btn) return;
+  if(bodyEl.getAttribute('contenteditable') === 'true'){
+    actionOp(id, 'edit', { body: bodyEl.innerText.trim() }); // Save
+  } else {
+    bodyEl.setAttribute('contenteditable', 'true');
+    btn.textContent = 'Save';
+    bodyEl.focus();
+  }
+}
+
+function toggleClarus(id){
+  const a = findAction(id);
+  if(a) actionOp(id, 'toggle-clarus', { addClarus: a.addClarus === false }); // flip
+}
+
+async function copyAction(id, btn){
+  const a = findAction(id);
+  if(!a) return;
+  try{
+    await navigator.clipboard.writeText(a.body);
+    const old = btn.textContent;
+    btn.innerHTML = '<span class="copy-done">✓ Copied</span>';
+    setTimeout(() => { btn.textContent = old; }, 1800);
+  }catch(e){ /* clipboard needs a secure context */ }
+}
+
+// A real calendar invite the owner can add anywhere - built client-side.
+function downloadIcs(id){
+  const a = findAction(id);
+  if(!a) return;
+  const whenEl = document.getElementById(`when-${id}`);
+  const start = whenEl && whenEl.value ? new Date(whenEl.value) : new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = (d) => `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
+  const escIcs = (s) => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  const attendees = (a.recipients || []).filter((r) => r.email)
+    .map((r) => `ATTENDEE;CN=${escIcs(r.name)};RSVP=TRUE:mailto:${r.email}`);
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Clarus//Actions//EN',
+    'BEGIN:VEVENT',
+    `UID:clarus-${currentRecordFile || 'record'}-${a.id}@clarus`,
+    `DTSTAMP:${stamp(new Date())}`,
+    `DTSTART:${stamp(start)}`,
+    `DURATION:PT${a.suggestedDurationMinutes || 15}M`,
+    `SUMMARY:${escIcs(a.title)}`,
+    `DESCRIPTION:${escIcs(a.body)}`,
+    ...attendees,
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  link.download = `${(a.title || 'follow-up').replace(/[^\w ]+/g, '').trim().replace(/ +/g, '-').toLowerCase()}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 2000);
+}
+
+let lastRecord = null;
+function renderRecordDetail(rec, file){
   historyView = 'detail';
+  lastRecord = rec;                    // Phase 14: action handlers read from here
+  if(file) currentRecordFile = file;   // which record file verdicts write back to
   document.getElementById('histTitle').textContent = rec.meetingName || 'Untitled meeting';
   const boardHtml = (rec.conditions || []).map((c) => {
     const closed = c.status === 'closed';
