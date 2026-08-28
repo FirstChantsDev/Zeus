@@ -438,6 +438,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .nudge-status.ignored{color:var(--red);}
 .nudge-text{font-size:12.5px;line-height:1.5;color:var(--ink);}
 .nudge.steered{border-left-color:var(--blue);}
+/* The owner's own sent message - your chat bubble, not the agent's:
+   ink accent instead of agent blue, nudged right like sent messages. */
+.nudge.mine{border-left-color:var(--ink);background:var(--s1);margin-left:26px;}
+.nudge-tag.you{color:var(--ink);}
 .steer-note{font-size:11px;color:var(--blue-2);font-style:italic;margin-top:6px;}
 .feed-empty{font-family:var(--head);font-style:italic;font-size:12.5px;color:var(--t4);padding:8px 2px;}
 
@@ -507,7 +511,10 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .countdown{order:11;margin-left:auto;}
   .clock{display:none;}
   header .hist-btn{display:none;}   /* history lives on the homepage instead */
-  .owner{display:none;}
+  /* Hide only the header's owner chip - a bare .owner also swallowed the
+     briefing chat's .bc-msg.owner bubbles, so the owner never saw their
+     own sent messages on a phone. */
+  header .owner{display:none;}
   /* Conditions read as the page itself, not a boxed panel. */
   body.mob-live #conditions{background:none;border:none;}
   body.mob-live #conditions .panel-head{display:none;}
@@ -1552,12 +1559,14 @@ function stripAgentMarker(text){
 
 function renderNudges(nudges){
   const feed = document.getElementById('feed');
-  // The phone sheet's collapsed peek: the newest nudge and the count.
-  document.getElementById('peekText').textContent = nudges.length
-    ? stripAgentMarker(nudges[0].text)
+  // The phone sheet's collapsed peek: the newest AGENT nudge and the count
+  // (the owner's own echoed messages don't belong in the peek).
+  const agentNudges = nudges.filter((n) => !n.owner);
+  document.getElementById('peekText').textContent = agentNudges.length
+    ? stripAgentMarker(agentNudges[0].text)
     : 'Agent is listening - it will speak when a condition needs a push.';
-  document.getElementById('peekCount').textContent = nudges.length
-    ? `${nudges.length} nudge${nudges.length === 1 ? '' : 's'}`
+  document.getElementById('peekCount').textContent = agentNudges.length
+    ? `${agentNudges.length} nudge${agentNudges.length === 1 ? '' : 's'}`
     : '';
   if(!nudges.length){
     feed.innerHTML = '<div class="feed-empty">Agent is listening. It will speak when a condition needs a push.</div>';
@@ -1567,11 +1576,20 @@ function renderNudges(nudges){
   // position, which used to leave the newest item half-hidden - if the
   // reader is near the top, snap back to the very top after rendering.
   const nearTop = feed.scrollTop < 40;
-  feed.innerHTML = nudges.map((n) => `<div class="nudge${n.steered ? ' steered' : ''}">
+  feed.innerHTML = nudges.map((n) => {
+    // The owner's own sent message - rendered as YOUR bubble, chat-style.
+    if(n.owner){
+      return `<div class="nudge mine">
+        <div class="nudge-head"><span class="nudge-tag you">YOU</span><span class="nudge-status sent">SENT</span></div>
+        <div class="nudge-text">${esc(n.text)}</div>
+      </div>`;
+    }
+    return `<div class="nudge${n.steered ? ' steered' : ''}">
     <div class="nudge-head"><span class="nudge-tag">CLARUS</span><span class="nudge-cond">→ ${esc(n.conditionLabel)}</span><span class="nudge-status ${n.status}">${n.status.toUpperCase()}</span></div>
     <div class="nudge-text">${esc(stripAgentMarker(n.text))}</div>
     ${n.steered ? '<div class="steer-note">↳ shaped by your steer</div>' : ''}
-  </div>`).join('');
+  </div>`;
+  }).join('');
   if(nearTop) feed.scrollTop = 0;
 }
 
@@ -1607,6 +1625,7 @@ async function steer(){
       hint.innerHTML = 'Steer sent - the agent is acting on it now. <span style="color:var(--blue)">The room sees nothing of this.</span>';
       clearTimeout(hintResetTimer);
       hintResetTimer = setTimeout(() => { hint.textContent = DEFAULT_HINT; }, 12000);
+      poll(); // show the sent message in the feed immediately, chat-style
     }
   }catch(e){
     hint.textContent = 'Could not reach the agent - is the bot running?';

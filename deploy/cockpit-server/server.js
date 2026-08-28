@@ -172,6 +172,9 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         steerQueue: [],      // owner instructions waiting for the bot's next check-in
         editQueue: [],       // live board edits waiting for the bot's next check-in
         killRequested: false, // the owner pressed Kill bot - the bot wraps up on its next check-in
+        // The owner's sent instructions, echoed straight into the feed -
+        // kept separate so the bot's state pushes can never overwrite them.
+        ownerMessages: [],
     };
     meetings.set(id, meeting);
     return meeting;
@@ -200,7 +203,17 @@ const buildStateJson = (meeting) => {
             status = 'waiting';
         }
         return { ...nudge, conditionLabel: condition ? condition.label : 'your steer', status };
-    }).reverse();
+    });
+
+    // The owner's own messages ride in the same feed, newest first overall -
+    // a sent instruction is visible the moment it is sent, chat-style.
+    const feed = [
+        ...nudgesWithStatus,
+        ...meeting.ownerMessages.map((m) => ({
+            text: m.text, at: m.at, owner: true,
+            conditionId: null, conditionLabel: 'you', status: 'sent', steered: false,
+        })),
+    ].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
 
     return {
         startedAt,
@@ -212,7 +225,7 @@ const buildStateJson = (meeting) => {
         scheduledMinutes: meeting.scheduledMinutes,
         meetingJoinedAt: meeting.meetingJoinedAt,
         conditions: meeting.conditions,
-        nudges: nudgesWithStatus,
+        nudges: feed,
         transcript: meeting.transcript,
         ownerName: meeting.ownerName,
         mentions: [...meeting.mentions].reverse(),
@@ -1104,6 +1117,8 @@ const server = http.createServer(async (req, res) => {
                 return;
             }
             meeting.steerQueue.push(instruction);
+            // Echo the owner's message into the feed immediately, chat-style.
+            meeting.ownerMessages.push({ text: instruction, at: new Date().toISOString() });
             console.log(`STEER queued >>> (${meeting.id}) ${instruction}`);
             answer(res, 200, { ok: true });
         } catch {

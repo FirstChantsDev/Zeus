@@ -134,6 +134,8 @@ export class CockpitServer {
     private meetingJoinedAt: string | null = null;
     private readonly transcript: TranscriptRecord[] = [];
     private readonly nudges: NudgeRecord[] = [];
+    /** The owner's sent instructions, echoed straight into the feed chat-style */
+    private readonly ownerMessages: Array<{ text: string, at: string }> = [];
     /** Phase 5: moments the room said it needs the owner */
     private readonly mentions: MentionRecord[] = [];
     private ownerName = '';
@@ -588,6 +590,8 @@ export class CockpitServer {
                     return;
                 }
                 console.log(`STEER >>> ${instruction}`);
+                // Echo the owner's message into the feed immediately, chat-style.
+                this.ownerMessages.push({ text: instruction, at: new Date().toISOString() });
                 this.onCommand(instruction); // acted on immediately; the feed shows the result
                 res.writeHead(200, { 'content-type': 'application/json' });
                 res.end(JSON.stringify({ ok: true }));
@@ -747,7 +751,15 @@ export class CockpitServer {
 
     /** Assembles the JSON snapshot the cockpit page polls */
     private _buildState() {
-        const nudgesWithStatus = this._nudgesWithFates().reverse(); // newest first, ready for the feed
+        // Agent nudges plus the owner's own sent messages, newest first —
+        // a sent instruction is visible the moment it is sent, chat-style.
+        const nudgesWithStatus: Array<Record<string, unknown>> = [
+            ...this._nudgesWithFates(),
+            ...this.ownerMessages.map((m) => ({
+                text: m.text, at: m.at, owner: true,
+                conditionId: null, conditionLabel: 'you', status: 'sent', steered: false,
+            })),
+        ].sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? '')));
 
         return {
             startedAt: this.startedAt,
