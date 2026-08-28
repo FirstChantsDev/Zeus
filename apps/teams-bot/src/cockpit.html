@@ -1454,14 +1454,14 @@ function renderHandoff(a){
     const to = (a.recipients || []).filter((r) => r.email).map((r) => r.email).join(',');
     const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(a.title)}&body=${encodeURIComponent(a.body)}`;
     return `<div class="handoff">
-      <a class="abtn" href="${mailto}">Open in your mail app</a>
+      <a class="abtn" href="${mailto}">Send email</a>
       <button class="abtn ghost" onclick="copyAction('${esc(a.id)}', this)">Copy draft</button>
     </div>`;
   }
   if(a.type === 'calendar'){
     return `<div class="handoff">
       <input class="time-input" type="datetime-local" id="when-${esc(a.id)}" value="${defaultFollowUpTime()}">
-      <button class="abtn" onclick="downloadIcs('${esc(a.id)}')">Download invite (.ics)</button>
+      <button class="abtn" onclick="downloadIcs('${esc(a.id)}')">Send invite</button>
       <button class="abtn ghost" onclick="copyAction('${esc(a.id)}', this)">Copy</button>
     </div>`;
   }
