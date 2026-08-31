@@ -245,6 +245,53 @@ goal is being ignored, and reporting everything to a private local cockpit.
   iOS auto-zoom), 44px tap targets, and no horizontal scroll. The reported
   "Lanch date"/"meetingng" typos were typed briefing input, not code.
 
+- **Phase 14 — the action layer (2026-08).** The meeting no longer ends at
+  a summary: one more API call reads the finished record and drafts 0–4
+  follow-up **actions** (hard cap 5; an honest empty list beats filler) —
+  emails written in the OWNER'S first-person voice, follow-up meeting
+  proposals with attendees and a duration, or share-the-record — each
+  naming the decision or open condition behind it. They live in the
+  record (`actions[]`) and render as cards in the History record view.
+  - **Approval-gated, always.** Clarus NEVER sends anything itself. The
+    owner can edit a draft inline (while proposed), Approve, or Dismiss;
+    every verdict is an audit event in the record (edits carry
+    before/after). Approving hands over the content: a mailto link
+    ("Send email" opens the owner's mail app with the draft), a
+    client-built .ics ("Send invite", time picker on the card, attendees
+    included), copy-to-clipboard everywhere. Guards: an approved action
+    can't be dismissed and vice versa; only proposed drafts are editable.
+    Endpoint: `POST /history/<file>/action` — shared TS helper
+    (`applyActionUpdate` in MeetingRecord.ts) locally, a plain-JS mirror
+    on the hub. CHANGE BOTH.
+  - **Add Clarus toggle + the first decision-graph edge (Milestone 3).**
+    Calendar cards carry the toggle (default ON, names the condition it
+    pre-loads; flips are audit-logged). Approving with it ON schedules
+    the follow-up agent on the hub immediately: a new SCHEDULED meeting
+    pre-loaded with the unresolved condition (`preloadCondition` from the
+    generator), timed by the card's picker. Because Graph stays
+    READ-ONLY, Clarus cannot book the meeting itself: the child waits
+    link-less (never handed to the bot) and the calendar watcher attaches
+    the owner's real booked event by title or ±45-min start match — so
+    the owner must book it as a TEAMS meeting for the agent to join. The
+    link is a relationship, not copied text: the parent action carries
+    `childMeetingId`; the child meeting carries
+    `parent {meetingId, recordFile, actionId}` which lands in its record;
+    the record view shows "follow-up of". No free slot or no time =
+    approved without an agent, said plainly in the audit event.
+  - **Attendees (no scope change):** `Calendars.Read` already returns
+    each event's attendee list — it now rides the brief into the record
+    and feeds recipient suggestions (with emails); pasted-link meetings
+    suggest names heard in the room (email left for the owner).
+  - **Milestone 4 (real Graph sending — `Mail.Send` +
+    `Calendars.ReadWrite`) was offered and DECLINED for now**: the owner
+    chose to keep the read-only promise. "Send email"/"Send invite" are
+    labels over the mail-app/.ics handoffs. If ever revisited, the
+    scope-widening implications and wording changes are in the Phase 14
+    brief; nothing autonomous either way.
+  - Hosted behaves like local for all of the above, except scheduling the
+    follow-up agent (hub-only — the local process ends with its meeting
+    and has no scheduler; local approvals still record everything).
+
 ## Hosted demo script — no terminal anywhere
 
 1. Both Railway services ("cockpit" and "bot" in the **zeus-cockpit**
@@ -260,6 +307,14 @@ goal is being ignored, and reporting everything to a private local cockpit.
    transcript, nudges, mentions, and steering all run live.
 6. When the meeting ends, the bot notices (~90s), resets the website to a
    fresh briefing screen for the next person, and waits.
+7. **The action layer (Phase 14):** open History → the finished meeting.
+   Under "Actions ready" sit the drafted follow-ups. Edit one inline,
+   Approve the email (your mail app opens with it), pick a time on the
+   booking card and Approve with **Add Clarus** on → the homepage grows a
+   SCHEDULED follow-up card pre-loaded with the open condition. Book the
+   real meeting as a TEAMS meeting with the same title and the hub
+   attaches it within a minute; the agent turns up briefed. Every verdict
+   is in the record's audit trail.
 
 ## Hosted operations — redeploy, secrets, costs, kill switch
 
