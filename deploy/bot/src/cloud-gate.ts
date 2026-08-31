@@ -64,6 +64,9 @@ type BriefFromHub = {
     meetingStart?: string | null;
     /** Phase 14: the event's attendee list (empty for pasted links) */
     attendees?: Array<{ name: string, email: string | null }>;
+    /** Milestone 3: set when this meeting was born from an approved
+     *  follow-up action - carried into the child's record. */
+    parent?: { meetingId: string, recordFile: string, actionId: string, meetingName?: string } | null;
 };
 
 /** How long before the scheduled start the bot actually heads for the lobby */

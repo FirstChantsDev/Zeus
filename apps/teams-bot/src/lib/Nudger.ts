@@ -736,6 +736,8 @@ export class Nudger {
                         '- "calendar": a condition stayed open or a decision needs a follow-up conversation - propose',
                         '  the short meeting that settles it: a title, a body that states exactly what must be decided,',
                         '  suggested attendees from the people involved, and suggestedDurationMinutes (15 or 30).',
+                        '  Also give preloadCondition: the outcome the follow-up must produce, phrased as a testable',
+                        '  condition (usually the open condition, word for word) - a future agent is briefed with it.',
                         '- "share": the decision record should go to the participants so everyone leaves with one',
                         '  version. At most ONE share action, and only when real decisions were made.',
                         '',
@@ -749,8 +751,9 @@ export class Nudger {
                         '',
                         'Reply with ONLY strict JSON, no other text:',
                         '{"actions": [{"type": "email|calendar|share", "title": "...", "body": "...", "source": "...",',
-                        '  "recipients": [{"name": "...", "email": "... or null"}], "suggestedDurationMinutes": 15}]}',
-                        'Omit suggestedDurationMinutes for non-calendar actions.',
+                        '  "recipients": [{"name": "...", "email": "... or null"}], "suggestedDurationMinutes": 15,',
+                        '  "preloadCondition": "..."}]}',
+                        'Omit suggestedDurationMinutes and preloadCondition for non-calendar actions.',
                     ].join('\n'),
                     messages: [{
                         role: 'user',
@@ -815,6 +818,10 @@ export class Nudger {
                     ...(type === 'calendar' ? {
                         suggestedDurationMinutes: Number.isFinite(Number(a.suggestedDurationMinutes)) ? Math.max(5, Math.min(120, Math.round(Number(a.suggestedDurationMinutes)))) : 15,
                         addClarus: true, // the Add Clarus toggle defaults ON; the owner can flip it
+                        // The condition a future agent is pre-briefed with (Milestone 3)
+                        preloadCondition: typeof a.preloadCondition === 'string' && a.preloadCondition.trim()
+                            ? a.preloadCondition.trim()
+                            : (typeof a.source === 'string' ? a.source.replace(/^Open condition:\s*/i, '').trim() : ''),
                     } : {}),
                     status: 'proposed',
                 });

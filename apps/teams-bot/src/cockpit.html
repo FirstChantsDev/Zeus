@@ -1429,12 +1429,22 @@ function renderActionCard(a){
       <span class="lb"><b>Add Clarus to this meeting</b><span>${a.addClarus === false ? 'Not attending - book as a normal meeting' : 'Attending · 1 condition pre-loaded'}</span></span>
     </div>
     ${a.source ? `<div class="precond">◆ ${esc(a.source.replace(/^Open condition:\s*/i, ''))}</div>` : ''}` : '';
+  // Milestone 3: the follow-up's time lives on the card - approving with
+  // Add Clarus on schedules the agent for exactly this time, and the .ics
+  // uses it too. One picker, both jobs.
+  const picker = (a.type === 'calendar' && a.status !== 'dismissed')
+    ? `<div class="handoff" style="margin-top:9px"><input class="time-input" type="datetime-local" id="when-${esc(a.id)}" value="${defaultFollowUpTime()}" ${a.status === 'approved' ? '' : ''}></div>`
+    : '';
+  // The proof the toggle delivered: a scheduled child agent.
+  const scheduledLine = (a.status === 'approved' && a.childMeetingId)
+    ? `<div class="copy-done" style="margin-top:8px">✓ Follow-up agent scheduled · 1 condition pre-loaded${a.preloadCondition ? `: “${esc(a.preloadCondition)}”` : ''}</div>`
+    : '';
   // Proposed: Edit / Dismiss / Approve. Approved: the usable handoff.
   const controls = a.status === 'proposed'
     ? `<div class="action-btns">
         <button class="abtn ghost" id="edit-${esc(a.id)}" onclick="editAction('${esc(a.id)}')">Edit</button>
         <button class="abtn ghost" onclick="actionOp('${esc(a.id)}', 'dismiss')">Dismiss</button>
-        <button class="abtn" onclick="actionOp('${esc(a.id)}', 'approve')">Approve${a.type === 'email' ? '' : a.type === 'calendar' ? ' booking' : ''}</button>
+        <button class="abtn" onclick="approveAction('${esc(a.id)}')">Approve${a.type === 'email' ? '' : a.type === 'calendar' ? ' booking' : ''}</button>
       </div>`
     : a.status === 'approved' ? renderHandoff(a) : '';
   return `<div class="action-card ${a.status}" id="action-${esc(a.id)}">
@@ -1444,6 +1454,8 @@ function renderActionCard(a){
     ${a.source ? `<div class="action-why">${esc(a.source)}</div>` : ''}
     ${chips ? `<div class="action-rcpt">${chips}</div>` : ''}
     ${toggle}
+    ${picker}
+    ${scheduledLine}
     ${controls}
   </div>`;
 }
@@ -1460,7 +1472,6 @@ function renderHandoff(a){
   }
   if(a.type === 'calendar'){
     return `<div class="handoff">
-      <input class="time-input" type="datetime-local" id="when-${esc(a.id)}" value="${defaultFollowUpTime()}">
       <button class="abtn" onclick="downloadIcs('${esc(a.id)}')">Send invite</button>
       <button class="abtn ghost" onclick="copyAction('${esc(a.id)}', this)">Copy</button>
     </div>`;
@@ -1494,6 +1505,17 @@ async function actionOp(id, op, extra){
     const body = await r.json().catch(() => ({}));
     if(r.ok && body.record){ renderRecordDetail(body.record, currentRecordFile); }
   }catch(e){ /* leave the card as it was */ }
+}
+
+// Approving a calendar action carries the picked time - the hub schedules
+// the follow-up agent for exactly then (when Add Clarus is on).
+function approveAction(id){
+  const a = findAction(id);
+  const whenEl = document.getElementById(`when-${id}`);
+  const extra = (a && a.type === 'calendar' && whenEl && whenEl.value)
+    ? { when: new Date(whenEl.value).toISOString() }
+    : {};
+  actionOp(id, 'approve', extra);
 }
 
 function editAction(id){
@@ -1584,6 +1606,7 @@ function renderRecordDetail(rec, file){
     <div class="hd-sub">
       ${histWhen(rec.endedAt)} · ${rec.durationMinutes !== null ? `${rec.durationMinutes} min in the room (scheduled ${rec.scheduledMinutes})` : 'the agent never joined'} · ended: ${esc(rec.endReason || 'unknown')}<br>
       participants heard: ${esc((rec.participants || []).join(', ') || 'none')}${rec.ownerName ? ` · owner: ${esc(rec.ownerName)}` : ''}
+      ${rec.parent ? `<br>↳ follow-up of: <b>${esc(rec.parent.meetingName || rec.parent.meetingId)}</b> (booked from its approved action)` : ''}
     </div>
     <div class="hd-section">Summary</div>
     ${rec.summary ? `<div class="hd-summary">${esc(rec.summary)}</div>` : '<div class="hd-summary missing">No summary was generated for this meeting.</div>'}

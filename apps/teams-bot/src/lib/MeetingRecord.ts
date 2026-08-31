@@ -71,6 +71,11 @@ export type MeetingAction = {
     /** calendar actions: whether the booked follow-up carries a pre-briefed
      *  agent (the Add Clarus toggle - default on; every flip is recorded) */
     addClarus?: boolean;
+    /** calendar actions: the condition a future agent is pre-briefed with */
+    preloadCondition?: string;
+    /** Milestone 3: set when approving scheduled a follow-up agent - the
+     *  child meeting's id. The child record points back via `parent`. */
+    childMeetingId?: string;
     /** The owner's verdict. Approving hands them the sendable content;
      *  nothing is ever sent without that explicit tap. */
     status: 'proposed' | 'approved' | 'dismissed';
@@ -109,6 +114,10 @@ export type MeetingRecordFile = {
     /** Phase 14: drafted follow-up actions awaiting the owner (may be empty -
      *  an honest "nothing to do" beats filler). Missing on pre-Phase-14 records. */
     actions?: MeetingAction[];
+    /** Milestone 3: set when this meeting was born from an approved follow-up
+     *  action - the first edge of the decision graph. A relationship, not
+     *  duplicated text: the parent's action carries childMeetingId back. */
+    parent?: { meetingId: string, recordFile: string, actionId: string, meetingName?: string } | null;
     events: AuditEvent[];
 };
 
@@ -127,6 +136,8 @@ export class MeetingRecord {
     private joinedAt: string | null = null;
     /** Phase 14: the calendar event's attendee list (empty for pasted links) */
     private attendees: Attendee[] = [];
+    /** Milestone 3: set when this meeting came from an approved follow-up action */
+    private parent: MeetingRecordFile['parent'] = null;
 
     constructor(id: string) {
         this.id = id;
@@ -137,11 +148,12 @@ export class MeetingRecord {
         this.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
     }
 
-    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[] }) {
+    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[], parent?: MeetingRecordFile['parent'] }) {
         this.meetingName = brief.meetingName;
         this.ownerName = brief.ownerName;
         this.scheduledMinutes = brief.lengthMinutes;
         this.attendees = brief.attendees ?? [];
+        this.parent = brief.parent ?? null;
         this.briefedAt = new Date().toISOString();
         this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}`, {
             labels: brief.labels,
@@ -222,6 +234,7 @@ export class MeetingRecord {
             summary: args.summary,
             attendees: this.attendees,
             actions: args.actions ?? [],
+            parent: this.parent,
             events: this.events,
         };
         return record;

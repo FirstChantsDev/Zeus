@@ -146,7 +146,7 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, parent }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
@@ -162,6 +162,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
         calendarEventId: calendarEventId || null, // lets the hub follow the event if it moves
         attendees: Array.isArray(attendees) ? attendees : [], // Phase 14: follow-up recipient suggestions
+        parent: parent || null, // Milestone 3: born from an approved follow-up action
         killReason: null, // set when the hub itself stands the agent down (e.g. event cancelled)
         context,
         conditions: labels.map((label, index) => ({ id: `c${index}`, label, status: 'open', nudges: 0 })),
@@ -291,6 +292,31 @@ const buildSummaryJson = () => ({
 const CAL_REFRESH_MS = Number(process.env.CAL_REFRESH_MS) || 60000;
 
 const refreshCalendarMeetings = async () => {
+    // Milestone 3: scheduled follow-ups born from an approved action start
+    // WITHOUT a Teams link (Clarus is read-only and cannot book meetings).
+    // Once the owner's booked invite lands on their calendar, match it by
+    // title or by start time and attach it - from then on the meeting is a
+    // normal tracked calendar meeting and the bot can collect it.
+    const pending = [...meetings.values()].filter((m) => !m.meetingUrl && !m.calendarEventId && m.meetingStart && !m.killRequested);
+    if (pending.length) {
+        try {
+            const upcoming = await calendar.upcomingMeetings();
+            const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+            for (const meeting of pending) {
+                const match = upcoming.find((e) => e.joinUrl && (
+                    norm(e.subject) === norm(meeting.meetingName)
+                    || Math.abs(Date.parse(e.start) - Date.parse(meeting.meetingStart)) <= 45 * 60000
+                ));
+                if (match) {
+                    meeting.meetingUrl = match.joinUrl;
+                    meeting.calendarEventId = match.id;
+                    meeting.meetingStart = match.start;
+                    meeting.scheduledMinutes = match.durationMinutes || meeting.scheduledMinutes;
+                    console.log(`FOLLOW-UP LINKED >>> (${meeting.id}) "${meeting.meetingName}" matched calendar event "${match.subject}" - the agent can now collect it.`);
+                }
+            }
+        } catch { /* calendar not connected or blipped - next round */ }
+    }
     for (const meeting of meetings.values()) {
         if (!meeting.calendarEventId || meeting.meetingJoinedAt || meeting.killRequested) continue;
         let event;
@@ -653,7 +679,10 @@ const server = http.createServer(async (req, res) => {
         }
         if (url === '/bot/brief' && req.method === 'GET') {
             // Hand each brief over exactly once; the bot then owns that meeting.
-            const unclaimed = meetingList().reverse().find((m) => !m.briefClaimed); // oldest first
+            // Milestone 3: a scheduled follow-up may still be waiting for its
+            // Teams link (the calendar watcher attaches it) - never hand the
+            // bot a brief with nowhere to go.
+            const unclaimed = meetingList().reverse().find((m) => !m.briefClaimed && m.meetingUrl); // oldest first
             if (unclaimed) {
                 unclaimed.briefClaimed = true;
                 console.log(`BOT >>> collected brief ${unclaimed.id} ("${unclaimed.meetingName}")`);
@@ -668,6 +697,7 @@ const server = http.createServer(async (req, res) => {
                         meetingUrl: unclaimed.meetingUrl,
                         meetingStart: unclaimed.meetingStart, // the bot holds off joining until near this
                         attendees: unclaimed.attendees, // Phase 14: follow-up recipient suggestions
+                        parent: unclaimed.parent, // Milestone 3: decision-graph edge for the child record
                     },
                 });
             } else {
@@ -1054,9 +1084,47 @@ const server = http.createServer(async (req, res) => {
                 if (action.status === 'dismissed') { answer(res, 409, { ok: false, error: 'this action was dismissed' }); return; }
                 if (action.status !== 'approved') {
                     action.status = 'approved';
+                    // Milestone 3: an approved booking with Add Clarus ON schedules
+                    // the follow-up agent NOW - a new drawer in 'scheduled' state,
+                    // pre-loaded with the unresolved condition. It waits for its
+                    // Teams link: the calendar watcher attaches the real event
+                    // once the owner's booked invite lands on their calendar.
+                    let scheduledChild = null;
+                    let scheduleNote = null;
+                    if (action.type === 'calendar' && action.addClarus !== false) {
+                        const when = (typeof parsed.when === 'string' && Number.isFinite(Date.parse(parsed.when)))
+                            ? new Date(parsed.when).toISOString()
+                            : null;
+                        if (meetings.size >= MAX_MEETINGS) {
+                            scheduleNote = `no agent slot free (${MAX_MEETINGS} in use) - booked without an agent`;
+                        } else if (!when) {
+                            scheduleNote = 'no time given - booked without an agent';
+                        } else {
+                            const condition = (action.preloadCondition || String(action.source || '').replace(/^Open condition:\s*/i, '')).trim();
+                            scheduledChild = createMeeting({
+                                meetingName: action.title,
+                                labels: [condition || 'Follow-up outcome agreed'],
+                                context: `Follow-up booked from "${record.meetingName}". It exists to settle what stayed open there.`,
+                                lengthMinutes: action.suggestedDurationMinutes || 15,
+                                ownerName: record.ownerName || '',
+                                meetingUrl: '', // pending - the calendar watcher fills it in
+                                meetingStart: when,
+                                calendarEventId: null,
+                                attendees: action.recipients || [],
+                                parent: { meetingId: record.id, recordFile: file, actionId: action.id, meetingName: record.meetingName },
+                            });
+                            scheduledChild.meetingStatus = 'scheduled';
+                            action.childMeetingId = scheduledChild.id;
+                            console.log(`FOLLOW-UP SCHEDULED >>> ${scheduledChild.id} "${action.title}" at ${when} - pre-loaded: "${condition}" (parent record ${record.id})`);
+                        }
+                    }
                     stamp('action-approved', `Action approved: [${action.type}] ${action.title}`, {
                         actionId: action.id, type: action.type,
-                        ...(action.type === 'calendar' ? { addClarus: action.addClarus !== false } : {}),
+                        ...(action.type === 'calendar' ? {
+                            addClarus: action.addClarus !== false,
+                            ...(scheduledChild ? { childMeetingId: scheduledChild.id } : {}),
+                            ...(scheduleNote ? { scheduleNote } : {}),
+                        } : {}),
                     });
                 }
             } else if (parsed.op === 'dismiss') {
