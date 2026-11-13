@@ -388,23 +388,43 @@ const runDemoMeeting = (meeting) => {
             c0.nudges++;
             c0.note = 'Agent has raised it - waiting on the room.';
         });
-        after(29, () => say('Maya', `Fair point. Let's call it settled - consider ${c0.label.toLowerCase()} done, signed off as of today.`, true));
+        // Phase 18: the demo shows the decision standard. A conditional yes
+        // is HELD OPEN, the agent asks about the condition, and only an
+        // unconditional confirmation closes it.
+        after(29, () => say('Maya', 'Fair point. Approved, subject to legal checking the wording.'));
         after(31, () => {
+            c0.status = 'held';
+            c0.heldOn = 'legal checking the wording';
+            c0.nudges = 0;
+            c0.note = 'Maya approved it, subject to legal.';
+            c0.why = 'Maya said yes but attached a condition, so this is not decided yet. It is held open until legal accepts the wording.';
+            c0.evidence = [{ speaker: 'Maya', quote: 'Approved, subject to legal checking the wording.' }];
+        });
+        after(39, () => {
+            meeting.nudges.push({
+                text: `[CLARUS] Quick check on "${c0.label}": is the wording accepted by legal, or is it still a blocker?`,
+                conditionId: c0.id, steered: false, at: new Date().toISOString(),
+            });
+            c0.nudges++;
+        });
+        after(46, () => say('Priya', "Legal here. The wording's accepted, no conditions.", true));
+        after(48, () => {
             c0.status = 'closed';
-            c0.note = 'Settled by Maya - signed off today.';
-            c0.why = 'Maya stated the sign-off directly and nobody objected, so the room treats it as agreed.';
-            c0.evidence = [{ speaker: 'Maya', quote: `Let's call it settled - consider ${c0.label.toLowerCase()} done, signed off as of today.` }];
+            delete c0.heldOn;
+            c0.note = 'Approved by Maya; legal confirmed with no conditions.';
+            c0.why = 'Maya approved subject to legal, and Priya then confirmed the wording is accepted with nothing attached, so the decision now stands.';
+            c0.evidence = [{ speaker: 'Priya', quote: "Legal here. The wording's accepted, no conditions." }];
         });
     }
     after(37, () => say('Jordan', "Great. I'll circulate the follow-ups after this."));
     if (owner) {
-        after(43, () => {
+        after(54, () => {
             say('Sam', `Hold on - we can't finalise the rest until ${owner} takes a look.`);
             meeting.mentions.push({ speaker: 'Sam', quote: `Hold on - we can't finalise the rest until ${owner} takes a look.`, at: new Date().toISOString() });
         });
     }
     if (c1) {
-        after(50, () => {
+        after(60, () => {
             meeting.nudges.push({
                 text: `[CLARUS] One thing still open - "${c1.label}". Can we pin it down before we lose the room?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
@@ -413,8 +433,8 @@ const runDemoMeeting = (meeting) => {
             c1.note = 'Agent has raised it - waiting on the room.';
             c1.why = 'It has been raised once but the discussion moved on without an answer.';
         });
-        after(58, () => say('Maya', "Let's take that offline - next item."));
-        after(66, () => {
+        after(68, () => say('Maya', "Let's take that offline - next item."));
+        after(76, () => {
             meeting.nudges.push({
                 text: `[CLARUS] Flagging again before we wrap - "${c1.label}" is still open. Can someone own it now?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
@@ -424,8 +444,8 @@ const runDemoMeeting = (meeting) => {
         });
     }
     if (c2) {
-        after(72, () => say('Jordan', `On ${c2.label.toLowerCase()} - we're close, just waiting on one confirmation.`));
-        after(74, () => {
+        after(82, () => say('Jordan', `On ${c2.label.toLowerCase()} - we're close, just waiting on one confirmation.`));
+        after(84, () => {
             c2.note = 'Close - waiting on one confirmation.';
             c2.why = 'Jordan says it is nearly there; one confirmation outstanding before it can close.';
         });
@@ -433,9 +453,9 @@ const runDemoMeeting = (meeting) => {
     // Phase 13: closed conditions stay alive - the room revises its first
     // decision and the jade card updates in place.
     if (c0) {
-        after(82, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} - I think we were too hasty earlier.`));
-        after(86, () => say('Maya', "Fair - let's revise it: keep it agreed, but at the higher figure we discussed.", true));
-        after(88, () => {
+        after(94, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} - I think we were too hasty earlier.`));
+        after(98, () => say('Maya', "Fair - let's revise it: keep it agreed, but at the higher figure we discussed.", true));
+        after(100, () => {
             c0.note = 'Revised by Maya - still agreed, now at the higher figure.';
             c0.why = 'The room revisited the earlier decision and agreed a revised figure; the condition stays settled with the new facts.';
             c0.evidence = [{ speaker: 'Maya', quote: "Fair - let's revise it: keep it agreed, but at the higher figure we discussed." }];
