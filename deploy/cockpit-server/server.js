@@ -146,7 +146,7 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, parent }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, parent, reasonsRequired }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
@@ -158,6 +158,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         scheduledMinutes: lengthMinutes,
         meetingJoinedAt: null,
         ownerName,
+        reasonsRequired: reasonsRequired === true, // Phase 18 M2: ask why for EVERY decision
         meetingUrl,
         meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
         calendarEventId: calendarEventId || null, // lets the hub follow the event if it moves
@@ -415,16 +416,30 @@ const runDemoMeeting = (meeting) => {
             c0.why = 'Maya approved subject to legal, and Priya then confirmed the wording is accepted with nothing attached, so the decision now stands.';
             c0.evidence = [{ speaker: 'Priya', quote: "Legal here. The wording's accepted, no conditions." }];
         });
+        // Phase 18 M2: the decision closed with no reason said out loud, so
+        // the agent asks once, and the spoken answer becomes the "Why".
+        after(51, () => {
+            meeting.nudges.push({
+                text: `[CLARUS] For the log, what's the reason for approving "${c0.label}" now?`,
+                conditionId: c0.id, steered: false, at: new Date().toISOString(),
+            });
+            c0.rationaleAsked = true;
+        });
+        after(56, () => say('Maya', 'Their quote expires on Friday, and they were the only bidder who met the security bar.', true));
+        after(58, () => {
+            c0.rationale = 'The quote expires on Friday and they were the only bidder who met the security bar.';
+            c0.rationaleEvidence = { speaker: 'Maya', quote: 'Their quote expires on Friday, and they were the only bidder who met the security bar.' };
+        });
     }
     after(37, () => say('Jordan', "Great. I'll circulate the follow-ups after this."));
     if (owner) {
-        after(54, () => {
+        after(64, () => {
             say('Sam', `Hold on - we can't finalise the rest until ${owner} takes a look.`);
             meeting.mentions.push({ speaker: 'Sam', quote: `Hold on - we can't finalise the rest until ${owner} takes a look.`, at: new Date().toISOString() });
         });
     }
     if (c1) {
-        after(60, () => {
+        after(70, () => {
             meeting.nudges.push({
                 text: `[CLARUS] One thing still open - "${c1.label}". Can we pin it down before we lose the room?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
@@ -433,8 +448,8 @@ const runDemoMeeting = (meeting) => {
             c1.note = 'Agent has raised it - waiting on the room.';
             c1.why = 'It has been raised once but the discussion moved on without an answer.';
         });
-        after(68, () => say('Maya', "Let's take that offline - next item."));
-        after(76, () => {
+        after(78, () => say('Maya', "Let's take that offline - next item."));
+        after(86, () => {
             meeting.nudges.push({
                 text: `[CLARUS] Flagging again before we wrap - "${c1.label}" is still open. Can someone own it now?`,
                 conditionId: c1.id, steered: false, at: new Date().toISOString(),
@@ -444,8 +459,8 @@ const runDemoMeeting = (meeting) => {
         });
     }
     if (c2) {
-        after(82, () => say('Jordan', `On ${c2.label.toLowerCase()} - we're close, just waiting on one confirmation.`));
-        after(84, () => {
+        after(92, () => say('Jordan', `On ${c2.label.toLowerCase()} - we're close, just waiting on one confirmation.`));
+        after(94, () => {
             c2.note = 'Close - waiting on one confirmation.';
             c2.why = 'Jordan says it is nearly there; one confirmation outstanding before it can close.';
         });
@@ -453,9 +468,9 @@ const runDemoMeeting = (meeting) => {
     // Phase 13: closed conditions stay alive - the room revises its first
     // decision and the jade card updates in place.
     if (c0) {
-        after(94, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} - I think we were too hasty earlier.`));
-        after(98, () => say('Maya', "Fair - let's revise it: keep it agreed, but at the higher figure we discussed.", true));
-        after(100, () => {
+        after(104, () => say('Jordan', `One thing on ${c0.label.toLowerCase()} - I think we were too hasty earlier.`));
+        after(108, () => say('Maya', "Fair - let's revise it: keep it agreed, but at the higher figure we discussed.", true));
+        after(110, () => {
             c0.note = 'Revised by Maya - still agreed, now at the higher figure.';
             c0.why = 'The room revisited the earlier decision and agreed a revised figure; the condition stays settled with the new facts.';
             c0.evidence = [{ speaker: 'Maya', quote: "Fair - let's revise it: keep it agreed, but at the higher figure we discussed." }];
@@ -525,6 +540,11 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
         '   pasted link default to 30 unless they say otherwise.',
         '',
+        '5. REASONS REQUIRED. Set brief.reasonsRequired to true ONLY if the owner asked for it (a',
+        '   "Confirmed conditions" message ending "Reasons required: yes", or words like "I need a',
+        '   reason for every decision"). It makes the agent ask the room why for every decision that',
+        '   closes without a stated reason. Otherwise false. Never spend a turn asking about it.',
+        '',
         ...calendarLines,
         '',
         `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
@@ -534,7 +554,7 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         ' "proposeConditions": ["..."]|null,',
         ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
         '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
-        '   "context": "..."}}',
+        '   "context": "...", "reasonsRequired": true|false}}',
         'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
         'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
         "agent in now. You'll see it on your board.\").",
@@ -715,6 +735,7 @@ const server = http.createServer(async (req, res) => {
                         context: unclaimed.context,
                         lengthMinutes: unclaimed.scheduledMinutes,
                         ownerName: unclaimed.ownerName,
+                        reasonsRequired: unclaimed.reasonsRequired === true,
                         meetingUrl: unclaimed.meetingUrl,
                         meetingStart: unclaimed.meetingStart, // the bot holds off joining until near this
                         attendees: unclaimed.attendees, // Phase 14: follow-up recipient suggestions
@@ -849,6 +870,7 @@ const server = http.createServer(async (req, res) => {
                 context: typeof parsed.context === 'string' ? parsed.context.trim() : '',
                 lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                 ownerName: typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '',
+                reasonsRequired: parsed.reasonsRequired === true,
                 meetingUrl,
                 meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
                 calendarEventId: typeof parsed.calendarEventId === 'string' ? parsed.calendarEventId : null,
@@ -957,6 +979,7 @@ const server = http.createServer(async (req, res) => {
                     context: typeof b.context === 'string' ? b.context.trim() : '',
                     lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                     ownerName: typeof b.ownerName === 'string' ? b.ownerName.trim() : '',
+                    reasonsRequired: b.reasonsRequired === true,
                     meetingUrl,
                     meetingStart: (picked && picked.start) || null,
                     calendarEventId: (picked && picked.id) || null,
@@ -1220,7 +1243,7 @@ const server = http.createServer(async (req, res) => {
                     if (condition.status !== 'open') { // closed OR held (Phase 18)
                         condition.status = 'open';
                         condition.nudges = 0;
-                        delete condition.heldOn;
+                        delete condition.heldOn; delete condition.rationale; delete condition.rationaleEvidence; delete condition.rationaleAsked;
                         delete condition.note; delete condition.why; delete condition.evidence;
                     }
                     condition.label = label;

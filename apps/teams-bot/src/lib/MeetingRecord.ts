@@ -32,6 +32,9 @@ export type AuditEvent = {
         | 'condition-closed'
         | 'condition-held'
         | 'condition-released'
+        | 'rationale-captured'
+        | 'rationale-asked'
+        | 'rationale-missing'
         | 'condition-revised'
         | 'condition-reopened'
         | 'condition-edited'
@@ -150,15 +153,16 @@ export class MeetingRecord {
         this.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
     }
 
-    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[], parent?: MeetingRecordFile['parent'] }) {
+    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[], parent?: MeetingRecordFile['parent'], reasonsRequired?: boolean }) {
         this.meetingName = brief.meetingName;
         this.ownerName = brief.ownerName;
         this.scheduledMinutes = brief.lengthMinutes;
         this.attendees = brief.attendees ?? [];
         this.parent = brief.parent ?? null;
         this.briefedAt = new Date().toISOString();
-        this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}`, {
+        this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}${brief.reasonsRequired ? ' - reasons required' : ''}`, {
             labels: brief.labels,
+            reasonsRequired: brief.reasonsRequired === true,
             context: brief.context,
         });
     }
@@ -195,6 +199,18 @@ export class MeetingRecord {
                 : null,
             events: this.events.map(({ at, type, detail }) => ({ at, type, detail })),
         };
+    }
+
+    /**
+     * Phase 18 M2: at meeting end, note every DECIDED condition that never
+     * got a stated reason - the record should be honest about the gap.
+     */
+    public logMissingRationales(conditions: Array<{ label: string, status: string, rationale?: string }>) {
+        for (const condition of conditions) {
+            if (condition.status === 'closed' && !condition.rationale) {
+                this.log('rationale-missing', `No reason was stated for: "${condition.label}"`, { label: condition.label });
+            }
+        }
     }
 
     /** True once any condition-edited / condition-added event exists */

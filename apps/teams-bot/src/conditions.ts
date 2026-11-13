@@ -51,4 +51,14 @@ export type Condition = {
      *  speaker + exact words, shown as the receipt in the expanded card.
      *  Freezes when the condition closes (closed conditions are never re-judged). */
     evidence?: Array<{ speaker: string, quote: string }>;
+    /** Phase 18 M2: WHY the room chose this outcome - only ever what someone
+     *  said out loud, never inferred. Not to be confused with `note` (the
+     *  board's one-line status) or `why` (the agent's explanation of where
+     *  the condition stands). */
+    rationale?: string;
+    /** The verbatim line the rationale came from */
+    rationaleEvidence?: { speaker: string, quote: string };
+    /** True once the agent has asked the room for the reason - it asks at
+     *  most once per condition */
+    rationaleAsked?: boolean;
 };

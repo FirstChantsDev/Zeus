@@ -456,6 +456,15 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond.held .badge{color:#fff;background:var(--amber-2);border-radius:999px;padding:3px 9px;}
 .cond-depends{font-size:12.5px;line-height:1.45;color:var(--t1);}
 .cond-depends b{font-weight:600;color:var(--amber);}
+/* Phase 18 M2: the reason behind the decision, with the line it came from. */
+.cond-reason{font-size:12.5px;line-height:1.45;color:var(--t1);}
+.cond-reason b{font-weight:600;}
+.cond-reason .cond-quote{margin-top:3px;}
+.cond-reason.missing{color:var(--t3);font-style:italic;}
+/* The briefing chat's "Reasons required" switch, under the condition chips. */
+.bc-reasons{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.45;color:var(--t2);padding:4px 2px 0;cursor:pointer;}
+.bc-reasons input{margin-top:2px;accent-color:var(--blue);flex:0 0 auto;}
+.bc-reasons b{font-weight:600;color:var(--t1);}
 .cond.closed .badge{color:var(--green);}
 /* Phase 4: the expand control + fuller "why" panel on each card */
 .cond-expand{
@@ -1080,6 +1089,11 @@ function renderCondChips(labels){
   const actions = document.createElement('div');
   actions.className = 'bc-chip-actions';
   actions.innerHTML = '<button class="ghost" onclick="bcAddChip(this)">＋ Add</button><button class="solid" onclick="bcConfirmChips(this)">Confirm conditions ✓</button>';
+  // Phase 18 M2: one switch - ask the room for the reason behind EVERY decision.
+  const reasons = document.createElement('label');
+  reasons.className = 'bc-reasons';
+  reasons.innerHTML = '<input type="checkbox" class="bc-reasons-box"><span><b>Reasons required.</b> Ask the room why for every decision. Off: only for the big ones (dates, money, owners, approvals).</span>';
+  wrap.appendChild(reasons);
   wrap.appendChild(actions);
   thread.appendChild(wrap);
   thread.scrollTop = thread.scrollHeight;
@@ -1096,7 +1110,7 @@ function bcAddChip(btn){
   const count = wrap.querySelectorAll('.bchip').length;
   if(count >= MAX_CONDITIONS) return;
   const chip = makeCondChip('', count);
-  wrap.insertBefore(chip, wrap.querySelector('.bc-chip-actions'));
+  wrap.insertBefore(chip, wrap.querySelector('.bc-reasons') || wrap.querySelector('.bc-chip-actions'));
   chip.querySelector('input').focus();
 }
 function bcConfirmChips(btn){
@@ -1111,7 +1125,10 @@ function bcConfirmChips(btn){
     chip.querySelector('.x')?.remove();
   });
   wrap.querySelector('.bc-chip-actions').remove();
-  bcSend('Confirmed conditions: ' + labels.map((l, i) => `${i + 1}) ${l}`).join(' '));
+  const reasonsBox = wrap.querySelector('.bc-reasons-box');
+  const reasonsRequired = Boolean(reasonsBox && reasonsBox.checked);
+  if(reasonsBox) reasonsBox.disabled = true;
+  bcSend('Confirmed conditions: ' + labels.map((l, i) => `${i + 1}) ${l}`).join(' ') + (reasonsRequired ? ' Reasons required: yes.' : ''));
 }
 
 // ── Phase 9: voice input - the browser's OWN speech recognition (Web
@@ -1599,14 +1616,17 @@ function renderRecordDetail(rec, file){
       <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${closed ? 'CLOSED' : held ? 'HELD OPEN' : 'STILL OPEN'}</span></div>
       <div class="cond-meta">${esc(c.note || (closed ? 'Settled in the room.' : held ? 'Agreed with a condition attached - not decided.' : 'Left open at meeting end.'))}</div>
       ${held ? `<div class="cond-depends"><b>Depends on:</b> ${esc(c.heldOn || 'a condition the room attached')}</div>` : ''}
+      ${c.rationale
+        ? `<div class="cond-reason"><b>Why:</b> ${esc(c.rationale)}${c.rationaleEvidence ? `<div class="cond-quote">⤷ <span class="spk">${esc(c.rationaleEvidence.speaker)}:</span> “${esc(c.rationaleEvidence.quote)}”</div>` : ''}</div>`
+        : (closed ? '<div class="cond-reason missing">Why: no reason was stated in the meeting.</div>' : '')}
       ${(c.why || quotes) ? `<div class="cond-why">${esc(c.why || '')}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges ?? 0}</div>
     </div>`;
   }).join('');
   // The audit trail: every event as it happened. Speaker-seen events are
   // folded into the participants line instead of cluttering the timeline.
-  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released') ? 'e-closed'
-    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held') ? 'e-edit'
+  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released' || t === 'rationale-captured') ? 'e-closed'
+    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held' || t === 'rationale-asked' || t === 'rationale-missing') ? 'e-edit'
     : t === 'owner-mentioned' ? 'e-mention' : '';
   const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>
     `<div class="hd-event ${evClass(e.type)}"><span class="e-time">${(e.at || '').slice(11, 19)}</span><span class="e-detail">${esc(e.detail || '')}</span></div>`
@@ -1728,7 +1748,7 @@ async function saveCondEdit(){
     // Optimistic local update so the board doesn't flash stale for a poll.
     if(body.op === 'edit'){
       const c = lastConditions.find((x) => x.id === body.id);
-      if(c){ c.label = label; if(c.status !== 'open'){ c.status = 'open'; c.nudges = 0; delete c.heldOn; delete c.note; delete c.why; delete c.evidence; } }
+      if(c){ c.label = label; if(c.status !== 'open'){ c.status = 'open'; c.nudges = 0; delete c.heldOn; delete c.rationale; delete c.rationaleEvidence; delete c.rationaleAsked; delete c.note; delete c.why; delete c.evidence; } }
     } else {
       lastConditions.push({ id: 'pending', label, status: 'open', nudges: 0 });
     }
@@ -1764,6 +1784,10 @@ function condCardHtml(c){
     // It is NOT closed; the card says what it depends on.
     const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : (c.status === 'held' ? 'held' : 'open'));
     const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS YOU' : status === 'held' ? 'HELD OPEN' : 'OPEN';
+    // Phase 18 M2: the stated reason (never invented) and the line it came from.
+    const reasonLine = c.rationale
+      ? `<div class="cond-reason"><b>Why:</b> ${esc(c.rationale)}${c.rationaleEvidence ? `<div class="cond-quote">⤷ <span class="spk">${esc(c.rationaleEvidence.speaker)}:</span> “${esc(c.rationaleEvidence.quote)}”</div>` : ''}</div>`
+      : (c.status === 'closed' && c.rationaleAsked ? '<div class="cond-reason missing">Why: asked the room, no reason given yet.</div>' : '');
     const depends = c.status === 'held'
       ? `<div class="cond-depends"><b>Depends on:</b> ${esc(c.heldOn || 'a condition the room attached')}</div>` : '';
     // The one-line reason: the agent's live judgement when it has one,
@@ -1785,6 +1809,7 @@ function condCardHtml(c){
       <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-edit-btn" title="Edit this condition - the agent picks up the change" onclick="startCondEdit('${esc(c.id)}')">✎</button><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
       ${depends}
+      ${reasonLine}
       ${expanded ? `<div class="cond-why">${esc(why)}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>
     </div>`;

@@ -49,6 +49,12 @@ export type LineDecision = {
     /** Phase 18: HELD conditions whose attached condition the room just
      *  confirmed as met, unconditionally - they are now closed */
     releasedIds: string[];
+    /** Phase 18 M2: conditions whose rationale (the reason, said out loud)
+     *  was captured or changed on this turn */
+    rationaleIds: string[];
+    /** Phase 18 M2: one short chat question asking the room WHY a decision
+     *  was made - at most once per condition, never subject to the nudge cooldown */
+    reasonAsk: NudgeDecision | null;
     /** Phase 5: the newest line named the owner in a way that needs them */
     mention: { speaker: string, quote: string } | null;
 };
@@ -71,6 +77,9 @@ export class Nudger {
     private context = '';
     /** Phase 5: the owner's name from the briefing - lets the agent spot when the room needs them */
     private ownerName = '';
+    /** Phase 18 M2: the brief's "Reasons required" switch - ask for the
+     *  reason behind EVERY decision, not only the consequential ones */
+    private reasonsRequired = false;
     private lastNudgeAt = 0;
 
     constructor(args: { botId: string, apiKey: string, conditions: Condition[] }) {
@@ -89,6 +98,11 @@ export class Nudger {
         this.ownerName = name.trim();
     }
 
+    /** Phase 18 M2: the brief's "Reasons required" switch */
+    public setReasonsRequired(required: boolean) {
+        this.reasonsRequired = Boolean(required);
+    }
+
     /**
      * Phase 4: judges the whole conversation so far (the caller passes a
      * rolling window of transcript lines, newest last) against every open
@@ -103,7 +117,7 @@ export class Nudger {
         transcript: Array<{ speaker: string, text: string }>,
         time: TimeState,
     }): Promise<LineDecision> {
-        const quiet: LineDecision = { nudge: null, resolvedIds: [], revisedIds: [], reopenedIds: [], heldIds: [], releasedIds: [], mention: null };
+        const quiet: LineDecision = { nudge: null, resolvedIds: [], revisedIds: [], reopenedIds: [], heldIds: [], releasedIds: [], rationaleIds: [], reasonAsk: null, mention: null };
         // Phase 13: closed conditions are NOT frozen until the meeting ends -
         // the room revises decisions ("50" → "actually, make it 80"), so the
         // brain keeps watching even when everything is closed.
@@ -125,7 +139,7 @@ export class Nudger {
                 },
                 body: JSON.stringify({
                     model: 'claude-opus-4-8',
-                    max_tokens: 700,
+                    max_tokens: 1000,
                     system: this._buildSystemPrompt(args.time),
                     messages: [
                         { role: 'user', content: `Conversation so far (oldest first; the LAST line just arrived):\n${conversation}` },
@@ -161,12 +175,25 @@ export class Nudger {
             const reopenedIds: string[] = [];
             const heldIds: string[] = [];
             const releasedIds: string[] = [];
+            const rationaleIds: string[] = [];
             const refresh = (condition: Condition, judged: { reason: string, why: string, evidence: Array<{ speaker: string, quote: string }> }) => {
                 if (judged.reason) condition.note = judged.reason;
                 if (judged.why) condition.why = judged.why;
                 // Phase 5: keep the verbatim receipt behind the current judgement.
                 if (judged.evidence.length > 0) condition.evidence = judged.evidence;
             };
+            // Phase 18 M2: the reason behind the decision - recorded ONLY with
+            // the verbatim line it came from, so it can never be invented.
+            for (const judged of decision.conditions) {
+                const condition = this.conditions.find((c) => c.id === judged.id);
+                if (!condition || !judged.rationale || !judged.rationaleEvidence) continue;
+                if (condition.rationale !== judged.rationale) {
+                    condition.rationale = judged.rationale;
+                    condition.rationaleEvidence = judged.rationaleEvidence;
+                    rationaleIds.push(condition.id);
+                    console.log(`RATIONALE >>> ${condition.label} - ${condition.rationale}`);
+                }
+            }
             // Phase 18: a qualified yes ("approved, subject to legal") is not
             // a decision. The condition is HELD OPEN on what it depends on.
             const hold = (condition: Condition, judged: { reason: string, why: string, heldOn: string, evidence: Array<{ speaker: string, quote: string }> }) => {
@@ -260,9 +287,31 @@ export class Nudger {
                 }
             }
 
+            // 2b. Phase 18 M2: ask the room for the reason - only for a CLOSED
+            //     condition with no rationale on record, and only ONCE per
+            //     condition. It is a one-off question, not a nudge: it skips
+            //     the cooldown, and takes the place of a nudge on this turn.
+            let reasonAsk: NudgeDecision | null = null;
+            if (decision.reasonAsk) {
+                const condition = this.conditions.find((c) => c.id === decision.reasonAsk!.conditionId);
+                if (condition && condition.status === 'closed' && !condition.rationale && !condition.rationaleAsked) {
+                    condition.rationaleAsked = true;
+                    this.lastNudgeAt = Date.now();
+                    const message = decision.reasonAsk.message.startsWith('[CLARUS]')
+                        ? decision.reasonAsk.message
+                        : `[CLARUS] ${decision.reasonAsk.message}`;
+                    reasonAsk = { text: message, conditionId: condition.id };
+                    if (nudge) {
+                        const nudged = this.conditions.find((c) => c.id === nudge!.conditionId);
+                        if (nudged && nudged.nudges > 0) nudged.nudges--; // the nudge was not posted
+                        nudge = null;
+                    }
+                }
+            }
+
             // 3. Phase 5: pass along an owner mention, but only when a name was briefed.
             const mention = this.ownerName ? decision.mention : null;
-            return { nudge, resolvedIds, revisedIds, reopenedIds, heldIds, releasedIds, mention };
+            return { nudge, resolvedIds, revisedIds, reopenedIds, heldIds, releasedIds, rationaleIds, reasonAsk, mention };
         } catch (error) {
             this.logger.error({ message: 'Nudge decision failed', data: error });
             return quiet;
@@ -344,6 +393,23 @@ export class Nudger {
             '   A closed condition can also become "held" (with heldOn) if the room attaches a condition',
             '   to a decision it had already made.',
             '',
+            '1d. THE REASON, NOT JUST THE RESULT. For EVERY condition, also report WHY the room chose that',
+            '   outcome - but ONLY if someone said the reason out loud:',
+            '   - rationale: one plain sentence giving the stated reason ("Moved to the 14th because the',
+            '     pen test report lands on the 12th"). This is NOT the same as "reason" above, which is the',
+            '     board status line.',
+            '   - rationaleEvidence: the ONE line the reason came from, verbatim: {"speaker","quote"}.',
+            '   NEVER invent, infer or guess a rationale. If nobody stated one, use "rationale": "" and',
+            '   "rationaleEvidence": null.',
+            '',
+            '1e. ASK FOR THE REASON. Look at the CLOSED conditions marked "NO reason on record, not yet',
+            '   asked". ' + (this.reasonsRequired
+                ? 'Your owner requires a reason for EVERY decision: if any such condition exists and'
+                : 'If one of them is CONSEQUENTIAL (it sets a date, money, scope, an owner or an approval) and'),
+            '   nobody has stated the reason in the conversation, set reasonAsk to ONE short, friendly',
+            '   question for the room, e.g. "[CLARUS] For the log, what\'s the reason for going on the 14th?"',
+            '   Ask about one condition at most. Never suggest a reason yourself. Otherwise reasonAsk is null.',
+            '',
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
             '   OPEN or HELD condition? Nudge when the conversation is drifting past or away from it.',
             '   For a HELD condition the nudge asks whether the attached condition is now met, e.g.',
@@ -361,7 +427,9 @@ export class Nudger {
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
             '{"conditions": [{"id": "<id>", "status": "open"|"held"|"closed"|"revised"|"reopened", "reason": "...",',
-            '   "why": "...", "heldOn": "<only when held>", "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
+            '   "why": "...", "heldOn": "<only when held>", "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}],',
+            '   "rationale": "...", "rationaleEvidence": {"speaker": "<name>", "quote": "<their exact words>"}}, ...],',
+            ' "reasonAsk": {"conditionId": "<id>", "message": "[CLARUS] ..."},',
             ' "nudge": {"conditionId": "<id>", "message": "[CLARUS] ..."}' + (this.ownerName ? ',' : '}'),
             ...(this.ownerName ? [' "mention": {"speaker": "<name>", "quote": "<their exact words>"}}'] : []),
             'Include EVERY condition in "conditions": open ones as "open", "held" or "closed"; held ones as',
@@ -517,6 +585,7 @@ export class Nudger {
             ownerName: string,
             conditions: string[],
             context: string,
+            reasonsRequired: boolean,
         } | null,
     } | null> {
         const inProgress = (m: { start: string, durationMinutes: number }) => {
@@ -567,6 +636,11 @@ export class Nudger {
             '   question; never spend a whole turn on them. Scheduled length comes from the calendar; for a',
             '   pasted link default to 30 unless they say otherwise.',
             '',
+            '5. REASONS REQUIRED. Set brief.reasonsRequired to true ONLY if the owner asked for it (a',
+            '   "Confirmed conditions" message ending "Reasons required: yes", or words like "I need a',
+            '   reason for every decision"). It makes the agent ask the room why for every decision that',
+            '   closes without a stated reason. Otherwise false. Never spend a turn asking about it.',
+            '',
             ...calendarLines,
             '',
             `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
@@ -576,7 +650,7 @@ export class Nudger {
             ' "proposeConditions": ["..."]|null,',
             ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
             '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
-            '   "context": "..."}}',
+            '   "context": "...", "reasonsRequired": true|false}}',
             'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
             'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
             'agent in now. You\'ll see it on your board.").',
@@ -620,7 +694,7 @@ export class Nudger {
                 reply?: unknown, proposeMeeting?: unknown, showList?: unknown, proposeConditions?: unknown,
                 brief?: {
                     meetingIndex?: unknown, meetingUrl?: unknown, meetingName?: unknown,
-                    lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown,
+                    lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown, reasonsRequired?: unknown,
                 } | null,
             };
             if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
@@ -635,6 +709,7 @@ export class Nudger {
                         ? parsed.brief.conditions.filter((c): c is string => typeof c === 'string' && Boolean(c.trim())).map((c) => c.trim())
                         : [],
                     context: typeof parsed.brief.context === 'string' ? parsed.brief.context.trim() : '',
+                    reasonsRequired: parsed.brief.reasonsRequired === true,
                 }
                 : null;
             const proposeConditions = Array.isArray(parsed.proposeConditions)
@@ -668,7 +743,7 @@ export class Nudger {
     }): Promise<string | null> {
         const boardLines = this.conditions.map((c) => {
             const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
-            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${c.rationale ? ` [why, as stated in the room: ${c.rationale}]` : (c.status === 'closed' ? ' [no reason was stated]' : '')}${evidence ? ` [evidence: ${evidence}]` : ''}`;
         }).join('\n');
         const eventLines = args.events
             .filter((e) => e.type !== 'speaker-seen') // participants are passed separately
@@ -749,7 +824,9 @@ export class Nudger {
                 ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
                 : c.status === 'held'
                     ? ` (the room said yes, but it depends on: ${c.heldOn ?? 'an attached condition'}; asked about it ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
-                    : ` (recorded outcome: ${c.note ?? 'settled in the room'})`}`
+                    : ` (recorded outcome: ${c.note ?? 'settled in the room'}; ${c.rationale
+                        ? `reason on record: "${c.rationale}"`
+                        : `NO reason on record, ${c.rationaleAsked ? 'already asked once - do not ask again' : 'not yet asked'}`})`}`
         ).join('\n');
     }
 
@@ -771,7 +848,7 @@ export class Nudger {
     }, summary: string | null): Promise<MeetingAction[]> {
         const boardLines = this.conditions.map((c) => {
             const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
-            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${c.rationale ? ` [why, as stated in the room: ${c.rationale}]` : (c.status === 'closed' ? ' [no reason was stated]' : '')}${evidence ? ` [evidence: ${evidence}]` : ''}`;
         }).join('\n');
         const eventLines = args.events
             .filter((e) => e.type !== 'speaker-seen')
@@ -916,7 +993,8 @@ export class Nudger {
 
     /** Pulls the JSON decision out of the model's reply; null if it can't be read */
     private _parseDecision(text: string): {
-        conditions: Array<{ id: string, status: 'open' | 'held' | 'closed' | 'revised' | 'reopened', reason: string, why: string, heldOn: string, evidence: Array<{ speaker: string, quote: string }> }>,
+        conditions: Array<{ id: string, status: 'open' | 'held' | 'closed' | 'revised' | 'reopened', reason: string, why: string, heldOn: string, evidence: Array<{ speaker: string, quote: string }>, rationale: string, rationaleEvidence: { speaker: string, quote: string } | null }>,
+        reasonAsk: { conditionId: string, message: string } | null,
         nudge: { conditionId: string, message: string } | null,
         mention: { speaker: string, quote: string } | null,
     } | null {
@@ -929,10 +1007,11 @@ export class Nudger {
             const parsed = JSON.parse(cleaned) as {
                 conditions?: unknown,
                 nudge?: { conditionId?: unknown, message?: unknown } | null,
+                reasonAsk?: { conditionId?: unknown, message?: unknown } | null,
                 mention?: { speaker?: unknown, quote?: unknown } | null,
             };
             const conditions = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
-                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, heldOn?: unknown, evidence?: unknown } =>
+                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, heldOn?: unknown, evidence?: unknown, rationale?: unknown, rationaleEvidence?: unknown } =>
                     Boolean(item) && typeof (item as { id?: unknown }).id === 'string')
                 .map((item) => ({
                     id: item.id,
@@ -949,7 +1028,18 @@ export class Nudger {
                             && typeof (line as { quote?: unknown }).quote === 'string'
                             && Boolean((line as { quote: string }).quote.trim()))
                         .slice(0, 3),
+                    rationale: typeof item.rationale === 'string' ? item.rationale.trim() : '',
+                    rationaleEvidence: ((): { speaker: string, quote: string } | null => {
+                        const line = item.rationaleEvidence as { speaker?: unknown, quote?: unknown } | null | undefined;
+                        return (line && typeof line.speaker === 'string' && typeof line.quote === 'string' && line.quote.trim())
+                            ? { speaker: line.speaker, quote: line.quote }
+                            : null;
+                    })(),
                 }));
+            const reasonAsk = (parsed.reasonAsk && typeof parsed.reasonAsk.conditionId === 'string'
+                && typeof parsed.reasonAsk.message === 'string' && parsed.reasonAsk.message.trim())
+                ? { conditionId: parsed.reasonAsk.conditionId, message: parsed.reasonAsk.message }
+                : null;
             const nudge = (parsed.nudge && typeof parsed.nudge.conditionId === 'string' && typeof parsed.nudge.message === 'string')
                 ? { conditionId: parsed.nudge.conditionId, message: parsed.nudge.message }
                 : null;
@@ -957,7 +1047,7 @@ export class Nudger {
                 && typeof parsed.mention.quote === 'string' && parsed.mention.quote.trim())
                 ? { speaker: parsed.mention.speaker, quote: parsed.mention.quote }
                 : null;
-            return { conditions, nudge, mention };
+            return { conditions, nudge, reasonAsk, mention };
         } catch {
             this.logger.warn({ message: 'Could not parse decision JSON', data: cleaned });
             return null;

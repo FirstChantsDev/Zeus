@@ -59,6 +59,8 @@ type BriefFromHub = {
     context: string;
     lengthMinutes: number;
     ownerName: string;
+    /** Phase 18 M2: ask the room for the reason behind EVERY decision */
+    reasonsRequired?: boolean;
     meetingUrl: string;
     /** ISO start time from the calendar pick - null when unknown (pasted link) */
     meetingStart?: string | null;
@@ -166,6 +168,7 @@ const runMeeting = async (brief: BriefFromHub) => {
     const nudger = new Nudger({ botId, apiKey: API_KEY, conditions });
     nudger.setContext(brief.context);
     nudger.setOwner(brief.ownerName);
+    nudger.setReasonsRequired(brief.reasonsRequired === true); // Phase 18 M2
 
     // The meeting's audit trail - events appended as they happen; the
     // finished record goes to the hub, which persists it to disk.
@@ -249,6 +252,21 @@ const runMeeting = async (brief: BriefFromHub) => {
             mentions.push({ ...decision.mention, at: new Date().toISOString() });
             record.log('owner-mentioned', `${decision.mention.speaker} said the room needs the owner: "${decision.mention.quote}"`, { ...decision.mention });
         }
+        // Phase 18 M2: the reason behind a decision, as said in the room.
+        for (const id of decision.rationaleIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition?.rationale) {
+                record.log('rationale-captured', `Reason captured for "${condition.label}": ${condition.rationale}`, {
+                    id, label: condition.label, rationale: condition.rationale, rationaleEvidence: condition.rationaleEvidence ?? null,
+                });
+            }
+        }
+        if (decision.reasonAsk) {
+            console.log(`REASON ASK >>> (${decision.reasonAsk.conditionId}) ${decision.reasonAsk.text}`);
+            nudges.push({ text: decision.reasonAsk.text, conditionId: decision.reasonAsk.conditionId, steered: false, at: new Date().toISOString() });
+            record.log('rationale-asked', `Asked the room for the reason: ${decision.reasonAsk.text}`, { conditionId: decision.reasonAsk.conditionId, text: decision.reasonAsk.text });
+            await chat.sendMessage(decision.reasonAsk.text);
+        }
         if (decision.nudge) {
             console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
             nudges.push({ text: decision.nudge.text, conditionId: decision.nudge.conditionId, steered: false, at: new Date().toISOString() });
@@ -269,7 +287,7 @@ const runMeeting = async (brief: BriefFromHub) => {
             if (reopened) {
                 condition.status = 'open';
                 condition.nudges = 0;
-                delete condition.heldOn;
+                delete condition.heldOn; delete condition.rationale; delete condition.rationaleEvidence; delete condition.rationaleAsked;
                 delete condition.note;
                 delete condition.why;
                 delete condition.evidence;
@@ -525,6 +543,7 @@ const runMeeting = async (brief: BriefFromHub) => {
         // wipes the meeting's drawer. The summary is one more paid call,
         // so it counts against the daily cap and is skipped if over it.
         try {
+            record.logMissingRationales(conditions);
             const nudgesWithFates = nudges.map((nudge, index) => {
                 const condition = nudge.conditionId === null ? undefined : conditions.find((c) => c.id === nudge.conditionId);
                 const status = nudge.conditionId === null ? 'sent'

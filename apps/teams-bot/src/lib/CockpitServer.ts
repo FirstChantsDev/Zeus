@@ -19,7 +19,7 @@ export type BriefChatHandler = (
     proposeConditions: string[] | null,
     brief: {
         meetingIndex: number | null, meetingUrl: string | null, meetingName: string,
-        lengthMinutes: number, ownerName: string, conditions: string[], context: string,
+        lengthMinutes: number, ownerName: string, conditions: string[], context: string, reasonsRequired: boolean,
     } | null,
 } | null>;
 
@@ -60,6 +60,8 @@ export type Brief = {
     lengthMinutes: number;
     /** Phase 5: the owner's name, so the agent can flag when the room needs them ('' if not given) */
     ownerName: string;
+    /** Phase 18 M2: ask the room for the reason behind EVERY decision */
+    reasonsRequired: boolean;
     /** Phase 10: the meeting link to join - from a calendar pick, a pasted
      *  link in the form, or (fallback) the URL the bot was launched with. */
     meetingUrl: string;
@@ -424,7 +426,7 @@ export class CockpitServer {
     private _acceptBrief(parsed: {
         meetingName?: unknown, conditions?: unknown, context?: unknown,
         lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
-        meetingStart?: unknown, calendarEventId?: unknown, attendees?: unknown,
+        meetingStart?: unknown, calendarEventId?: unknown, attendees?: unknown, reasonsRequired?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
             return { ok: false, status: 409, error: 'Agent is already briefed - restart the bot to brief it again.' };
@@ -484,7 +486,7 @@ export class CockpitServer {
         this.meetingName = meetingName;
         this.scheduledMinutes = lengthMinutes;
         this.ownerName = ownerName;
-        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees }); // populates the shared conditions array
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, reasonsRequired: parsed.reasonsRequired === true }); // populates the shared conditions array
         return { ok: true };
     }
 
@@ -576,6 +578,7 @@ export class CockpitServer {
                         context: result.brief.context,
                         lengthMinutes: picked?.durationMinutes ?? result.brief.lengthMinutes,
                         ownerName: result.brief.ownerName,
+                        reasonsRequired: result.brief.reasonsRequired,
                         meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
                         meetingStart: picked?.start,
                         calendarEventId: picked?.id,
@@ -692,7 +695,7 @@ export class CockpitServer {
                     if (reopened) {
                         condition.status = 'open';
                         condition.nudges = 0;
-                        delete condition.heldOn;
+                        delete condition.heldOn; delete condition.rationale; delete condition.rationaleEvidence; delete condition.rationaleAsked;
                         delete condition.note;
                         delete condition.why;
                         delete condition.evidence;

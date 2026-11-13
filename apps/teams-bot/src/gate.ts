@@ -88,6 +88,7 @@ const main = async () => {
         console.log(`\n=== Clarus bot shutting down: ${reason}. No further API calls after the record is saved. ===\n`);
         try {
             if (wasBriefed) {
+                record.logMissingRationales(conditions);
                 const snapshot = cockpit.snapshotForRecord();
                 let summary: string | null = null;
                 let actions: MeetingAction[] = [];
@@ -170,6 +171,21 @@ const main = async () => {
             cockpit.addMention(decision.mention);
             record.log('owner-mentioned', `${decision.mention.speaker} said the room needs the owner: "${decision.mention.quote}"`, { ...decision.mention });
         }
+        // Phase 18 M2: the reason behind a decision, as said in the room.
+        for (const id of decision.rationaleIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition?.rationale) {
+                record.log('rationale-captured', `Reason captured for "${condition.label}": ${condition.rationale}`, {
+                    id, label: condition.label, rationale: condition.rationale, rationaleEvidence: condition.rationaleEvidence ?? null,
+                });
+            }
+        }
+        if (decision.reasonAsk) {
+            console.log(`REASON ASK >>> (${decision.reasonAsk.conditionId}) ${decision.reasonAsk.text}`);
+            cockpit.addNudge({ text: decision.reasonAsk.text, conditionId: decision.reasonAsk.conditionId });
+            record.log('rationale-asked', `Asked the room for the reason: ${decision.reasonAsk.text}`, { conditionId: decision.reasonAsk.conditionId, text: decision.reasonAsk.text });
+            await chat!.sendMessage(decision.reasonAsk.text);
+        }
         if (decision.nudge) {
             console.log(`NUDGE >>> (${decision.nudge.conditionId}) ${decision.nudge.text}`);
             cockpit.addNudge({ text: decision.nudge.text, conditionId: decision.nudge.conditionId });
@@ -222,6 +238,7 @@ const main = async () => {
             applyBrief(brief.labels);
             nudger?.setContext(brief.context);
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
+            nudger?.setReasonsRequired(brief.reasonsRequired); // Phase 18 M2
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
             activeMeetingUrl = brief.meetingUrl; // Phase 10: calendar pick / pasted link / launch arg
             scheduledStartIso = brief.meetingStart; // Phase 12: null unless picked from the calendar

@@ -121,6 +121,30 @@ goal is being ignored, and reporting everything to a private local cockpit.
   existing one-call-per-caption-line judgement. Golden rule in the
   prompt: the room decides; Clarus only holds, records and asks.
 
+- **Phase 18 Milestone 2 - the reason, not just the result (2026-11).**
+  Each condition gains a `rationale` (WHY the room chose the outcome)
+  and `rationaleEvidence` (the verbatim line it came from). Naming, to
+  avoid confusion: `note` = the board's one-line status, `why` = the
+  agent's explanation of where the condition stands, `rationale` = the
+  room's own stated reason. The judging call extracts a rationale only
+  when someone said it out loud; code refuses any rationale that arrives
+  without a quote, so one can never be invented. When a condition closes
+  with no reason on record, the agent posts ONE short question ("For the
+  log, what's the reason for going on the 14th?"), at most once per
+  condition (`rationaleAsked`); the question skips the nudge cooldown and
+  takes the place of a nudge on that turn. Two modes: by default it asks
+  only for consequential decisions (a date, money, scope, an owner, an
+  approval); with **Reasons required** on, it asks for every decision.
+  The switch is a checkbox under the condition chips in the briefing chat
+  (it travels as `reasonsRequired` on the brief; saying "I need a reason
+  for every decision" in the chat also sets it; `/setup` accepts it too).
+  Cockpit cards and History show **Why:** with the quote; History says so
+  plainly when no reason was stated. Audit events: `rationale-captured`,
+  `rationale-asked`, and `rationale-missing` (written at meeting end for
+  each decided condition without a reason). Still one API call per
+  caption line; the reply budget rose from 700 to 1000 tokens to fit the
+  extra fields.
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):
