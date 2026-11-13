@@ -275,8 +275,9 @@ const buildSummaryJson = () => ({
         conditionsClosed: meeting.conditions.filter((c) => c.status === 'closed').length,
         // One dot per condition on the phone dashboard: jade closed, red
         // needs-you (2+ nudges while open), amber still open.
-        conditionStates: meeting.conditions.map((c) => c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open')),
-        needsYou: meeting.conditions.some((c) => c.status === 'open' && c.nudges >= 2),
+        // Phase 18: 'held' = the room said yes with a condition attached - held open, not closed.
+        conditionStates: meeting.conditions.map((c) => c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : (c.status === 'held' ? 'held' : 'open'))),
+        needsYou: meeting.conditions.some((c) => c.status !== 'closed' && c.nudges >= 2),
         mentioned: meeting.mentions.length > 0,
     })),
 });
@@ -1196,9 +1197,10 @@ const server = http.createServer(async (req, res) => {
                 // No bot attached (demo mode) - apply directly to hub state.
                 if (parsed.op === 'edit') {
                     const condition = meeting.conditions.find((c) => c.id === parsed.id);
-                    if (condition.status === 'closed') {
+                    if (condition.status !== 'open') { // closed OR held (Phase 18)
                         condition.status = 'open';
                         condition.nudges = 0;
+                        delete condition.heldOn;
                         delete condition.note; delete condition.why; delete condition.evidence;
                     }
                     condition.label = label;

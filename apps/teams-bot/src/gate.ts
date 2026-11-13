@@ -145,6 +145,25 @@ const main = async () => {
                 });
             }
         }
+        // Phase 18: a qualified yes is HELD OPEN, not closed - and released
+        // (closed) only when the room confirms the attached condition is met.
+        for (const id of decision.heldIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-held', `Condition held open: "${condition.label}" - depends on: ${condition.heldOn ?? 'an attached condition'}`, {
+                    id, label: condition.label, heldOn: condition.heldOn ?? null, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
+        for (const id of decision.releasedIds) {
+            if (transcriptRecord) transcriptRecord.hit = true;
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-released', `Hold released, condition closed: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
         // Phase 5: the room just said it needs the owner.
         if (decision.mention) {
             console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);

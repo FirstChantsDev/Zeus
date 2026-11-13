@@ -30,6 +30,8 @@ export type AuditEvent = {
         | 'meeting-joined'
         | 'speaker-seen'
         | 'condition-closed'
+        | 'condition-held'
+        | 'condition-released'
         | 'condition-revised'
         | 'condition-reopened'
         | 'condition-edited'

@@ -43,6 +43,12 @@ export type LineDecision = {
     /** Phase 13: closed conditions the room explicitly UNSETTLED without a
      *  replacement decision - flipped back to open */
     reopenedIds: string[];
+    /** Phase 18: conditions the room said yes to WITH a condition attached
+     *  ("approved, subject to legal") - held open, not closed */
+    heldIds: string[];
+    /** Phase 18: HELD conditions whose attached condition the room just
+     *  confirmed as met, unconditionally - they are now closed */
+    releasedIds: string[];
     /** Phase 5: the newest line named the owner in a way that needs them */
     mention: { speaker: string, quote: string } | null;
 };
@@ -97,7 +103,7 @@ export class Nudger {
         transcript: Array<{ speaker: string, text: string }>,
         time: TimeState,
     }): Promise<LineDecision> {
-        const quiet: LineDecision = { nudge: null, resolvedIds: [], revisedIds: [], reopenedIds: [], mention: null };
+        const quiet: LineDecision = { nudge: null, resolvedIds: [], revisedIds: [], reopenedIds: [], heldIds: [], releasedIds: [], mention: null };
         // Phase 13: closed conditions are NOT frozen until the meeting ends -
         // the room revises decisions ("50" → "actually, make it 80"), so the
         // brain keeps watching even when everything is closed.
@@ -153,22 +159,35 @@ export class Nudger {
             const resolvedIds: string[] = [];
             const revisedIds: string[] = [];
             const reopenedIds: string[] = [];
+            const heldIds: string[] = [];
+            const releasedIds: string[] = [];
+            const refresh = (condition: Condition, judged: { reason: string, why: string, evidence: Array<{ speaker: string, quote: string }> }) => {
+                if (judged.reason) condition.note = judged.reason;
+                if (judged.why) condition.why = judged.why;
+                // Phase 5: keep the verbatim receipt behind the current judgement.
+                if (judged.evidence.length > 0) condition.evidence = judged.evidence;
+            };
+            // Phase 18: a qualified yes ("approved, subject to legal") is not
+            // a decision. The condition is HELD OPEN on what it depends on.
+            const hold = (condition: Condition, judged: { reason: string, why: string, heldOn: string, evidence: Array<{ speaker: string, quote: string }> }) => {
+                condition.status = 'held';
+                condition.heldOn = judged.heldOn || condition.heldOn || 'a condition the room attached';
+                condition.nudges = 0; // a fresh push cycle: "is that condition met yet?"
+                refresh(condition, judged);
+                heldIds.push(condition.id);
+                console.log(`CONDITION HELD >>> ${condition.label} - depends on: ${condition.heldOn}`);
+            };
             for (const judged of decision.conditions) {
                 const condition = this.conditions.find((c) => c.id === judged.id);
                 if (!condition) {
                     continue; // unknown id
                 }
                 if (condition.status === 'open') {
-                    if (judged.reason) {
-                        condition.note = judged.reason;
+                    if (judged.status === 'held') {
+                        hold(condition, judged);
+                        continue;
                     }
-                    if (judged.why) {
-                        condition.why = judged.why;
-                    }
-                    // Phase 5: keep the verbatim receipt behind the current judgement.
-                    if (judged.evidence.length > 0) {
-                        condition.evidence = judged.evidence;
-                    }
+                    refresh(condition, judged);
                     if (judged.status === 'closed') {
                         condition.status = 'closed';
                         resolvedIds.push(condition.id);
@@ -179,21 +198,46 @@ export class Nudger {
                     }
                     continue;
                 }
+                if (condition.status === 'held') {
+                    if (judged.status === 'closed') {
+                        // The room confirmed the attached condition is met, no strings left.
+                        condition.status = 'closed';
+                        delete condition.heldOn;
+                        refresh(condition, judged);
+                        releasedIds.push(condition.id);
+                        console.log(`CONDITION RELEASED >>> ${condition.label} - ${condition.note ?? 'the attached condition was met'}`);
+                        for (const line of condition.evidence ?? []) {
+                            console.log(`  ⤷ ${line.speaker}: "${line.quote}"`);
+                        }
+                    } else if (judged.status === 'held') {
+                        // Still held - keep the board current (what it waits on can shift).
+                        if (judged.heldOn) condition.heldOn = judged.heldOn;
+                        refresh(condition, judged);
+                    } else if (judged.status === 'open' || judged.status === 'reopened') {
+                        // The room withdrew even the conditional yes.
+                        condition.status = 'open';
+                        delete condition.heldOn;
+                        condition.nudges = 0;
+                        refresh(condition, judged);
+                        reopenedIds.push(condition.id);
+                        console.log(`CONDITION REOPENED >>> ${condition.label} - ${condition.note ?? 'the conditional yes was withdrawn'}`);
+                    }
+                    continue;
+                }
                 // A condition that is currently CLOSED:
                 if (judged.status === 'revised') {
                     // Still settled - but the agreed outcome changed. New facts, same jade card.
-                    if (judged.reason) condition.note = judged.reason;
-                    if (judged.why) condition.why = judged.why;
-                    if (judged.evidence.length > 0) condition.evidence = judged.evidence;
+                    refresh(condition, judged);
                     revisedIds.push(condition.id);
                     console.log(`CONDITION REVISED >>> ${condition.label} - ${condition.note ?? 'the agreed outcome changed'}`);
+                } else if (judged.status === 'held') {
+                    // The room attached a condition to a decision it had already made.
+                    hold(condition, judged);
                 } else if (judged.status === 'reopened' || judged.status === 'open') {
                     // The room walked the decision back without a replacement.
                     condition.status = 'open';
                     condition.nudges = 0; // a fresh push cycle for the re-opened question
-                    if (judged.reason) condition.note = judged.reason;
-                    if (judged.why) condition.why = judged.why;
-                    if (judged.evidence.length > 0) condition.evidence = judged.evidence;
+                    refresh(condition, judged);
                     reopenedIds.push(condition.id);
                     console.log(`CONDITION REOPENED >>> ${condition.label} - ${condition.note ?? 'the room unsettled it'}`);
                 }
@@ -204,7 +248,7 @@ export class Nudger {
             //    condition that just closed above.
             let nudge: NudgeDecision | null = null;
             if (decision.nudge) {
-                const condition = this.conditions.find((c) => c.id === decision.nudge!.conditionId && c.status === 'open');
+                const condition = this.conditions.find((c) => c.id === decision.nudge!.conditionId && c.status !== 'closed');
                 const quietLongEnough = Date.now() - this.lastNudgeAt >= Nudger.NUDGE_COOLDOWN_MS;
                 if (condition && quietLongEnough) {
                     condition.nudges++;
@@ -218,7 +262,7 @@ export class Nudger {
 
             // 3. Phase 5: pass along an owner mention, but only when a name was briefed.
             const mention = this.ownerName ? decision.mention : null;
-            return { nudge, resolvedIds, revisedIds, reopenedIds, mention };
+            return { nudge, resolvedIds, revisedIds, reopenedIds, heldIds, releasedIds, mention };
         } catch (error) {
             this.logger.error({ message: 'Nudge decision failed', data: error });
             return quiet;
@@ -254,10 +298,21 @@ export class Nudger {
             'unfolds across several lines and speakers - e.g. "what\'s the budget?" / "50k" / "yes, approved"',
             'across three speakers clearly settles a budget condition even though no single line does.',
             '',
+            'THE DECISION STANDARD. The room decides; you only hold, record and ask. A condition is',
+            '"closed" ONLY when all three are true:',
+            '   (a) a clear decider - an identifiable person stated or agreed it out loud;',
+            '   (b) a concrete outcome - a number, a date, a named owner, or a plain yes/no;',
+            '   (c) UNCONDITIONAL assent - no strings attached.',
+            'A QUALIFIED yes is not a decision. "Approved, subject to legal checking the wording", "yes if',
+            'finance signs off", "fine as long as the pen test passes" all fail (c): the status is "held",',
+            'never "closed". VAGUE assent fails (a) or (b): "sounds fine I think", "probably Tom", "should',
+            'be ok" stay "open" with the reason starting "Unclear wording:".',
+            '',
             '1. JUDGE every OPEN condition:',
-            '   - status: "closed" ONLY if the room has clearly settled it - a definite decision stated or',
-            '     agreed out loud, possibly across several lines. A vague mention or an unanswered question',
-            '     does NOT settle it. Otherwise "open".',
+            '   - status: "closed" if it meets the decision standard above (the agreement may unfold across',
+            '     several lines). "held" if the room said yes but attached a condition - then also give',
+            '     heldOn: the attached condition in a few plain words ("legal accepting the DPA wording").',
+            '     Otherwise "open". A vague mention or an unanswered question does NOT settle it.',
             '   - reason: ONE short line for the owner\'s board. If closed: who/what settled it. If open:',
             '     where it stands in the room right now (e.g. "Not raised yet", "Waiting on finance").',
             '   - why: 1-2 plain-English sentences telling the fuller story - what is blocking it, who said',
@@ -279,8 +334,21 @@ export class Nudger {
             '     ("actually, let\'s not lock the budget yet") - give reason/why/evidence for why it is',
             '     unsettled again.',
             '',
+            '1c. RE-CHECK every HELD condition - each one below shows what it depends on. For each one:',
+            '   - status "closed" ONLY when the room has clearly confirmed that the attached condition is',
+            '     now met, with nothing new attached ("the wording\'s accepted, no conditions"). Give',
+            '     reason/why and, as evidence, the CONFIRMING line(s);',
+            '   - status "held" if it still depends on something (the same thing, or a new one) - give',
+            '     heldOn again, and reason/why/evidence;',
+            '   - status "open" only if the room withdrew even the conditional yes.',
+            '   A closed condition can also become "held" (with heldOn) if the room attaches a condition',
+            '   to a decision it had already made.',
+            '',
             '2. NUDGE: should you post one short chat message pushing the room toward the most important',
-            '   OPEN condition? Nudge when the conversation is drifting past or away from an open condition.',
+            '   OPEN or HELD condition? Nudge when the conversation is drifting past or away from it.',
+            '   For a HELD condition the nudge asks whether the attached condition is now met, e.g.',
+            '   "Quick check: is the DPA wording accepted, or is it still a blocker?" Never suggest the',
+            '   answer and never imply the decision is made - the room confirms, you only ask.',
             '   Do NOT nudge if the room is actively discussing that condition and making progress.',
             '   A nudge is 1-2 short sentences, polite but direct, starts with the marker [CLARUS], and asks',
             '   for a concrete decision.',
@@ -292,12 +360,12 @@ export class Nudger {
             ...mentionTask,
             '',
             'Reply with ONLY strict JSON on one line, no other text, exactly this shape:',
-            '{"conditions": [{"id": "<id>", "status": "open"|"closed"|"revised"|"reopened", "reason": "...",',
-            '   "why": "...", "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
+            '{"conditions": [{"id": "<id>", "status": "open"|"held"|"closed"|"revised"|"reopened", "reason": "...",',
+            '   "why": "...", "heldOn": "<only when held>", "evidence": [{"speaker": "<name>", "quote": "<their exact words>"}]}, ...],',
             ' "nudge": {"conditionId": "<id>", "message": "[CLARUS] ..."}' + (this.ownerName ? ',' : '}'),
             ...(this.ownerName ? [' "mention": {"speaker": "<name>", "quote": "<their exact words>"}}'] : []),
-            'Include EVERY condition in "conditions": open ones as "open" or "closed"; closed ones as',
-            '"closed" (unchanged), "revised", or "reopened".',
+            'Include EVERY condition in "conditions": open ones as "open", "held" or "closed"; held ones as',
+            '"held", "closed" or "open"; closed ones as "closed" (unchanged), "revised", "held" or "reopened".',
             'Use "nudge": null when you should stay quiet' + (this.ownerName ? ', and "mention": null unless the newest line genuinely needs your owner.' : '.'),
         ].join('\n');
     }
@@ -405,7 +473,7 @@ export class Nudger {
                 const condition = this.conditions.find((c) => c.id === parsed.conditionId);
                 if (condition) {
                     conditionId = condition.id;
-                    if (condition.status === 'open') {
+                    if (condition.status !== 'closed') {
                         condition.nudges++;
                     }
                 }
@@ -600,7 +668,7 @@ export class Nudger {
     }): Promise<string | null> {
         const boardLines = this.conditions.map((c) => {
             const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
-            return `- ${c.label} - ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
         }).join('\n');
         const eventLines = args.events
             .filter((e) => e.type !== 'speaker-seen') // participants are passed separately
@@ -677,9 +745,11 @@ export class Nudger {
         // Closed conditions carry their recorded outcome so the model can
         // tell "still stands" from "the room revised it" (Phase 13).
         return this.conditions.map((c) =>
-            `- id "${c.id}": ${c.label} - ${c.status.toUpperCase()}${c.status === 'open'
+            `- id "${c.id}": ${c.label} - ${c.status === 'held' ? 'HELD OPEN' : c.status.toUpperCase()}${c.status === 'open'
                 ? ` (nudged ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
-                : ` (recorded outcome: ${c.note ?? 'settled in the room'})`}`
+                : c.status === 'held'
+                    ? ` (the room said yes, but it depends on: ${c.heldOn ?? 'an attached condition'}; asked about it ${c.nudges} time${c.nudges === 1 ? '' : 's'} so far)`
+                    : ` (recorded outcome: ${c.note ?? 'settled in the room'})`}`
         ).join('\n');
     }
 
@@ -701,7 +771,7 @@ export class Nudger {
     }, summary: string | null): Promise<MeetingAction[]> {
         const boardLines = this.conditions.map((c) => {
             const evidence = (c.evidence ?? []).map((e) => `${e.speaker}: "${e.quote}"`).join(' / ');
-            return `- ${c.label} - ${c.status.toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
+            return `- ${c.label} - ${c.status === 'held' ? `HELD OPEN, NOT DECIDED (depends on: ${c.heldOn ?? 'an attached condition'})` : String(c.status).toUpperCase()}${c.note ? ` (${c.note})` : ''}${evidence ? ` [evidence: ${evidence}]` : ''}`;
         }).join('\n');
         const eventLines = args.events
             .filter((e) => e.type !== 'speaker-seen')
@@ -723,7 +793,7 @@ export class Nudger {
                     model: 'claude-opus-4-8',
                     max_tokens: 1500,
                     system: [
-                        'Punctuation rule: NEVER use an em dash ("—") anywhere you write. Use a comma, full stop, or hyphen instead.',
+                        'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
                         'You are Clarus bot. A meeting you attended for your owner has just ended. Propose the',
                         'follow-up ACTIONS the finished record implies - each one drafted and ready for the owner',
                         'to approve. Nothing is sent without their approval; you only draft.',
@@ -846,7 +916,7 @@ export class Nudger {
 
     /** Pulls the JSON decision out of the model's reply; null if it can't be read */
     private _parseDecision(text: string): {
-        conditions: Array<{ id: string, status: 'open' | 'closed' | 'revised' | 'reopened', reason: string, why: string, evidence: Array<{ speaker: string, quote: string }> }>,
+        conditions: Array<{ id: string, status: 'open' | 'held' | 'closed' | 'revised' | 'reopened', reason: string, why: string, heldOn: string, evidence: Array<{ speaker: string, quote: string }> }>,
         nudge: { conditionId: string, message: string } | null,
         mention: { speaker: string, quote: string } | null,
     } | null {
@@ -862,13 +932,14 @@ export class Nudger {
                 mention?: { speaker?: unknown, quote?: unknown } | null,
             };
             const conditions = (Array.isArray(parsed.conditions) ? parsed.conditions : [])
-                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, evidence?: unknown } =>
+                .filter((item): item is { id: string, status?: unknown, reason?: unknown, why?: unknown, heldOn?: unknown, evidence?: unknown } =>
                     Boolean(item) && typeof (item as { id?: unknown }).id === 'string')
                 .map((item) => ({
                     id: item.id,
-                    status: (item.status === 'closed' || item.status === 'revised' || item.status === 'reopened'
+                    status: (item.status === 'closed' || item.status === 'revised' || item.status === 'reopened' || item.status === 'held'
                         ? item.status
-                        : 'open') as 'open' | 'closed' | 'revised' | 'reopened',
+                        : 'open') as 'open' | 'held' | 'closed' | 'revised' | 'reopened',
+                    heldOn: typeof item.heldOn === 'string' ? item.heldOn.trim() : '',
                     reason: typeof item.reason === 'string' ? item.reason.trim() : '',
                     why: typeof item.why === 'string' ? item.why.trim() : '',
                     evidence: (Array.isArray(item.evidence) ? item.evidence : [])

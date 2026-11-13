@@ -104,6 +104,23 @@ goal is being ignored, and reporting everything to a private local cockpit.
   busy gets a polite "agent is busy" message. Per-user sessions / a browser
   pool is the **Phase 7** upgrade, when concurrent meetings are real.
 
+- **Phase 18 Milestone 1 - "Yes, but" isn't yes (2026-11).** A condition
+  now has three states, not two: **open**, **held**, **closed**. The
+  judging prompt carries a decision standard: a condition only closes
+  with a clear decider, a concrete outcome (number, date, owner, yes/no)
+  and UNCONDITIONAL assent. A qualified yes ("approved, subject to legal
+  checking the wording") becomes `held` with `heldOn` (what it depends
+  on, in plain words) and its evidence quote; vague assent ("sounds fine
+  I think") stays open with the reason "Unclear wording: ...". A held
+  condition gets its own nudge asking whether the attached condition is
+  met; when the room confirms it with nothing attached, it closes with
+  the confirming quote. Cockpit: amber **HELD OPEN** pill and a
+  "Depends on: ..." line (live board and History). Audit events:
+  `condition-held`, `condition-released`. Editing a held condition
+  reopens it, same as a closed one. No extra API calls: it rides on the
+  existing one-call-per-caption-line judgement. Golden rule in the
+  prompt: the room decides; Clarus only holds, records and asks.
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):

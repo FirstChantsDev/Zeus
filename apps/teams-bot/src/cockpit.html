@@ -450,6 +450,12 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
 .cond.open{border-color:var(--amber-bd);background:var(--amber-bg);}
 .cond.open .badge{color:var(--amber);}
 .cond.closed{border-color:var(--green-bd);background:var(--green-bg);}
+/* Phase 18: HELD OPEN - the room said yes with a condition attached. Amber
+   like an open card, but the pill and the "Depends on" line say why. */
+.cond.held{border-color:var(--amber-2);background:var(--amber-bg);}
+.cond.held .badge{color:#fff;background:var(--amber-2);border-radius:999px;padding:3px 9px;}
+.cond-depends{font-size:12.5px;line-height:1.45;color:var(--t1);}
+.cond-depends b{font-weight:600;color:var(--amber);}
 .cond.closed .badge{color:var(--green);}
 /* Phase 4: the expand control + fuller "why" panel on each card */
 .cond-expand{
@@ -633,6 +639,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
   .dot.closed{background:var(--green);}
   .dot.open{background:var(--amber);}
+  .dot.held{background:var(--amber-bg);box-shadow:inset 0 0 0 3px var(--amber-2);}
   .dot.exception{background:var(--red);}
 }
 @media (prefers-reduced-motion:reduce){
@@ -1586,18 +1593,20 @@ function renderRecordDetail(rec, file){
   document.getElementById('histTitle').textContent = rec.meetingName || 'Untitled meeting';
   const boardHtml = (rec.conditions || []).map((c) => {
     const closed = c.status === 'closed';
+    const held = c.status === 'held';
     const quotes = (c.evidence || []).map((l) => `<div class="cond-quote">⤷ <span class="spk">${esc(l.speaker)}:</span> “${esc(l.quote)}”</div>`).join('');
-    return `<div class="cond ${closed ? 'closed' : 'open'}">
-      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${closed ? 'CLOSED' : 'STILL OPEN'}</span></div>
-      <div class="cond-meta">${esc(c.note || (closed ? 'Settled in the room.' : 'Left open at meeting end.'))}</div>
+    return `<div class="cond ${closed ? 'closed' : held ? 'held' : 'open'}">
+      <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${closed ? 'CLOSED' : held ? 'HELD OPEN' : 'STILL OPEN'}</span></div>
+      <div class="cond-meta">${esc(c.note || (closed ? 'Settled in the room.' : held ? 'Agreed with a condition attached - not decided.' : 'Left open at meeting end.'))}</div>
+      ${held ? `<div class="cond-depends"><b>Depends on:</b> ${esc(c.heldOn || 'a condition the room attached')}</div>` : ''}
       ${(c.why || quotes) ? `<div class="cond-why">${esc(c.why || '')}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges ?? 0}</div>
     </div>`;
   }).join('');
   // The audit trail: every event as it happened. Speaker-seen events are
   // folded into the participants line instead of cluttering the timeline.
-  const evClass = (t) => t === 'condition-closed' ? 'e-closed'
-    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened') ? 'e-edit'
+  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released') ? 'e-closed'
+    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held') ? 'e-edit'
     : t === 'owner-mentioned' ? 'e-mention' : '';
   const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>
     `<div class="hd-event ${evClass(e.type)}"><span class="e-time">${(e.at || '').slice(11, 19)}</span><span class="e-detail">${esc(e.detail || '')}</span></div>`
@@ -1678,7 +1687,7 @@ let editorError = '';
 function condCardEditor(c){
   const current = c ? c.label : '';
   const hint = c
-    ? (c.status === 'closed' ? 'Editing a closed condition reopens it for re-evaluation.' : 'The agent re-judges the whole conversation as soon as you save.')
+    ? (c.status !== 'open' ? 'Editing a closed or held condition reopens it for re-evaluation.' : 'The agent re-judges the whole conversation as soon as you save.')
     : 'Judged against everything said so far - if the room already settled it, it closes immediately.';
   return `<div class="cond open">
     <div class="cond-editor">
@@ -1719,7 +1728,7 @@ async function saveCondEdit(){
     // Optimistic local update so the board doesn't flash stale for a poll.
     if(body.op === 'edit'){
       const c = lastConditions.find((x) => x.id === body.id);
-      if(c){ c.label = label; if(c.status === 'closed'){ c.status = 'open'; c.nudges = 0; delete c.note; delete c.why; delete c.evidence; } }
+      if(c){ c.label = label; if(c.status !== 'open'){ c.status = 'open'; c.nudges = 0; delete c.heldOn; delete c.note; delete c.why; delete c.evidence; } }
     } else {
       lastConditions.push({ id: 'pending', label, status: 'open', nudges: 0 });
     }
@@ -1751,12 +1760,17 @@ function condCardHtml(c){
   return [c].map((c) => {
     // 2+ nudges while still open = exception. The agent has pushed twice
     // and the room keeps moving past it - the owner's cue to step in.
-    const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : 'open');
-    const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS YOU' : 'OPEN';
+    // Phase 18: 'held' = the room said yes, but with a condition attached.
+    // It is NOT closed; the card says what it depends on.
+    const status = c.status === 'closed' ? 'closed' : (c.nudges >= 2 ? 'exception' : (c.status === 'held' ? 'held' : 'open'));
+    const badge = status === 'closed' ? 'CLOSED' : status === 'exception' ? 'NEEDS YOU' : status === 'held' ? 'HELD OPEN' : 'OPEN';
+    const depends = c.status === 'held'
+      ? `<div class="cond-depends"><b>Depends on:</b> ${esc(c.heldOn || 'a condition the room attached')}</div>` : '';
     // The one-line reason: the agent's live judgement when it has one,
     // otherwise the same canned lines as before.
     const meta = c.note ? c.note
       : status === 'closed' ? 'Settled in the room.'
+      : status === 'held' ? 'The room said yes, with a condition attached.'
       : status === 'exception'
         ? (c.nudges === 2 ? 'Nudged twice - the room keeps moving past it.' : `Nudged ${c.nudges} times - the room keeps moving past it.`)
         : (c.nudges > 0 ? 'Agent has raised it - waiting on the room.' : 'Not yet raised in the room.');
@@ -1770,6 +1784,7 @@ function condCardHtml(c){
     return `<div class="cond ${status}">
       <div class="cond-top"><span class="cond-label">${esc(c.label)}</span><span class="badge">${badge}</span><button class="cond-edit-btn" title="Edit this condition - the agent picks up the change" onclick="startCondEdit('${esc(c.id)}')">✎</button><button class="cond-expand" title="${expanded ? 'Hide' : 'Show'} the agent's reasoning" onclick="toggleWhy('${esc(c.id)}')">${expanded ? '−' : '＋'}</button></div>
       <div class="cond-meta">${esc(meta)}</div>
+      ${depends}
       ${expanded ? `<div class="cond-why">${esc(why)}${quotes}</div>` : ''}
       <div class="cond-foot">nudges: ${c.nudges}</div>
     </div>`;

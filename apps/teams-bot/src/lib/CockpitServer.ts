@@ -687,11 +687,12 @@ export class CockpitServer {
                         answer(200, { ok: true }); // nothing changed - no event, no re-judge
                         return;
                     }
-                    const reopened = condition.status === 'closed';
+                    const reopened = condition.status !== 'open'; // closed OR held (Phase 18)
                     condition.label = label;
                     if (reopened) {
                         condition.status = 'open';
                         condition.nudges = 0;
+                        delete condition.heldOn;
                         delete condition.note;
                         delete condition.why;
                         delete condition.evidence;

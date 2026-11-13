@@ -225,6 +225,25 @@ const runMeeting = async (brief: BriefFromHub) => {
                 });
             }
         }
+        // Phase 18: a qualified yes is HELD OPEN, not closed - and released
+        // (closed) only when the room confirms the attached condition is met.
+        for (const id of decision.heldIds) {
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-held', `Condition held open: "${condition.label}" - depends on: ${condition.heldOn ?? 'an attached condition'}`, {
+                    id, label: condition.label, heldOn: condition.heldOn ?? null, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
+        for (const id of decision.releasedIds) {
+            if (line) line.hit = true;
+            const condition = conditions.find((c) => c.id === id);
+            if (condition) {
+                record.log('condition-released', `Hold released, condition closed: "${condition.label}"${condition.note ? ` - ${condition.note}` : ''}`, {
+                    id, label: condition.label, note: condition.note ?? null, evidence: condition.evidence ?? [],
+                });
+            }
+        }
         if (decision.mention) {
             console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
             mentions.push({ ...decision.mention, at: new Date().toISOString() });
@@ -245,11 +264,12 @@ const runMeeting = async (brief: BriefFromHub) => {
             const condition = conditions.find((c) => c.id === edit.id);
             if (!condition || condition.label === edit.label) return;
             const before = condition.label;
-            const reopened = condition.status === 'closed';
+            const reopened = condition.status !== 'open'; // closed OR held (Phase 18)
             condition.label = edit.label;
             if (reopened) {
                 condition.status = 'open';
                 condition.nudges = 0;
+                delete condition.heldOn;
                 delete condition.note;
                 delete condition.why;
                 delete condition.evidence;

@@ -31,8 +31,14 @@ export type Condition = {
     id: string;
     /** The goal in plain English, exactly as the owner typed it */
     label: string;
-    /** 'open' until the room clearly settles it, then 'closed' */
-    status: 'open' | 'closed';
+    /** 'open' until the room clearly settles it, then 'closed'.
+     *  Phase 18: 'held' sits between the two - the room said yes, but with
+     *  a condition attached ("approved, subject to legal"). A qualified yes
+     *  is not a decision; it is held open until the condition is met. */
+    status: 'open' | 'held' | 'closed';
+    /** Phase 18: what a HELD condition is waiting on, in plain words
+     *  ("legal checking the DPA wording"). Only set while status is 'held'. */
+    heldOn?: string;
     /** How many times the agent has nudged the room about it */
     nudges: number;
     /** One-line reason shown on the card: how it closed, or where it stands */
