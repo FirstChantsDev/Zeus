@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
-import { listRecords, readRecord, computeMetrics, applyActionUpdate } from './MeetingRecord';
+import { listRecords, readRecord, computeMetrics, applyActionUpdate, recordsDir } from './MeetingRecord';
 import { Ledger } from './Ledger';
 import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
 
@@ -350,6 +350,37 @@ export class CockpitServer {
                 res.end(JSON.stringify(Ledger.list({
                     project: params.get('project') ?? '', status: params.get('status') ?? '', q: params.get('q') ?? '',
                 })));
+            } else if ((url === '/ledger/resolve' || url === '/ledger/dismiss-clash' || url === '/ledger/ask-decider') && req.method === 'POST') {
+                // Phase 18 M4: a PERSON settles a clash - confirm which
+                // decision stands, say it is not a clash, or draft a
+                // message to the decider (approval-gated, Phase 14 actions).
+                void this._readJson(req).then((raw) => {
+                    const body = raw as { clashId?: unknown, standsId?: unknown };
+                    const clashId = typeof body.clashId === 'string' ? body.clashId : '';
+                    const by = this.ownerName || 'the owner';
+                    const send = (code: number, payload: object) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(payload)); };
+                    if (url === '/ledger/ask-decider') {
+                        const drafted = Ledger.draftAskDecider(clashId, recordsDir());
+                        send(drafted.ok ? 200 : drafted.status, drafted);
+                    } else if (url === '/ledger/dismiss-clash') {
+                        const dismissed = Ledger.dismissClash(clashId, by);
+                        send(dismissed.ok ? 200 : dismissed.status, dismissed);
+                    } else {
+                        const result = Ledger.resolveClash(clashId, typeof body.standsId === 'string' ? body.standsId : '', by);
+                        if (!result.ok) { send(result.status, result); return; }
+                        // The audit trail: noted on the meeting record of each decision.
+                        for (const entry of [result.stands, result.replaced]) {
+                            if (entry.sourceRecord) {
+                                Ledger.appendRecordEvent(path.join(recordsDir(), entry.sourceRecord), {
+                                    type: 'decision-superseded',
+                                    detail: `${result.confirmedBy} confirmed "${result.stands.statement}" stands; "${result.replaced.statement}" is superseded`,
+                                    data: { standsId: result.stands.id, supersededId: result.replaced.id, confirmedBy: result.confirmedBy },
+                                });
+                            }
+                        }
+                        send(200, { ok: true });
+                    }
+                });
             } else if (url.startsWith('/ledger/')) {
                 const entry = Ledger.get(decodeURIComponent(url.slice('/ledger/'.length)));
                 res.writeHead(entry ? 200 : 404, { 'content-type': 'application/json' });

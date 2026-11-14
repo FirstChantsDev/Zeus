@@ -48,7 +48,10 @@ export type AuditEvent = {
         | 'action-approved'
         | 'action-dismissed'
         | 'action-edited'
-        | 'action-toggled';
+        | 'action-toggled'
+        | 'action-drafted'
+        | 'clash-asked'
+        | 'decision-superseded';
     /** Human-readable one-liner, so the history view needs no per-type logic */
     detail: string;
     /** Type-specific extras (before/after text, quotes, ...) */
@@ -85,6 +88,8 @@ export type MeetingAction = {
     /** The owner's verdict. Approving hands them the sendable content;
      *  nothing is ever sent without that explicit tap. */
     status: 'proposed' | 'approved' | 'dismissed';
+    /** Phase 18 M4: set on an "Ask the decider" draft - the ledger clash it is about */
+    clashId?: string;
 };
 
 /** One person on the calendar event's attendee list (Calendars.Read already

@@ -186,6 +186,26 @@ const main = async () => {
             cockpit.addMention(decision.mention);
             record.log('owner-mentioned', `${decision.mention.speaker} said the room needs the owner: "${decision.mention.quote}"`, { ...decision.mention });
         }
+        // Phase 18 M4: a decision that just closed is checked ONCE against
+        // the project's ledger. On a contradiction the agent asks the room
+        // whether the new decision replaces the old one - it never settles it.
+        if (ledgerProject && apiKey) {
+            for (const id of [...decision.resolvedIds, ...decision.releasedIds, ...decision.revisedIds]) {
+                const condition = conditions.find((c) => c.id === id);
+                if (!condition) continue;
+                void Ledger.checkClosure(
+                    { project: ledgerProject, label: condition.label, note: condition.note, evidence: condition.evidence },
+                    Ledger.list({ project: ledgerProject }).entries,
+                    apiKey,
+                ).then(async (clash) => {
+                    if (!clash) return;
+                    console.log(`CLASH ASK >>> (${id}) ${clash.message}`);
+                    cockpit.addNudge({ text: clash.message, conditionId: id });
+                    record.log('clash-asked', `Asked the room about a clash with an earlier decision ("${clash.earlierStatement}"): ${clash.message}`, { conditionId: id, earlierId: clash.earlierId, text: clash.message });
+                    await chat!.sendMessage(clash.message);
+                }).catch(() => { /* a failed check must never disturb the meeting */ });
+            }
+        }
         // Phase 18 M2: the reason behind a decision, as said in the room.
         for (const id of decision.rationaleIds) {
             const condition = conditions.find((c) => c.id === id);
@@ -211,6 +231,8 @@ const main = async () => {
 
     // Phase 5: the owner's name from the brief, for the greeting.
     let ownerName = '';
+    // Phase 18 M4: the brief's project - which ledger entries a closing decision is checked against.
+    let ledgerProject = '';
 
     // Phase 10: where the agent actually goes - resolved at brief time
     // (calendar pick > pasted link > launch argument).
@@ -254,6 +276,7 @@ const main = async () => {
             nudger?.setContext(brief.context);
             nudger?.setOwner(brief.ownerName); // Phase 5: lets the agent flag "the room needs you"
             nudger?.setReasonsRequired(brief.reasonsRequired); // Phase 18 M2
+            ledgerProject = brief.project;
             ownerName = brief.ownerName;       // Phase 5: personalises the greeting
             activeMeetingUrl = brief.meetingUrl; // Phase 10: calendar pick / pasted link / launch arg
             scheduledStartIso = brief.meetingStart; // Phase 12: null unless picked from the calendar

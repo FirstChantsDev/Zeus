@@ -26,6 +26,7 @@ import { ChatProcedure } from '../../../apps/teams-bot/src/procedures/chat-proce
 import { CaptionsProcedure } from '../../../apps/teams-bot/src/procedures/captions-procedure';
 import { Nudger, TimeState, LineDecision } from '../../../apps/teams-bot/src/lib/Nudger';
 import { MeetingRecord, MeetingAction } from '../../../apps/teams-bot/src/lib/MeetingRecord';
+import { Ledger, LedgerEntry } from '../../../apps/teams-bot/src/lib/Ledger';
 import { Condition, MAX_CONDITIONS } from '../../../apps/teams-bot/src/conditions';
 
 const HUB_URL = (process.env.HUB_URL ?? '').replace(/\/$/, '');
@@ -121,6 +122,11 @@ const hub = {
     /** Hands the finished meeting's audit record to the hub, which persists it */
     async sendRecord(meetingId: string, record: object): Promise<void> {
         await this.call(`/bot/record/${meetingId}`, { method: 'POST', body: record });
+    },
+    /** Phase 18 M4: the project's current ledger entries, for the live clash check */
+    async ledgerEntries(project: string): Promise<LedgerEntry[]> {
+        const answer = await this.call(`/bot/ledger?project=${encodeURIComponent(project)}`);
+        return (answer && Array.isArray(answer.entries)) ? answer.entries as LedgerEntry[] : [];
     },
     async reset(meetingId: string): Promise<void> {
         await this.call(`/bot/reset/${meetingId}`, { method: 'POST' });
@@ -253,6 +259,28 @@ const runMeeting = async (brief: BriefFromHub) => {
             console.log(`MENTION >>> ${decision.mention.speaker}: "${decision.mention.quote}"`);
             mentions.push({ ...decision.mention, at: new Date().toISOString() });
             record.log('owner-mentioned', `${decision.mention.speaker} said the room needs the owner: "${decision.mention.quote}"`, { ...decision.mention });
+        }
+        // Phase 18 M4: a decision that just closed is checked ONCE against
+        // the project's ledger (read from the hub). On a contradiction the
+        // agent asks the room whether the new decision replaces the old one.
+        if (brief.project && API_KEY) {
+            for (const id of [...decision.resolvedIds, ...decision.releasedIds, ...decision.revisedIds]) {
+                const condition = conditions.find((c) => c.id === id);
+                if (!condition || !underCap()) continue;
+                void hub.ledgerEntries(brief.project)
+                    .then((entries) => Ledger.checkClosure(
+                        { project: brief.project ?? '', label: condition.label, note: condition.note, evidence: condition.evidence },
+                        entries,
+                        API_KEY,
+                    ))
+                    .then(async (clash) => {
+                        if (!clash) return;
+                        console.log(`CLASH ASK >>> (${id}) ${clash.message}`);
+                        nudges.push({ text: clash.message, conditionId: id, steered: false, at: new Date().toISOString() });
+                        record.log('clash-asked', `Asked the room about a clash with an earlier decision ("${clash.earlierStatement}"): ${clash.message}`, { conditionId: id, earlierId: clash.earlierId, text: clash.message });
+                        await chat.sendMessage(clash.message);
+                    }).catch(() => { /* a failed check must never disturb the meeting */ });
+            }
         }
         // Phase 18 M2: the reason behind a decision, as said in the room.
         for (const id of decision.rationaleIds) {

@@ -194,6 +194,43 @@ goal is being ignored, and reporting everything to a private local cockpit.
     the meeting record. Endpoints: `GET /ledger?project=&status=&q=` and
     `GET /ledger/<id>` on both servers.
 
+- **Phase 18 Milestone 4 - clashes caught (2026-11).** A new decision
+  that contradicts an earlier one in the same project is FLAGGED, never
+  settled by Clarus.
+  - *At ledger write:* after a meeting's entries are saved, ONE API call
+    per project touched compares the entries just recorded against the
+    current ones (Decided / Conditional / Needs approval, not Superseded)
+    and returns contradicting pairs with a one-line explanation. (The
+    brief said one call per entry; one per project per meeting does the
+    same job for less.) Pairs are stored in `ledger.json` under
+    `clashes` and shown at the top of the Ledger view as a **"Which
+    stands?"** card with both decisions and their proof. Needs a key:
+    with no key nothing is flagged. A pair naming an entry the model was
+    not shown is ignored; the same pair is never flagged twice.
+  - *Resolution is human:* **This one stands** (two taps: arm, confirm)
+    marks the other entry **Superseded**, links them both ways
+    (`supersedes` / `supersededBy`), strikes it through with "Replaced
+    by: ...", and keeps it. `decision-superseded` (with who confirmed) is
+    appended to both meetings' records. **Not a clash, both stand**
+    dismisses the flag. **Ask the decider** files a templated email
+    draft (no API call) as a PROPOSED Phase 14 action on the newer
+    meeting's record and opens that record: approve / edit / dismiss as
+    usual, nothing is sent from Clarus.
+  - *Live in the meeting:* when a condition closes, is released from a
+    hold, or is revised, ONE API call checks it against the project's
+    current ledger entries (skipped when the project has none, so an
+    empty ledger costs nothing). On a contradiction the agent posts one
+    line ("On 3 Nov the steering committee agreed 21 October. Is 14
+    October replacing that?") and logs `clash-asked`; the room's answer
+    is recorded by the normal judging. The local bot reads the ledger
+    file; the cloud bot reads `GET /bot/ledger?project=` on the hub and
+    counts the call against `MAX_DAILY_DECISIONS`. Needs a project on
+    the brief.
+  - Endpoints (both servers): `POST /ledger/resolve` {clashId, standsId},
+    `POST /ledger/dismiss-clash` {clashId}, `POST /ledger/ask-decider`
+    {clashId}. Hosted has no per-person login yet, so "who confirmed"
+    is the meeting owner's name as shown in the cockpit, or "the owner".
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):

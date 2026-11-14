@@ -49,7 +49,22 @@ export type LedgerEntry = {
     updatedAt: string;
 };
 
-export type LedgerWriteResult = { entries: LedgerEntry[], added: number, updated: number, usedModel: boolean };
+/** Two decisions in one project that do not agree - flagged for a PERSON to settle */
+export type LedgerClash = {
+    id: string;
+    project: string;
+    newerId: string;
+    olderId: string;
+    /** One plain sentence saying what differs */
+    explanation: string;
+    detectedAt: string;
+    status: 'open' | 'resolved' | 'dismissed';
+    resolution: Record<string, unknown> | null;
+    newer?: LedgerEntry | null;
+    older?: LedgerEntry | null;
+};
+
+export type LedgerWriteResult = { entries: LedgerEntry[], added: number, updated: number, usedModel: boolean, clashes: LedgerClash[] };
 
 type LedgerCore = {
     STATUSES: LedgerStatus[];
@@ -58,7 +73,17 @@ type LedgerCore = {
     writeFromRecord(record: unknown, recordFile: string | null, options?: { apiKey?: string }): Promise<LedgerWriteResult>;
     noteOnRecord(recordPath: string, result: LedgerWriteResult): void;
     backfill(recordsDirectory: string, options?: { apiKey?: string }): Promise<{ records: number, entries: number, added: number, updated: number }>;
-    list(filters?: { project?: string, status?: string, q?: string }): { entries: LedgerEntry[], projects: string[], counts: Record<string, number>, total: number };
+    list(filters?: { project?: string, status?: string, q?: string }): { entries: LedgerEntry[], projects: string[], counts: Record<string, number>, total: number, clashes: LedgerClash[] };
+    resolveClash(clashId: string, standsId: string, confirmedBy: string):
+        { ok: true, stands: LedgerEntry, replaced: LedgerEntry, confirmedBy: string, at: string } | { ok: false, status: number, error: string };
+    dismissClash(clashId: string, dismissedBy: string): { ok: true } | { ok: false, status: number, error: string };
+    appendRecordEvent(recordPath: string, event: { type: string, detail: string, data?: Record<string, unknown> }): boolean;
+    draftAskDecider(clashId: string, recordsDirectory: string): { ok: true, recordFile: string, actionId: string } | { ok: false, status: number, error: string };
+    checkClosure(
+        closure: { project: string, label: string, note?: string, evidence?: Array<{ speaker: string, quote: string }> },
+        currentEntries: LedgerEntry[],
+        apiKey: string,
+    ): Promise<{ earlierId: string, earlierStatement: string, message: string } | null>;
     get(id: string): LedgerEntry | null;
 };
 

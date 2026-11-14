@@ -360,6 +360,26 @@ header{
 .led-hist{font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--t2);overflow-wrap:anywhere;}
 .led-link{background:none;border:none;padding:0;font-family:var(--body);font-weight:600;font-size:12.5px;color:var(--blue);cursor:pointer;text-align:left;}
 .led-link:hover{text-decoration:underline;}
+/* Phase 18 M4: two decisions that do not agree - a person says which stands. */
+.clash{background:var(--red-bg);border:1px solid var(--red-bd);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;margin-bottom:12px;}
+.clash-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
+.clash-title{font-family:var(--head);font-weight:500;font-size:18px;letter-spacing:-.02em;}
+.clash-proj{font-weight:600;font-size:10px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;}
+.clash-why{font-size:12.5px;line-height:1.5;color:var(--t1);}
+.clash-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.clash-side{background:var(--s1);border:1px solid var(--line2);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:7px;min-width:0;}
+.clash-when{font-weight:600;font-size:10px;letter-spacing:.1em;color:var(--t3);text-transform:uppercase;}
+.clash-side .led-statement{font-size:15.5px;}
+.clash-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.clash-btn{
+  background:var(--s1);border:1px solid var(--dash);border-radius:999px;padding:8px 14px;
+  font-family:var(--body);font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;
+}
+.clash-btn:hover{border-color:var(--blue);color:var(--blue);}
+.clash-btn.confirm{background:var(--ink);border-color:var(--ink);color:var(--bg);}
+.clash-btn.quiet{border-color:transparent;background:none;color:var(--t2);}
+.clash-note{font-size:11.5px;color:var(--t3);line-height:1.5;}
+@media (max-width:640px){ .clash-pair{grid-template-columns:1fr;} }
 /* Shown when the hosted server has no permanent disk - history is being lost. */
 .hist-warn{
   background:var(--red-bg);border:1px solid var(--red-bd);border-radius:10px;
@@ -1399,6 +1419,7 @@ function renderHeader(state){
   if(state.meetingName){ document.getElementById('hdrMeet').textContent = state.meetingName; }
   // Phase 5: the cockpit belongs to whoever briefed the agent.
   if(state.ownerName){
+    lastOwnerName = state.ownerName; // who confirms a ledger clash, for the audit trail
     document.getElementById('ownerLabel').textContent = `${state.ownerName}'s cockpit`;
     document.getElementById('ownerChip').textContent = state.ownerName[0].toUpperCase();
   }
@@ -1460,6 +1481,55 @@ function ledgerEntryHtml(e){
     <div class="led-foot">${chips}<span class="led-meta">${esc(e.decider ? e.decider + ' · ' : '')}${ledWhen(e.date)} · ${esc((e.sourceMeeting && e.sourceMeeting.name) || '')}</span></div>
   </div>`;
 }
+// ── Phase 18 M4: clashes. Clarus only flags them - a person says which stands.
+let lastOwnerName = '';
+let clashArmed = ''; // "<clashId>|<entryId>" after the first tap; the second tap confirms
+function clashSideHtml(clash, entry, label){
+  const quote = (entry.proof || []).find((p) => p.kind !== 'reason');
+  const armed = clashArmed === clash.id + '|' + entry.id;
+  return `<div class="clash-side">
+    <span class="clash-when">${label} · ${ledWhen(entry.date)} · ${esc((entry.sourceMeeting && entry.sourceMeeting.name) || '')}</span>
+    <span class="led-statement">${esc(entry.statement)}</span>
+    ${entry.rationale ? `<div class="led-line"><b>Why:</b> ${esc(entry.rationale)}</div>` : ''}
+    ${quote ? `<div class="led-quote">⤷ <span class="spk">${esc(quote.who)}:</span> “${esc(quote.quote)}”</div>` : ''}
+    <div class="clash-actions"><button class="clash-btn${armed ? ' confirm' : ''}" data-clash="${esc(clash.id)}" data-entry="${esc(entry.id)}" onclick="clashStands(this.dataset.clash, this.dataset.entry)">${armed ? 'Tap again to confirm' : 'This one stands'}</button></div>
+  </div>`;
+}
+function clashCardHtml(c){
+  return `<div class="clash">
+    <div class="clash-head"><span class="clash-title">Which stands?</span><span class="clash-proj">${esc(c.project)}</span></div>
+    <div class="clash-why">${esc(c.explanation)}</div>
+    <div class="clash-pair">${clashSideHtml(c, c.older, 'Earlier')}${clashSideHtml(c, c.newer, 'Newer')}</div>
+    <div class="clash-actions">
+      <button class="clash-btn" data-clash="${esc(c.id)}" onclick="clashAskDecider(this.dataset.clash)">Ask the decider</button>
+      <button class="clash-btn quiet" data-clash="${esc(c.id)}" onclick="clashDismiss(this.dataset.clash)">Not a clash, both stand</button>
+    </div>
+    <div class="clash-note">Clarus flags the clash; you decide. The other decision is marked Superseded and kept, never deleted. "Ask the decider" drafts a message for you to approve. Nothing is sent.</div>
+  </div>`;
+}
+const clashPost = async (url, body) => {
+  try{
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, by: lastOwnerName || '' }) });
+    return await r.json();
+  }catch(e){ return { ok: false, error: 'Could not reach the server.' }; }
+};
+async function clashStands(clashId, entryId){
+  const key = clashId + '|' + entryId;
+  if(clashArmed !== key){ clashArmed = key; loadLedger(); return; } // first tap arms, second confirms
+  clashArmed = '';
+  await clashPost('/ledger/resolve', { clashId, standsId: entryId });
+  loadLedger();
+}
+async function clashDismiss(clashId){
+  clashArmed = '';
+  await clashPost('/ledger/dismiss-clash', { clashId });
+  loadLedger();
+}
+async function clashAskDecider(clashId){
+  const r = await clashPost('/ledger/ask-decider', { clashId });
+  if(r && r.ok && r.recordFile){ openLedgerRecord(r.recordFile); } // the draft waits there for approval
+}
+
 async function loadLedger(){
   ledgerView = 'list';
   document.getElementById('ledTitle').textContent = 'Decision ledger';
@@ -1491,6 +1561,7 @@ async function loadLedger(){
         `<div class="led-group">${esc(p)}</div><div class="led-list">${entries.filter((e) => e.project === p).map(ledgerEntryHtml).join('')}</div>`).join('');
     }
     body.innerHTML = '<div class="led-sub">One record of what was decided, across every meeting. The room decides; Clarus records it with the words that closed it.</div>'
+      + (data.clashes || []).map(clashCardHtml).join('')
       + `<div class="led-filters">${projectPicker}${chips}</div>` + listHtml;
   }catch(e){
     body.innerHTML = '<div class="led-empty">Could not load the ledger - is the bot running?</div>';
@@ -1512,7 +1583,9 @@ async function openLedgerEntry(id){
       <div class="led-card">
         <div class="led-top"><span class="led-statement">${esc(e.statement)}</span><span class="led-tag ${esc(e.status)}">${esc(LEDGER_STATUS[e.status] || e.status)}</span></div>
         ${e.rationale ? `<div class="led-line"><b>Why:</b> ${esc(e.rationale)}</div>` : '<div class="led-line">Why: no reason was stated in the meeting.</div>'}
-        ${e.missing ? `<div class="led-line missing"><b>Missing:</b> ${esc(e.missing)}</div>` : ''}
+        ${e.missing ? `<div class="led-line missing"><b>${e.status === 'superseded' ? 'Replaced by:' : 'Missing:'}</b> ${esc(e.missing)}</div>` : ''}
+        ${e.supersededBy ? `<button class="led-link" data-id="${esc(e.supersededBy)}" onclick="openLedgerEntry(this.dataset.id)">Open the decision that replaced this →</button>` : ''}
+        ${e.supersedes ? `<button class="led-link" data-id="${esc(e.supersedes)}" onclick="openLedgerEntry(this.dataset.id)">Open the decision this replaced →</button>` : ''}
         <div class="led-meta">${esc(e.decider ? 'Agreed by ' + e.decider + ' · ' : '')}${ledWhen(e.date)} · asked as "${esc(e.conditionLabel || '')}"</div>
       </div>
       <div class="led-card"><h4>Proof</h4>${proof}</div>
@@ -1787,8 +1860,8 @@ function renderRecordDetail(rec, file){
   }).join('');
   // The audit trail: every event as it happened. Speaker-seen events are
   // folded into the participants line instead of cluttering the timeline.
-  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released' || t === 'rationale-captured' || t === 'ledger-written') ? 'e-closed'
-    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held' || t === 'rationale-asked' || t === 'rationale-missing') ? 'e-edit'
+  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released' || t === 'rationale-captured' || t === 'ledger-written' || t === 'decision-superseded') ? 'e-closed'
+    : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held' || t === 'rationale-asked' || t === 'rationale-missing' || t === 'clash-asked' || t === 'action-drafted') ? 'e-edit'
     : t === 'owner-mentioned' ? 'e-mention' : '';
   const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>
     `<div class="hd-event ${evClass(e.type)}"><span class="e-time">${(e.at || '').slice(11, 19)}</span><span class="e-detail">${esc(e.detail || '')}</span></div>`

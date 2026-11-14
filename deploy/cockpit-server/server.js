@@ -727,6 +727,13 @@ const server = http.createServer(async (req, res) => {
             answer(res, 403, { ok: false, error: 'bad bot token' });
             return;
         }
+        // Phase 18 M4: the cloud bot's live clash check reads the project's
+        // current decisions from here (the ledger lives on the hub).
+        if (url === '/bot/ledger' && req.method === 'GET') {
+            const project = new URL(req.url || '/', 'http://localhost').searchParams.get('project') || '';
+            answer(res, 200, { entries: project ? ledger.list({ project }).entries : [] });
+            return;
+        }
         if (url === '/bot/brief' && req.method === 'GET') {
             // Hand each brief over exactly once; the bot then owns that meeting.
             // Milestone 3: a scheduled follow-up may still be waiting for its
@@ -1135,6 +1142,36 @@ const server = http.createServer(async (req, res) => {
         } catch (error) {
             console.error('Ledger backfill failed:', error);
             answer(res, 500, { ok: false, error: 'backfill failed' });
+        }
+        return;
+    }
+    // Phase 18 M4: a PERSON settles a clash - confirm which decision
+    // stands, say it is not a clash, or draft a message to the decider
+    // (filed as a proposed Phase 14 action: nothing goes out unapproved).
+    if ((url === '/ledger/resolve' || url === '/ledger/dismiss-clash' || url === '/ledger/ask-decider') && req.method === 'POST') {
+        let body = {};
+        try { body = JSON.parse(await readBody(req)); } catch { /* validated below */ }
+        const clashId = typeof body.clashId === 'string' ? body.clashId : '';
+        const by = (typeof body.by === 'string' && body.by.trim()) ? body.by.trim().slice(0, 60) : 'the owner';
+        if (url === '/ledger/ask-decider') {
+            const drafted = ledger.draftAskDecider(clashId, RECORDS_DIR);
+            answer(res, drafted.ok ? 200 : drafted.status, drafted);
+        } else if (url === '/ledger/dismiss-clash') {
+            const dismissed = ledger.dismissClash(clashId, by);
+            answer(res, dismissed.ok ? 200 : dismissed.status, dismissed);
+        } else {
+            const result = ledger.resolveClash(clashId, typeof body.standsId === 'string' ? body.standsId : '', by);
+            if (!result.ok) { answer(res, result.status, result); return; }
+            for (const entry of [result.stands, result.replaced]) {
+                if (entry.sourceRecord) {
+                    ledger.appendRecordEvent(path.join(RECORDS_DIR, entry.sourceRecord), {
+                        type: 'decision-superseded',
+                        detail: `${result.confirmedBy} confirmed "${result.stands.statement}" stands; "${result.replaced.statement}" is superseded`,
+                        data: { standsId: result.stands.id, supersededId: result.replaced.id, confirmedBy: result.confirmedBy },
+                    });
+                }
+            }
+            answer(res, 200, { ok: true });
         }
         return;
     }
