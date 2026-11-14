@@ -145,6 +145,55 @@ goal is being ignored, and reporting everything to a private local cockpit.
   caption line; the reply budget rose from 700 to 1000 tokens to fit the
   extra fields.
 
+- **Phase 18 Milestone 3 - the decision ledger (2026-11).** One
+  company-wide record with ONE ENTRY PER DECISION (not per meeting),
+  grouped by project.
+  - *Where it lives:* `ledger/ledger.json` beside `records/` (gitignored;
+    `LEDGER_DIR` / `ZEUS_LEDGER_DIR` override). On the hub it defaults to
+    a `ledger` folder INSIDE `RECORDS_DIR`, so the existing Railway volume
+    covers it - no new volume, same caveat as records (no volume = wiped
+    on redeploy).
+  - *One implementation, not two:* `apps/teams-bot/src/lib/ledger-core.js`
+    is dependency-free CommonJS. The local bot loads it through the typed
+    wrapper `lib/Ledger.ts`; the hub through `deploy/cockpit-server/ledger.js`
+    (a one-line re-export). The brief asked for a TS module plus a JS twin;
+    sharing one file means the two sides cannot drift.
+  - *Project:* the brief gains an optional `project`. The briefing chat
+    infers it from the meeting title ("Atlas steering committee" ->
+    "Project Atlas"), says so in its send-off, and takes the owner's
+    correction. Meetings without one are filed under "No project".
+  - *Entry:* id (`<meetingId>-<conditionId>`), project, statement, status,
+    decider, date, rationale, missing, proof[] (source, kind
+    decision/quote/reason, quote, who, when, record file), source meeting
+    and record file, supersedes / supersededBy (used from Milestone 4),
+    history[].
+  - *Statuses:* Decided (closed condition), Conditional ("Until: ..."),
+    Needs approval ("Waiting on: ..."; both from a held condition), Not
+    agreed yet, Unclear wording (both from an open one), Superseded.
+  - *Writing it:* when a meeting ends, the record is saved first, then
+    the ledger step runs: plain entries are built from the final board
+    with no model, then ONE API call words them crisply, names the
+    decider and tells Conditional from Needs approval. The model cannot
+    promote anything: a closed condition is always Decided, an open one
+    can never become Decided, and a decider must be someone the evidence
+    quotes. No key or a failed call = the plain entries are written.
+    Locally this runs in `gate.ts` at shutdown; hosted, the HUB runs it
+    when the cloud bot posts the record (so `cloud-gate.ts` only carries
+    the project). The hub's call is one per meeting and is not counted
+    by the bot's `MAX_DAILY_DECISIONS`. Audit event `ledger-written` is
+    appended to the record file.
+  - *Backfill:* local `npx tsx apps/teams-bot/src/backfill-ledger.ts`
+    (free, plain wording; add `--polish` for one paid call per record).
+    Hosted: `POST /ledger/backfill` (signed in; body `{"polish":true}`
+    for the paid wording). Safe to re-run: entries are matched by id, a
+    changed outcome is kept in the entry's history, nothing is deleted.
+  - *Ledger view:* a **Ledger** button next to History (header and
+    homepage). Project picker, status filter chips with counts, entry
+    rows (statement, Why, Missing, the quote, proof chips, status tag),
+    and a detail view with all proof, the history and a link that opens
+    the meeting record. Endpoints: `GET /ledger?project=&status=&q=` and
+    `GET /ledger/<id>` on both servers.
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):

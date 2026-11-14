@@ -313,6 +313,53 @@ header{
 }
 .hist-back:hover{color:var(--blue);border-color:var(--blue);}
 .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+/* ══ LEDGER (Phase 18 M3) - one entry per decision, grouped by project ══ */
+#ledger{position:fixed;inset:0;z-index:121;background:var(--bg);display:none;overflow-y:auto;padding:0 22px 28px;}
+#ledger.show{display:block;}
+.led-sub{font-size:12.5px;color:var(--t3);margin:-6px 0 14px;line-height:1.5;max-width:70ch;}
+.led-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+.led-project{
+  background:var(--s1);border:1px solid var(--line2);border-radius:999px;padding:7px 12px;
+  font-family:var(--body);font-weight:600;font-size:12.5px;color:var(--t1);outline:none;cursor:pointer;max-width:100%;
+}
+.led-project:focus-visible,.led-chip:focus-visible{border-color:var(--blue);}
+.led-chip{
+  background:var(--s1);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;
+  font-family:var(--body);font-weight:600;font-size:12px;color:var(--t2);cursor:pointer;white-space:nowrap;
+}
+.led-chip .n{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--t3);margin-left:5px;}
+.led-chip.on{background:var(--ink);border-color:var(--ink);color:var(--bg);}
+.led-chip.on .n{color:var(--bg);opacity:.7;}
+.led-group{font-weight:600;font-size:10px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:18px 2px 8px;}
+.led-list{display:flex;flex-direction:column;gap:9px;}
+.led-entry{
+  background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);padding:14px 16px;
+  display:flex;flex-direction:column;gap:6px;cursor:pointer;text-align:left;min-width:0;
+}
+.led-entry:hover{border-color:var(--blue-bd);}
+.led-top{display:flex;align-items:flex-start;gap:12px;}
+.led-statement{flex:1;min-width:0;font-family:var(--head);font-weight:500;font-size:16.5px;letter-spacing:-.015em;line-height:1.3;overflow-wrap:anywhere;}
+.led-tag{font-weight:700;font-size:10px;letter-spacing:.08em;white-space:nowrap;border-radius:999px;padding:4px 10px;border:1px solid;flex:0 0 auto;}
+.led-tag.decided{color:var(--green);background:var(--green-bg);border-color:var(--green-bd);}
+.led-tag.needs-approval,.led-tag.conditional,.led-tag.not-agreed,.led-tag.unclear{color:var(--amber);background:var(--amber-bg);border-color:var(--amber-bd);}
+.led-tag.superseded{color:var(--t3);background:var(--s2);border-color:var(--line2);}
+.led-entry.superseded .led-statement{text-decoration:line-through;color:var(--t3);}
+.led-line{font-size:12.5px;line-height:1.5;color:var(--t2);overflow-wrap:anywhere;}
+.led-line b{font-weight:600;color:var(--t1);}
+.led-line.missing b{color:var(--amber);}
+.led-foot{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;margin-top:2px;}
+.led-proof{font-family:var(--mono);font-size:10.5px;color:var(--t2);background:var(--s2);border:1px solid var(--line2);border-radius:999px;padding:3px 9px;white-space:nowrap;}
+.led-meta{font-family:var(--mono);font-size:10.5px;color:var(--t3);}
+.led-empty{color:var(--t3);font-size:13px;line-height:1.6;padding:8px 2px;max-width:64ch;}
+.led-detail{display:flex;flex-direction:column;gap:14px;max-width:820px;}
+.led-card{background:var(--s1);border:1px solid var(--line2);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:9px;}
+.led-card h4{font-weight:600;font-size:10px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:0;}
+.led-quote{font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--t1);overflow-wrap:anywhere;}
+.led-quote .spk{font-weight:500;}
+.led-quote .src{color:var(--t3);}
+.led-hist{font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--t2);overflow-wrap:anywhere;}
+.led-link{background:none;border:none;padding:0;font-family:var(--body);font-weight:600;font-size:12.5px;color:var(--blue);cursor:pointer;text-align:left;}
+.led-link:hover{text-decoration:underline;}
 /* Shown when the hosted server has no permanent disk - history is being lost. */
 .hist-warn{
   background:var(--red-bg);border:1px solid var(--red-bd);border-radius:10px;
@@ -697,6 +744,15 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   <div id="histBody"></div>
 </div>
 
+<!-- ══ LEDGER (Phase 18 M3) - the company decision ledger ══ -->
+<div id="ledger">
+  <div class="hist-head">
+    <button class="hist-back" id="ledBack" onclick="ledgerBack()">‹ Back</button>
+    <span class="hist-title" id="ledTitle">Decision ledger</span>
+  </div>
+  <div id="ledBody"></div>
+</div>
+
 <!-- ══ OVERSEER DASHBOARD (Phase 7c) - shown on the bare URL when agents are running ══ -->
 <div id="dashboard">
   <div class="dash-head">
@@ -706,6 +762,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
       <div class="dash-sub" id="dashCount"></div>
     </div>
     <button class="hist-btn" id="dashHist" onclick="openHistory()" title="Past meetings - summaries, final boards, and the full audit trail">History</button>
+    <button class="hist-btn" id="dashLedger" onclick="openLedger()" title="Every decision from every meeting, grouped by project">Ledger</button>
     <button class="dash-new" id="dashNew" onclick="openBriefing()">+ Add agent to a meeting</button>
   </div>
   <!-- Outlook, right on the homepage: connect once, then a quiet status line. -->
@@ -724,6 +781,7 @@ main{flex:1;display:grid;grid-template-columns:1.15fr .85fr;grid-template-rows:a
   <div class="clock" id="clock">00:00</div>
   <div class="countdown" id="countdown"></div>
   <button class="hist-btn" id="histBtn" onclick="openHistory()" title="Past meetings - summaries, final boards, and the full audit trail">History</button>
+  <button class="hist-btn" id="ledgerBtn" onclick="openLedger()" title="Every decision from every meeting, grouped by project">Ledger</button>
   <button class="join-btn" id="joinBtn" style="display:none" onclick="joinCall()" title="Open the meeting link so you join as yourself">Join call</button>
   <button class="kill-btn" id="killBtn" style="display:none" onclick="killBot()" title="Shut the agent down - it leaves the meeting and stops making API calls">Kill bot</button>
   <div class="owner"><span id="ownerLabel">Your cockpit</span><span class="owner-chip" id="ownerChip">·</span></div>
@@ -1370,6 +1428,110 @@ async function killBot(){
 }
 
 // ══ HISTORY (Part B) - past meetings, records, metrics ═════
+// ══ LEDGER (Phase 18 M3) - one entry per decision, grouped by project ══
+// The room decides; the ledger only records. Every entry shows where it
+// stands, what is missing, and the exact words behind it.
+const LEDGER_STATUS = {
+  'decided': 'Decided', 'needs-approval': 'Needs approval', 'conditional': 'Conditional',
+  'not-agreed': 'Not agreed yet', 'unclear': 'Unclear wording', 'superseded': 'Superseded',
+};
+let ledgerView = 'list', ledgerProject = '', ledgerStatus = '';
+function openLedger(){
+  document.getElementById('ledger').classList.add('show');
+  loadLedger();
+}
+function ledgerBack(){
+  if(ledgerView === 'detail'){ loadLedger(); }
+  else{ document.getElementById('ledger').classList.remove('show'); }
+}
+function ledgerSetProject(value){ ledgerProject = value; ledgerStatus = ''; loadLedger(); }
+function ledgerSetStatus(value){ ledgerStatus = (ledgerStatus === value) ? '' : value; loadLedger(); }
+const ledWhen = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const ledProofLabel = (p) => (p.source === 'meeting' ? 'Meeting' : p.source.charAt(0).toUpperCase() + p.source.slice(1)) + ' · ' + (p.kind === 'reason' ? 'reason' : p.kind === 'decision' ? 'decision' : 'said') + (p.who ? ' · ' + p.who : '');
+function ledgerEntryHtml(e){
+  const why = e.rationale ? `<div class="led-line"><b>Why:</b> ${esc(e.rationale)}</div>` : '';
+  const missing = e.missing ? `<div class="led-line missing"><b>${e.status === 'superseded' ? 'Replaced by:' : 'Missing:'}</b> ${esc(e.missing)}</div>` : '';
+  const quote = (e.proof || []).find((p) => p.kind !== 'reason');
+  const quoteLine = quote ? `<div class="led-quote">⤷ <span class="spk">${esc(quote.who)}:</span> “${esc(quote.quote)}”</div>` : '';
+  const chips = (e.proof || []).map((p) => `<span class="led-proof">${esc(ledProofLabel(p))}</span>`).join('');
+  return `<div class="led-entry ${esc(e.status)}" role="button" tabindex="0" data-id="${esc(e.id)}" onclick="openLedgerEntry(this.dataset.id)" onkeydown="if(event.key==='Enter')openLedgerEntry(this.dataset.id)">
+    <div class="led-top"><span class="led-statement">${esc(e.statement)}</span><span class="led-tag ${esc(e.status)}">${esc(LEDGER_STATUS[e.status] || e.status)}</span></div>
+    ${why}${missing}${quoteLine}
+    <div class="led-foot">${chips}<span class="led-meta">${esc(e.decider ? e.decider + ' · ' : '')}${ledWhen(e.date)} · ${esc((e.sourceMeeting && e.sourceMeeting.name) || '')}</span></div>
+  </div>`;
+}
+async function loadLedger(){
+  ledgerView = 'list';
+  document.getElementById('ledTitle').textContent = 'Decision ledger';
+  const body = document.getElementById('ledBody');
+  try{
+    const qs = new URLSearchParams();
+    if(ledgerProject) qs.set('project', ledgerProject);
+    if(ledgerStatus) qs.set('status', ledgerStatus);
+    const data = await (await fetch('/ledger' + (qs.toString() ? '?' + qs : ''))).json();
+    const projects = data.projects || [];
+    const counts = data.counts || {};
+    const projectPicker = `<select class="led-project" id="ledProject" aria-label="Project" onchange="ledgerSetProject(this.value)">
+      <option value="">All projects</option>
+      ${projects.map((p) => `<option value="${esc(p)}"${p === ledgerProject ? ' selected' : ''}>${esc(p)}</option>`).join('')}
+    </select>`;
+    const chips = Object.keys(LEDGER_STATUS).filter((k) => counts[k] || k === ledgerStatus).map((k) =>
+      `<button class="led-chip${k === ledgerStatus ? ' on' : ''}" data-status="${k}" onclick="ledgerSetStatus(this.dataset.status)">${LEDGER_STATUS[k]}<span class="n">${counts[k] || 0}</span></button>`).join('');
+    const entries = data.entries || [];
+    let listHtml;
+    if(!entries.length){
+      listHtml = (data.total || projects.length)
+        ? '<div class="led-empty">Nothing matches that filter.</div>'
+        : '<div class="led-empty">The ledger is empty. When a meeting ends, each of its decisions is filed here with the exact words that settled it, grouped by project. Decisions that were conditional, unclear or not agreed are filed too, with what is still missing.</div>';
+    } else if(ledgerProject){
+      listHtml = '<div class="led-list">' + entries.map(ledgerEntryHtml).join('') + '</div>';
+    } else {
+      // All projects: group the entries under their project headings.
+      listHtml = projects.filter((p) => entries.some((e) => e.project === p)).map((p) =>
+        `<div class="led-group">${esc(p)}</div><div class="led-list">${entries.filter((e) => e.project === p).map(ledgerEntryHtml).join('')}</div>`).join('');
+    }
+    body.innerHTML = '<div class="led-sub">One record of what was decided, across every meeting. The room decides; Clarus records it with the words that closed it.</div>'
+      + `<div class="led-filters">${projectPicker}${chips}</div>` + listHtml;
+  }catch(e){
+    body.innerHTML = '<div class="led-empty">Could not load the ledger - is the bot running?</div>';
+  }
+}
+async function openLedgerEntry(id){
+  try{
+    const r = await fetch('/ledger/' + encodeURIComponent(id));
+    if(!r.ok) return;
+    const e = await r.json();
+    ledgerView = 'detail';
+    document.getElementById('ledTitle').textContent = e.project || 'Decision';
+    const proof = (e.proof || []).map((p) =>
+      `<div class="led-quote"><span class="src">${esc(ledProofLabel(p))} · ${ledWhen(p.when)}</span><br>⤷ <span class="spk">${esc(p.who)}:</span> “${esc(p.quote)}”</div>`).join('')
+      || '<div class="led-line">No quote was captured for this entry.</div>';
+    const history = (e.history || []).map((h) =>
+      `<div class="led-hist">${esc((h.at || '').slice(0, 16).replace('T', ' '))} · ${esc(h.event)} · ${esc(h.detail || '')}</div>`).join('');
+    document.getElementById('ledBody').innerHTML = `<div class="led-detail">
+      <div class="led-card">
+        <div class="led-top"><span class="led-statement">${esc(e.statement)}</span><span class="led-tag ${esc(e.status)}">${esc(LEDGER_STATUS[e.status] || e.status)}</span></div>
+        ${e.rationale ? `<div class="led-line"><b>Why:</b> ${esc(e.rationale)}</div>` : '<div class="led-line">Why: no reason was stated in the meeting.</div>'}
+        ${e.missing ? `<div class="led-line missing"><b>Missing:</b> ${esc(e.missing)}</div>` : ''}
+        <div class="led-meta">${esc(e.decider ? 'Agreed by ' + e.decider + ' · ' : '')}${ledWhen(e.date)} · asked as "${esc(e.conditionLabel || '')}"</div>
+      </div>
+      <div class="led-card"><h4>Proof</h4>${proof}</div>
+      <div class="led-card"><h4>History</h4>${history}</div>
+      <div class="led-card"><h4>Source</h4>
+        <div class="led-line">${esc((e.sourceMeeting && e.sourceMeeting.name) || 'Meeting')}</div>
+        ${e.sourceRecord ? `<button class="led-link" data-file="${esc(e.sourceRecord)}" onclick="openLedgerRecord(this.dataset.file)">Open the meeting record →</button>` : ''}
+      </div>
+    </div>`;
+    document.getElementById('ledger').scrollTop = 0;
+  }catch(err){ /* stay on the list */ }
+}
+// From a ledger entry to its meeting's full record (the History detail view).
+function openLedgerRecord(file){
+  document.getElementById('ledger').classList.remove('show');
+  document.getElementById('history').classList.add('show');
+  openRecord(file);
+}
+
 let historyView = 'list';
 function openHistory(){
   document.getElementById('history').classList.add('show');
@@ -1625,7 +1787,7 @@ function renderRecordDetail(rec, file){
   }).join('');
   // The audit trail: every event as it happened. Speaker-seen events are
   // folded into the participants line instead of cluttering the timeline.
-  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released' || t === 'rationale-captured') ? 'e-closed'
+  const evClass = (t) => (t === 'condition-closed' || t === 'condition-released' || t === 'rationale-captured' || t === 'ledger-written') ? 'e-closed'
     : (t === 'condition-edited' || t === 'condition-added' || t === 'condition-revised' || t === 'condition-reopened' || t === 'condition-held' || t === 'rationale-asked' || t === 'rationale-missing') ? 'e-edit'
     : t === 'owner-mentioned' ? 'e-mention' : '';
   const eventsHtml = (rec.events || []).filter((e) => e.type !== 'speaker-seen').map((e) =>

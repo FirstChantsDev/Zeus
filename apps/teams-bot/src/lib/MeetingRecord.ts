@@ -35,6 +35,7 @@ export type AuditEvent = {
         | 'rationale-captured'
         | 'rationale-asked'
         | 'rationale-missing'
+        | 'ledger-written'
         | 'condition-revised'
         | 'condition-reopened'
         | 'condition-edited'
@@ -123,6 +124,9 @@ export type MeetingRecordFile = {
      *  action - the first edge of the decision graph. A relationship, not
      *  duplicated text: the parent's action carries childMeetingId back. */
     parent?: { meetingId: string, recordFile: string, actionId: string, meetingName?: string } | null;
+    /** Phase 18 M3: the project this meeting's decisions are filed under
+     *  in the ledger ('' when none was given) */
+    project?: string;
     events: AuditEvent[];
 };
 
@@ -142,6 +146,7 @@ export class MeetingRecord {
     /** Phase 14: the calendar event's attendee list (empty for pasted links) */
     private attendees: Attendee[] = [];
     /** Milestone 3: set when this meeting came from an approved follow-up action */
+    private project = '';
     private parent: MeetingRecordFile['parent'] = null;
 
     constructor(id: string) {
@@ -153,16 +158,18 @@ export class MeetingRecord {
         this.events.push({ at: new Date().toISOString(), type, detail, ...(data ? { data } : {}) });
     }
 
-    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[], parent?: MeetingRecordFile['parent'], reasonsRequired?: boolean }) {
+    public briefed(brief: { meetingName: string, ownerName: string, labels: string[], context: string, lengthMinutes: number, attendees?: Attendee[], parent?: MeetingRecordFile['parent'], reasonsRequired?: boolean, project?: string }) {
         this.meetingName = brief.meetingName;
         this.ownerName = brief.ownerName;
         this.scheduledMinutes = brief.lengthMinutes;
         this.attendees = brief.attendees ?? [];
         this.parent = brief.parent ?? null;
+        this.project = (brief.project ?? '').trim();
         this.briefedAt = new Date().toISOString();
         this.log('meeting-briefed', `Briefed: "${brief.meetingName}" (${brief.lengthMinutes} min) - ${brief.labels.join(' | ')}${brief.reasonsRequired ? ' - reasons required' : ''}`, {
             labels: brief.labels,
             reasonsRequired: brief.reasonsRequired === true,
+            project: (brief.project ?? '').trim(),
             context: brief.context,
         });
     }
@@ -253,6 +260,7 @@ export class MeetingRecord {
             attendees: this.attendees,
             actions: args.actions ?? [],
             parent: this.parent,
+            project: this.project,
             events: this.events,
         };
         return record;

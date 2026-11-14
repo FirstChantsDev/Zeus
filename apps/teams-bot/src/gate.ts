@@ -22,6 +22,9 @@ import { Nudger, LineDecision } from './lib/Nudger';
 import { CockpitServer, TranscriptRecord } from './lib/CockpitServer';
 import { CalendarConnector } from './lib/CalendarConnector';
 import { MeetingRecord, MeetingAction } from './lib/MeetingRecord';
+import { Ledger } from './lib/Ledger';
+import fs from 'fs';
+import path from 'path';
 import { conditions, applyBrief } from './conditions';
 
 /** The cockpit's local address: http://localhost:4300 */
@@ -101,7 +104,19 @@ const main = async () => {
                     actions = await nudger.generateActions(record.summaryInput(), summary);
                     console.log(`ACTIONS >>> ${actions.length} drafted${actions.length ? ': ' + actions.map((a) => `[${a.type}] ${a.title}`).join(' | ') : ' (nothing to follow up)'}`);
                 }
-                record.save({ endReason: reason, ...snapshot, summary, actions });
+                const savedPath = record.save({ endReason: reason, ...snapshot, summary, actions });
+                // Phase 18 M3: file this meeting's decisions in the company
+                // ledger (one more API call for crisp wording; without a key
+                // the plain wording is written instead).
+                if (savedPath) {
+                    try {
+                        const saved = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+                        const result = await Ledger.writeFromRecord(saved, path.basename(savedPath), { apiKey: apiKey ?? '' });
+                        if (result.entries.length) Ledger.noteOnRecord(savedPath, result);
+                    } catch (error) {
+                        console.error('Could not write the decision ledger:', error);
+                    }
+                }
             }
         } catch (error) {
             console.error('Could not persist the meeting record:', error);

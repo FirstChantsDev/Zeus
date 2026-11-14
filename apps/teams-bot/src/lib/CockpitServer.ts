@@ -4,6 +4,7 @@ import path from 'path';
 import { Logger } from './Logger';
 import { Condition, MAX_CONDITIONS } from '../conditions';
 import { listRecords, readRecord, computeMetrics, applyActionUpdate } from './MeetingRecord';
+import { Ledger } from './Ledger';
 import { CalendarLike, UpcomingMeeting } from './CalendarConnector';
 
 /** Phase 10 M3: one turn of the chat-mode briefing, answered by the model
@@ -19,7 +20,7 @@ export type BriefChatHandler = (
     proposeConditions: string[] | null,
     brief: {
         meetingIndex: number | null, meetingUrl: string | null, meetingName: string,
-        lengthMinutes: number, ownerName: string, conditions: string[], context: string, reasonsRequired: boolean,
+        lengthMinutes: number, ownerName: string, conditions: string[], context: string, reasonsRequired: boolean, project: string,
     } | null,
 } | null>;
 
@@ -62,6 +63,8 @@ export type Brief = {
     ownerName: string;
     /** Phase 18 M2: ask the room for the reason behind EVERY decision */
     reasonsRequired: boolean;
+    /** Phase 18 M3: the ledger project these decisions are filed under ('' if none) */
+    project: string;
     /** Phase 10: the meeting link to join - from a calendar pick, a pasted
      *  link in the form, or (fallback) the URL the bot was launched with. */
     meetingUrl: string;
@@ -339,6 +342,18 @@ export class CockpitServer {
                         res.end(JSON.stringify({ ok: false, error: 'Calendar not connected - click Connect calendar on the briefing screen.' }));
                     }
                 })();
+            } else if (url === '/ledger') {
+                // Phase 18 M3: the company decision ledger - filtered entries
+                // plus the filter options (projects, per-status counts).
+                const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(Ledger.list({
+                    project: params.get('project') ?? '', status: params.get('status') ?? '', q: params.get('q') ?? '',
+                })));
+            } else if (url.startsWith('/ledger/')) {
+                const entry = Ledger.get(decodeURIComponent(url.slice('/ledger/'.length)));
+                res.writeHead(entry ? 200 : 404, { 'content-type': 'application/json' });
+                res.end(JSON.stringify(entry ?? { ok: false, error: 'ledger entry not found' }));
             } else if (url === '/history') {
                 const entries = listRecords();
                 res.writeHead(200, { 'content-type': 'application/json' });
@@ -426,7 +441,7 @@ export class CockpitServer {
     private _acceptBrief(parsed: {
         meetingName?: unknown, conditions?: unknown, context?: unknown,
         lengthMinutes?: unknown, ownerName?: unknown, meetingUrl?: unknown,
-        meetingStart?: unknown, calendarEventId?: unknown, attendees?: unknown, reasonsRequired?: unknown,
+        meetingStart?: unknown, calendarEventId?: unknown, attendees?: unknown, reasonsRequired?: unknown, project?: unknown,
     }): { ok: true } | { ok: false, status: number, error: string } {
         if (this.briefed) {
             return { ok: false, status: 409, error: 'Agent is already briefed - restart the bot to brief it again.' };
@@ -486,7 +501,7 @@ export class CockpitServer {
         this.meetingName = meetingName;
         this.scheduledMinutes = lengthMinutes;
         this.ownerName = ownerName;
-        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, reasonsRequired: parsed.reasonsRequired === true }); // populates the shared conditions array
+        this.onSetup({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, reasonsRequired: parsed.reasonsRequired === true, project: typeof parsed.project === 'string' ? parsed.project.trim().slice(0, 80) : '' }); // populates the shared conditions array
         return { ok: true };
     }
 
@@ -579,6 +594,7 @@ export class CockpitServer {
                         lengthMinutes: picked?.durationMinutes ?? result.brief.lengthMinutes,
                         ownerName: result.brief.ownerName,
                         reasonsRequired: result.brief.reasonsRequired,
+                        project: result.brief.project,
                         meetingUrl: picked?.joinUrl ?? result.brief.meetingUrl ?? '',
                         meetingStart: picked?.start,
                         calendarEventId: picked?.id,

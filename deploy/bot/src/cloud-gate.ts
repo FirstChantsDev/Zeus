@@ -61,6 +61,8 @@ type BriefFromHub = {
     ownerName: string;
     /** Phase 18 M2: ask the room for the reason behind EVERY decision */
     reasonsRequired?: boolean;
+    /** Phase 18 M3: the ledger project these decisions are filed under */
+    project?: string;
     meetingUrl: string;
     /** ISO start time from the calendar pick - null when unknown (pasted link) */
     meetingStart?: string | null;

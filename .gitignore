@@ -52,3 +52,4 @@ calendar-token.json
 **/*.tsbuildinfo
 **/next-env.d.ts
 preview-shots/
+ledger/

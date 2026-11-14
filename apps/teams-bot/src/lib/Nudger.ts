@@ -586,6 +586,7 @@ export class Nudger {
             conditions: string[],
             context: string,
             reasonsRequired: boolean,
+            project: string,
         } | null,
     } | null> {
         const inProgress = (m: { start: string, durationMinutes: number }) => {
@@ -641,6 +642,12 @@ export class Nudger {
             '   reason for every decision"). It makes the agent ask the room why for every decision that',
             '   closes without a stated reason. Otherwise false. Never spend a turn asking about it.',
             '',
+            '6. PROJECT. Decisions are filed in a company ledger by project. Set brief.project from the',
+            '   meeting title when it names one ("Atlas steering committee" -> "Project Atlas"), or from',
+            '   what the owner says. Mention it once in your send-off so they can correct it ("Filing this',
+            '   under Project Atlas."). If the owner corrects it, use their wording. "" when there is no',
+            '   obvious project - do not invent one and never spend a turn asking.',
+            '',
             ...calendarLines,
             '',
             `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
@@ -650,7 +657,7 @@ export class Nudger {
             ' "proposeConditions": ["..."]|null,',
             ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
             '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
-            '   "context": "...", "reasonsRequired": true|false}}',
+            '   "context": "...", "reasonsRequired": true|false, "project": "..."}}',
             'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
             'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
             'agent in now. You\'ll see it on your board.").',
@@ -694,7 +701,7 @@ export class Nudger {
                 reply?: unknown, proposeMeeting?: unknown, showList?: unknown, proposeConditions?: unknown,
                 brief?: {
                     meetingIndex?: unknown, meetingUrl?: unknown, meetingName?: unknown,
-                    lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown, reasonsRequired?: unknown,
+                    lengthMinutes?: unknown, ownerName?: unknown, conditions?: unknown, context?: unknown, reasonsRequired?: unknown, project?: unknown,
                 } | null,
             };
             if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
@@ -710,6 +717,7 @@ export class Nudger {
                         : [],
                     context: typeof parsed.brief.context === 'string' ? parsed.brief.context.trim() : '',
                     reasonsRequired: parsed.brief.reasonsRequired === true,
+                    project: typeof parsed.brief.project === 'string' ? parsed.brief.project.trim() : '',
                 }
                 : null;
             const proposeConditions = Array.isArray(parsed.proposeConditions)

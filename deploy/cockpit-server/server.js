@@ -25,6 +25,8 @@ const crypto = require('crypto');
 // owner). Reports configured:false when MS_CLIENT_ID/SECRET are absent -
 // then nothing changes anywhere.
 const calendar = require('./calendar');
+// Phase 18 M3: the company decision ledger - the SAME module the local bot uses.
+const ledger = require('./ledger');
 
 const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
@@ -60,10 +62,10 @@ const writeRecordFile = (record) => {
         const file = path.join(RECORDS_DIR, `${String(record.endedAt).replace(/[:.]/g, '-')}-${record.id}.json`);
         fs.writeFileSync(file, JSON.stringify(record, null, 2));
         console.log(`RECORD SAVED >>> ${file}`);
-        return true;
+        return file;
     } catch (error) {
         console.error('RECORD SAVE FAILED >>>', error);
-        return false;
+        return null;
     }
 };
 
@@ -146,7 +148,7 @@ const startedAt = new Date().toISOString();
 /** meetingId -> meeting state (see createMeeting for the shape) */
 const meetings = new Map();
 
-const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, parent, reasonsRequired }) => {
+const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName, meetingUrl, meetingStart, calendarEventId, attendees, parent, reasonsRequired, project }) => {
     const id = crypto.randomBytes(4).toString('hex');
     const meeting = {
         id,
@@ -159,6 +161,7 @@ const createMeeting = ({ meetingName, labels, context, lengthMinutes, ownerName,
         meetingJoinedAt: null,
         ownerName,
         reasonsRequired: reasonsRequired === true, // Phase 18 M2: ask why for EVERY decision
+        project: typeof project === 'string' ? project.trim().slice(0, 80) : '', // Phase 18 M3: ledger grouping
         meetingUrl,
         meetingStart: meetingStart || null, // ISO start from the calendar pick, null when unknown
         calendarEventId: calendarEventId || null, // lets the hub follow the event if it moves
@@ -545,6 +548,12 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         '   reason for every decision"). It makes the agent ask the room why for every decision that',
         '   closes without a stated reason. Otherwise false. Never spend a turn asking about it.',
         '',
+        '6. PROJECT. Decisions are filed in a company ledger by project. Set brief.project from the',
+        '   meeting title when it names one ("Atlas steering committee" -> "Project Atlas"), or from',
+        '   what the owner says. Mention it once in your send-off so they can correct it ("Filing this',
+        '   under Project Atlas."). If the owner corrects it, use their wording. "" when there is no',
+        '   obvious project - do not invent one and never spend a turn asking.',
+        '',
         ...calendarLines,
         '',
         `Today is ${new Date().toISOString().slice(0, 10)} (times are UTC).`,
@@ -554,7 +563,7 @@ const briefChatCall = async (history, meetingsMeta, calendarConnected) => {
         ' "proposeConditions": ["..."]|null,',
         ' "brief": null | {"meetingIndex": <index>|null, "meetingUrl": "<pasted link>"|null,',
         '   "meetingName": "...", "lengthMinutes": <n>, "ownerName": "...", "conditions": ["..."],',
-        '   "context": "...", "reasonsRequired": true|false}}',
+        '   "context": "...", "reasonsRequired": true|false, "project": "..."}}',
         'Set "brief" ONLY once the meeting is resolved (confirmed index, or pasted link) AND the owner',
         'has confirmed the conditions. Its reply is still shown - make it the send-off ("Sending the',
         "agent in now. You'll see it on your board.\").",
@@ -736,6 +745,7 @@ const server = http.createServer(async (req, res) => {
                         lengthMinutes: unclaimed.scheduledMinutes,
                         ownerName: unclaimed.ownerName,
                         reasonsRequired: unclaimed.reasonsRequired === true,
+                        project: unclaimed.project || '',
                         meetingUrl: unclaimed.meetingUrl,
                         meetingStart: unclaimed.meetingStart, // the bot holds off joining until near this
                         attendees: unclaimed.attendees, // Phase 14: follow-up recipient suggestions
@@ -791,7 +801,16 @@ const server = http.createServer(async (req, res) => {
                     answer(res, 400, { ok: false, error: 'not a meeting record' });
                     return;
                 }
-                answer(res, writeRecordFile(record) ? 200 : 500, { ok: true });
+                const savedPath = writeRecordFile(record);
+                answer(res, savedPath ? 200 : 500, { ok: Boolean(savedPath) });
+                // Phase 18 M3: file the meeting's decisions in the company
+                // ledger - one API call for crisp wording (plain wording
+                // without a key). After the answer: the bot is not kept waiting.
+                if (savedPath) {
+                    ledger.writeFromRecord(record, path.basename(savedPath), { apiKey: ANTHROPIC_API_KEY })
+                        .then((result) => { if (result.entries.length) ledger.noteOnRecord(savedPath, result); })
+                        .catch((error) => console.error('Could not write the decision ledger:', error));
+                }
             } catch {
                 answer(res, 400, { ok: false, error: 'body must be JSON' });
             }
@@ -871,6 +890,7 @@ const server = http.createServer(async (req, res) => {
                 lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                 ownerName: typeof parsed.ownerName === 'string' ? parsed.ownerName.trim() : '',
                 reasonsRequired: parsed.reasonsRequired === true,
+                project: parsed.project,
                 meetingUrl,
                 meetingStart: (typeof parsed.meetingStart === 'string' && Number.isFinite(Date.parse(parsed.meetingStart))) ? parsed.meetingStart : null,
                 calendarEventId: typeof parsed.calendarEventId === 'string' ? parsed.calendarEventId : null,
@@ -980,6 +1000,7 @@ const server = http.createServer(async (req, res) => {
                     lengthMinutes: Number.isFinite(rawLength) && rawLength > 0 ? Math.min(480, Math.max(1, Math.round(rawLength))) : 30,
                     ownerName: typeof b.ownerName === 'string' ? b.ownerName.trim() : '',
                     reasonsRequired: b.reasonsRequired === true,
+                    project: b.project,
                     meetingUrl,
                     meetingStart: (picked && picked.start) || null,
                     calendarEventId: (picked && picked.id) || null,
@@ -1097,6 +1118,31 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Past-meeting history + the metrics strip (read from the records dir).
+    // Phase 18 M3: the company decision ledger. Same shapes as the local
+    // cockpit. The backfill fills it from the records already on disk.
+    if (url === '/ledger') {
+        const params = new URL(req.url || '/', 'http://localhost').searchParams;
+        answer(res, 200, ledger.list({ project: params.get('project') || '', status: params.get('status') || '', q: params.get('q') || '' }));
+        return;
+    }
+    if (url === '/ledger/backfill' && req.method === 'POST') {
+        try {
+            // { polish: true } spends one API call per record on crisper wording; default is free.
+            let polish = false;
+            try { polish = JSON.parse(await readBody(req)).polish === true; } catch { /* no body = plain wording */ }
+            const totals = await ledger.backfill(RECORDS_DIR, { apiKey: polish ? ANTHROPIC_API_KEY : '' });
+            answer(res, 200, { ok: true, ...totals });
+        } catch (error) {
+            console.error('Ledger backfill failed:', error);
+            answer(res, 500, { ok: false, error: 'backfill failed' });
+        }
+        return;
+    }
+    if (url.startsWith('/ledger/')) {
+        const entry = ledger.get(decodeURIComponent(url.slice('/ledger/'.length)));
+        answer(res, entry ? 200 : 404, entry || { ok: false, error: 'ledger entry not found' });
+        return;
+    }
     if (url === '/history') {
         const entries = listRecords();
         // durable: false = no volume behind RECORDS_DIR, so Railway wipes
