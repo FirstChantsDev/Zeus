@@ -27,6 +27,8 @@ const crypto = require('crypto');
 const calendar = require('./calendar');
 // Phase 18 M3: the company decision ledger - the SAME module the local bot uses.
 const ledger = require('./ledger');
+// Phase 18 M6: Slack - proof in, answers out, decisions posted (on approval only).
+const slack = require('./slack');
 
 const PORT = Number(process.env.PORT) || 4400;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'zeus-demo';
@@ -815,7 +817,20 @@ const server = http.createServer(async (req, res) => {
                 // without a key). After the answer: the bot is not kept waiting.
                 if (savedPath) {
                     ledger.writeFromRecord(record, path.basename(savedPath), { apiKey: ANTHROPIC_API_KEY })
-                        .then((result) => { if (result.entries.length) ledger.noteOnRecord(savedPath, result); })
+                        .then((result) => {
+                            if (!result.entries.length) return;
+                            ledger.noteOnRecord(savedPath, result);
+                            // Phase 18 M6: draft a Slack post of what was decided.
+                            // A PROPOSED action only - nothing is posted unapproved.
+                            const draft = slack.draftPost(record, result.entries);
+                            if (!draft) return;
+                            const onDisk = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+                            onDisk.actions = Array.isArray(onDisk.actions) ? onDisk.actions : [];
+                            const drafted = { id: `a${onDisk.actions.length + 1}`, ...draft };
+                            onDisk.actions.push(drafted);
+                            onDisk.events.push({ at: new Date().toISOString(), type: 'action-drafted', detail: `Drafted a Slack post of ${result.entries.filter((e) => e.status === 'decided').length} decision(s) (waiting for your approval)`, data: { actionId: drafted.id } });
+                            fs.writeFileSync(savedPath, JSON.stringify(onDisk, null, 2));
+                        })
                         .catch((error) => console.error('Could not write the decision ledger:', error));
                 }
             } catch {
@@ -839,6 +854,52 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Everything below is the cockpit API - access code required.
+    // Phase 18 M6: Slack calls in here. Its gate is Slack's own signature
+    // on every request (not the access-code session), so these sit before
+    // the session check. Slack wants an answer within 3 seconds: each is
+    // acknowledged at once and the real work happens after.
+    if ((url === '/slack/events' || url === '/slack/commands') && req.method === 'POST') {
+        const raw = await readBody(req);
+        if (!slack.verify(req, raw)) {
+            answer(res, 401, { ok: false, error: 'bad Slack signature' });
+            return;
+        }
+        const deps = {
+            ledger,
+            apiKey: ANTHROPIC_API_KEY,
+            // The audit trail: outside proof is noted on the decision's meeting record.
+            onProof: (outcome) => {
+                if (!outcome.entry.sourceRecord) return;
+                ledger.appendRecordEvent(path.join(RECORDS_DIR, outcome.entry.sourceRecord), {
+                    type: 'proof-attached',
+                    detail: outcome.attached
+                        ? `Slack proof attached to "${outcome.entry.statement}": ${outcome.proof.who} confirmed${outcome.proof.channel ? ` in #${outcome.proof.channel}` : ''} - now decided`
+                        : `Possible Slack confirmation for "${outcome.entry.statement}" from ${outcome.proof.who} - waiting for the owner`,
+                    data: { entryId: outcome.entry.id, source: 'slack', link: outcome.proof.link, attached: outcome.attached === true },
+                });
+            },
+        };
+        if (url === '/slack/events') {
+            let payload = null;
+            try { payload = JSON.parse(raw); } catch { /* answered below */ }
+            if (payload && payload.type === 'url_verification') {
+                res.writeHead(200, { 'content-type': 'text/plain' });
+                res.end(String(payload.challenge || '')); // Slack's one-time handshake
+                return;
+            }
+            answer(res, 200, { ok: true });
+            if (payload) slack.handleEvent(payload, deps).catch((error) => console.error('SLACK >>> event failed:', error instanceof Error ? error.message : error));
+        } else {
+            const form = new URLSearchParams(raw);
+            const { question, reply } = slack.commandAck(form.get('text'));
+            answer(res, 200, reply);
+            if (question && form.get('response_url')) {
+                slack.answerCommand(question, form.get('response_url'), deps).catch((error) => console.error('SLACK >>> command failed:', error instanceof Error ? error.message : error));
+            }
+        }
+        return;
+    }
+
     // Phase 18 M5: the read-only ledger API for other tools (and the MCP
     // server). It has its OWN gate - the API token, not the access-code
     // session - so it sits before the session check. GET only.
@@ -1146,6 +1207,27 @@ const server = http.createServer(async (req, res) => {
     // Past-meeting history + the metrics strip (read from the records dir).
     // Phase 18 M3: the company decision ledger. Same shapes as the local
     // cockpit. The backfill fills it from the records already on disk.
+    // Phase 18 M6: is Slack connected? (drives the Ledger view's status line)
+    if (url === '/slack/status') {
+        answer(res, 200, slack.status());
+        return;
+    }
+    // Phase 18 M6: the owner accepts or dismisses a "possible confirmation".
+    if (url === '/ledger/proof' && req.method === 'POST') {
+        let body = {};
+        try { body = JSON.parse(await readBody(req)); } catch { /* validated below */ }
+        const by = (typeof body.by === 'string' && body.by.trim()) ? body.by.trim().slice(0, 60) : 'the owner';
+        const result = ledger.resolvePossibleProof(String(body.entryId || ''), String(body.proofId || ''), body.op === 'accept' ? 'accept' : 'dismiss', by);
+        if (result.ok && result.accepted && result.entry.sourceRecord) {
+            ledger.appendRecordEvent(path.join(RECORDS_DIR, result.entry.sourceRecord), {
+                type: 'proof-attached',
+                detail: `${by} accepted ${result.proof.who}'s ${result.proof.source} message as proof for "${result.entry.statement}"`,
+                data: { entryId: result.entry.id, source: result.proof.source, link: result.proof.link, acceptedBy: by },
+            });
+        }
+        answer(res, result.ok ? 200 : result.status, result.ok ? { ok: true } : result);
+        return;
+    }
     // Phase 18 M5: ask the ledger - ONE API call, answered only from entries.
     if (url === '/ledger/ask' && req.method === 'POST') {
         let body = {};
@@ -1248,6 +1330,20 @@ const server = http.createServer(async (req, res) => {
             } else if (parsed.op === 'approve') {
                 if (action.status === 'dismissed') { answer(res, 409, { ok: false, error: 'this action was dismissed' }); return; }
                 if (action.status !== 'approved') {
+                    // Phase 18 M6: approving a Slack post SENDS it - the one
+                    // action that leaves Clarus, and only on this tap. If
+                    // Slack refuses, the action stays proposed and says why.
+                    if (action.type === 'slack-post') {
+                        try {
+                            const channel = (typeof parsed.channel === 'string' && parsed.channel.trim()) ? parsed.channel : action.channel;
+                            action.slack = await slack.post(channel, action.body);
+                            action.channel = action.slack.channel;
+                            stamp('slack-posted', `Posted to Slack #${action.slack.channel} after approval`, { actionId: action.id, channel: action.slack.channel, permalink: action.slack.permalink });
+                        } catch (error) {
+                            answer(res, 502, { ok: false, error: error instanceof Error ? error.message : 'Slack refused the post' });
+                            return;
+                        }
+                    }
                     action.status = 'approved';
                     // Milestone 3: an approved booking with Add Clarus ON schedules
                     // the follow-up agent NOW - a new drawer in 'scheduled' state,

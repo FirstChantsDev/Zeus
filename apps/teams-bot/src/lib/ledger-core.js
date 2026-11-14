@@ -31,6 +31,8 @@ const ledgerDir = () =>
     || process.env.ZEUS_LEDGER_DIR
     || (process.env.RECORDS_DIR ? path.join(process.env.RECORDS_DIR, 'ledger') : path.join(process.cwd(), 'ledger'));
 const ledgerFile = () => path.join(ledgerDir(), 'ledger.json');
+/** Where the model lives. ANTHROPIC_BASE_URL exists so tests can point it at a stand-in. */
+const anthropicBase = () => (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
 
 /** The whole ledger; an empty one when the file does not exist yet. */
 const readLedger = () => {
@@ -158,7 +160,7 @@ const refineWithModel = async (record, entries, apiKey) => {
         '{"entries": [{"conditionId": "<id>", "statement": "...", "status": "decided"|"needs-approval"|"conditional"|"not-agreed"|"unclear", "decider": "...", "missing": "..."}]}',
     ].join('\n');
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetch(`${anthropicBase()}/v1/messages`, {
             method: 'POST',
             headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -324,7 +326,7 @@ const entryLine = (e) => `- id "${e.id}" (${String(e.date).slice(0, 10)}, ${e.so
 
 /** One model call, shared by the ledger-write check and the live check. */
 const askModel = async (apiKey, system, user, maxTokens) => {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(`${anthropicBase()}/v1/messages`, {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({ model: 'claude-opus-4-8', max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
@@ -749,9 +751,155 @@ const bearer = (header) => {
     return match ? match[1].trim() : '';
 };
 
+/**
+ * ================================================
+ * Phase 18 M6: proof from OUTSIDE a meeting. A message in a tool where
+ * the work happens (Slack first) can confirm an entry that was left
+ * open - "Approved, no conditions on the DPA" in #legal.
+ *
+ * Two safeguards keep this honest:
+ *  1. A free keyword pre-filter decides whether a message is even worth
+ *     a model call, so ordinary chatter costs nothing.
+ *  2. An entry only moves to Decided automatically when the message is an
+ *     unconditional confirmation AND it comes from the person the entry
+ *     was waiting on (or its decider). Anything else is kept as a
+ *     "possible confirmation" for the owner to accept or dismiss.
+ * ================================================
+ */
+const OPEN_STATUSES = ['needs-approval', 'conditional', 'not-agreed', 'unclear'];
+const APPROVAL_WORDS = /\b(approved?|approval|confirm(ed|s|ing)?|sign(ed|s)?[ -]off|accept(ed|s)?|agreed?|go ahead|good to go|no conditions|cleared?|pass(ed|es)?|done|lgtm|yes)\b/i;
+
+/** Open entries a message MIGHT be about. Free: no model involved. */
+const messageCandidates = (text) => {
+    const words = keywords(text);
+    if (words.length === 0) return [];
+    const approving = APPROVAL_WORDS.test(clean(text));
+    return readLedger().entries
+        .filter((e) => OPEN_STATUSES.includes(e.status))
+        .map((entry) => {
+            const hay = [entry.statement, entry.missing, entry.conditionLabel, entry.project, entry.rationale].join(' ').toLowerCase();
+            return { entry, hits: words.filter((w) => w.length > 2 && hay.includes(w)).length };
+        })
+        // Two shared words, or one plus an approving word ("DPA approved").
+        .filter((x) => x.hits >= 2 || (x.hits >= 1 && approving))
+        .sort((a, b) => b.hits - a.hits)
+        .slice(0, 8)
+        .map((x) => x.entry);
+};
+
+/** ONE API call: does this message confirm, block or change one of the candidates? */
+const judgeMessage = async (message, candidates, apiKey) => {
+    if (!apiKey || candidates.length === 0) return null;
+    const system = [
+        'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
+        'You are Clarus, an agent that keeps a company decision ledger. A message was posted in a work',
+        'channel the company connected to the ledger. You are given the message and the ledger entries',
+        'that are still OPEN. Decide whether the message settles one of them.',
+        '',
+        '- match: the id of the ONE entry the message is clearly about, or null. A message on another',
+        '  subject, a question, a joke or general chatter matches nothing. When unsure, null.',
+        '- effect: "confirms" if it gives the approval, confirmation or answer the entry was waiting',
+        '  for; "blocks" if it refuses it or says it is not ready; "none" otherwise.',
+        '- unconditional: true only if a confirmation comes with no strings attached ("approved, no',
+        '  conditions"). "Approved once the audit is done" is NOT unconditional.',
+        '- note: one plain sentence saying what the message did, e.g. "Priya approved the DPA wording',
+        '  with no conditions."',
+        'You only report what the message says. You never decide anything yourself.',
+        '',
+        'Reply with ONLY strict JSON on one line:',
+        '{"match": "<id>"|null, "effect": "confirms"|"blocks"|"none", "unconditional": true|false, "note": "..."}',
+    ].join('\n');
+    const user = `Message from ${message.who || 'someone'}${message.channel ? ` in #${message.channel}` : ''}: "${clean(message.text).slice(0, 1500)}"\n\nOpen ledger entries:\n${candidates.map(entryLine).join('\n')}`;
+    try {
+        const parsed = await askModel(apiKey, system, user, 300);
+        const entry = candidates.find((e) => e.id === parsed.match);
+        if (!entry || (parsed.effect !== 'confirms' && parsed.effect !== 'blocks')) return null;
+        return { entryId: entry.id, effect: parsed.effect, unconditional: parsed.unconditional === true, note: clean(parsed.note) };
+    } catch (error) {
+        console.error('LEDGER >>> message check skipped:', error instanceof Error ? error.message : error);
+        return null;
+    }
+};
+
+/** Is the speaker the person this entry was waiting on (or its decider)? */
+const speakerIsNamed = (entry, who) => {
+    const named = `${entry.missing || ''} ${entry.decider || ''}`.toLowerCase();
+    return clean(who).toLowerCase().split(/[^a-z0-9]+/).some((part) => part.length >= 3 && new RegExp(`\\b${part}\\b`).test(named));
+};
+
+/**
+ * Attaches outside proof to an entry. Returns what happened so the
+ * caller can write the `proof-attached` audit event.
+ *   proof: { source, quote, who, when, link, channel }
+ *   judged: { effect, unconditional, note } from judgeMessage
+ */
+const attachExternalProof = (entryId, proof, judged) => {
+    const ledger = readLedger();
+    const entry = ledger.entries.find((e) => e.id === entryId);
+    if (!entry || !OPEN_STATUSES.includes(entry.status)) return { ok: false, reason: 'entry is not open' };
+    const already = [...(entry.proof || []), ...(entry.possibleProof || [])].some((p) => p.link && p.link === proof.link);
+    if (already) return { ok: false, reason: 'already recorded' };
+    const at = new Date().toISOString();
+    const where = proof.channel ? ` in #${proof.channel}` : '';
+    const sourceName = proof.source.charAt(0).toUpperCase() + proof.source.slice(1);
+    const base = {
+        id: `p${crypto.randomBytes(4).toString('hex')}`,
+        source: proof.source, quote: clean(proof.quote), who: clean(proof.who), when: proof.when || at,
+        link: proof.link || null, channel: proof.channel || null, recordFile: null, note: judged.note || '',
+    };
+    const settles = judged.effect === 'confirms' && judged.unconditional && speakerIsNamed(entry, proof.who);
+    if (settles) {
+        const was = entry.status;
+        entry.proof = [...(entry.proof || []), { ...base, kind: 'confirmation', label: `${sourceName} · confirmed${where}` }];
+        entry.status = 'decided';
+        entry.missing = '';
+        entry.updatedAt = at;
+        entry.history.push({ at, event: 'proof-attached', detail: `${base.who} confirmed${where}: "${base.quote}". Was: ${was}, now decided` });
+        writeLedger(ledger);
+        console.log(`LEDGER PROOF >>> "${entry.statement}" confirmed by ${base.who}${where} - now decided`);
+        return { ok: true, attached: true, moved: true, entry, proof: base };
+    }
+    // Not certain enough to move anything: keep it for the owner to judge.
+    entry.possibleProof = [...(entry.possibleProof || []), {
+        ...base,
+        kind: judged.effect === 'blocks' ? 'objection' : 'confirmation',
+        label: `${sourceName} · ${judged.effect === 'blocks' ? 'objection' : 'possible confirmation'}${where}`,
+        wouldDecide: judged.effect === 'confirms' && judged.unconditional,
+    }];
+    entry.updatedAt = at;
+    entry.history.push({ at, event: 'possible-proof', detail: `${base.who}${where}: "${base.quote}" - kept for the owner to accept or dismiss` });
+    writeLedger(ledger);
+    console.log(`LEDGER PROOF >>> possible ${judged.effect === 'blocks' ? 'objection' : 'confirmation'} for "${entry.statement}" from ${base.who}${where} - waiting for the owner`);
+    return { ok: true, attached: false, possible: true, entry, proof: base };
+};
+
+/** The owner accepts or dismisses a possible confirmation. */
+const resolvePossibleProof = (entryId, proofId, op, by) => {
+    const ledger = readLedger();
+    const entry = ledger.entries.find((e) => e.id === entryId);
+    const pending = entry && (entry.possibleProof || []).find((p) => p.id === proofId);
+    if (!entry || !pending) return { ok: false, status: 404, error: 'that possible confirmation was not found' };
+    const at = new Date().toISOString();
+    const who = clean(by) || 'the owner';
+    entry.possibleProof = entry.possibleProof.filter((p) => p.id !== proofId);
+    if (op === 'accept') {
+        const { wouldDecide, ...kept } = pending;
+        entry.proof = [...(entry.proof || []), { ...kept, label: kept.label.replace('possible confirmation', 'confirmed'), acceptedBy: who }];
+        const was = entry.status;
+        if (wouldDecide && OPEN_STATUSES.includes(entry.status)) { entry.status = 'decided'; entry.missing = ''; }
+        entry.history.push({ at, event: 'proof-attached', detail: `${who} accepted ${pending.who}'s message as proof${entry.status !== was ? `. Was: ${was}, now ${entry.status}` : ''}` });
+    } else {
+        entry.history.push({ at, event: 'proof-dismissed', detail: `${who} dismissed ${pending.who}'s message as proof` });
+    }
+    entry.updatedAt = at;
+    writeLedger(ledger);
+    return { ok: true, accepted: op === 'accept', entry, proof: pending };
+};
+
 module.exports = {
     STATUSES, NO_PROJECT, ledgerDir, ledgerFile, readLedger, writeLedger,
     entriesFromRecord, refineWithModel, upsert, writeFromRecord, noteOnRecord, backfill, list, get,
     detectClashes, openClashes, resolveClash, dismissClash, appendRecordEvent, draftAskDecider, checkClosure,
+    messageCandidates, judgeMessage, attachExternalProof, resolvePossibleProof, OPEN_STATUSES,
     ask, relevantEntries, createToken, tokenStatus, revokeToken, checkToken, bearer,
 };

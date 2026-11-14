@@ -51,7 +51,9 @@ export type AuditEvent = {
         | 'action-toggled'
         | 'action-drafted'
         | 'clash-asked'
-        | 'decision-superseded';
+        | 'decision-superseded'
+        | 'proof-attached'
+        | 'slack-posted';
     /** Human-readable one-liner, so the history view needs no per-type logic */
     detail: string;
     /** Type-specific extras (before/after text, quotes, ...) */
@@ -64,7 +66,8 @@ export type AuditEvent = {
  *  display-only drafts. */
 export type MeetingAction = {
     id: string; // a1, a2, ... within the record
-    type: 'email' | 'calendar' | 'share';
+    /** 'slack-post' (Phase 18 M6) is drafted and sent by the hosted hub only */
+    type: 'email' | 'calendar' | 'share' | 'slack-post';
     /** One-line headline for the card */
     title: string;
     /** The full draft, written in the OWNER'S voice (email text, or the
@@ -90,6 +93,9 @@ export type MeetingAction = {
     status: 'proposed' | 'approved' | 'dismissed';
     /** Phase 18 M4: set on an "Ask the decider" draft - the ledger clash it is about */
     clashId?: string;
+    /** Phase 18 M6: slack-post actions - the channel to post to, and where it landed */
+    channel?: string;
+    slack?: { channel: string, ts: string, permalink: string | null };
 };
 
 /** One person on the calendar event's attendee list (Calendars.Read already

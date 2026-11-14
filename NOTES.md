@@ -293,6 +293,75 @@ goal is being ignored, and reporting everything to a private local cockpit.
   The token lives in that config file on your computer. Treat it like a
   password: if it leaks, press **Revoke** or **Replace token**.
 
+- **Phase 18 Milestone 6 - Slack: proof in, answers out, decisions
+  posted (2026-11).** HOSTED HUB ONLY: Slack has to reach Clarus at a
+  public address, so the local bot has no Slack side.
+  `deploy/cockpit-server/slack.js` (dependency-free) plus matching logic
+  in `ledger-core.js`.
+  - *Proof in:* Slack's Events API (never history polling) sends
+    messages from channels the app was invited to. A FREE keyword
+    pre-filter runs first (two words shared with an open entry, or one
+    plus an approving word); only candidates go to ONE API call that
+    asks whether the message confirms or blocks an open entry. The entry
+    moves to **Decided** automatically only when the confirmation is
+    unconditional AND the speaker is the person the entry was waiting on
+    (their name appears in "Waiting on / Until" or as the decider). The
+    proof chip reads **Slack · confirmed in #legal** with a permalink.
+    Anything else is kept as a **possible confirmation** on the entry
+    for the owner to Accept or Dismiss. Bot messages, edits and Slack's
+    re-sent events are ignored. Audit event `proof-attached` on the
+    decision's meeting record.
+  - *Answers out:* `/clarus ask <question>` and @mentions are answered
+    by the Milestone 5 engine, ephemerally (only the asker sees it).
+  - *Decisions posted:* after a meeting's ledger entries are written,
+    the hub drafts a `slack-post` follow-up action summarising the
+    DECIDED entries (template, no API call). It is a proposed action in
+    History: edit, dismiss, or **Approve and post**, with the channel on
+    the card. Approving is the only thing that sends it. If Slack
+    refuses (e.g. Clarus is not in the channel) the card says why and
+    the action stays proposed. Audit events `action-approved` and
+    `slack-posted`.
+  - *Security:* every Slack request is checked against Slack's signature
+    (HMAC with the signing secret, 5-minute replay window) before
+    anything else; `/slack/events` and `/slack/commands` sit outside the
+    access-code session because Slack cannot sign in.
+  - Endpoints: `POST /slack/events`, `POST /slack/commands`,
+    `GET /slack/status`, `POST /ledger/proof` {entryId, proofId,
+    op: accept|dismiss}.
+
+  **Slack app setup (about ten minutes, do it in a TEST workspace first)**
+  1. Go to **api.slack.com/apps** -> **Create New App** -> **From
+     scratch**. Name it `Clarus`, pick your workspace, Create.
+  2. **OAuth & Permissions** -> **Scopes** -> **Bot Token Scopes** -> add
+     exactly these six: `channels:history`, `channels:read`,
+     `users:read`, `app_mentions:read`, `chat:write`, `commands`.
+  3. **Basic Information** -> **App Credentials** -> copy the **Signing
+     Secret**. In Railway, on the COCKPIT service, add the variable
+     `SLACK_SIGNING_SECRET` with that value. Let it redeploy (step 5
+     needs the server to already know the secret).
+  4. **OAuth & Permissions** -> **Install to Workspace** -> Allow. Copy
+     the **Bot User OAuth Token** (starts `xoxb-`). In Railway add
+     `SLACK_BOT_TOKEN` with that value. Optional: `SLACK_DEFAULT_CHANNEL`
+     (e.g. `decisions`) pre-fills the channel on drafted posts.
+  5. **Event Subscriptions** -> turn **Enable Events** on -> Request URL:
+     `https://app.meetclarus.com/slack/events`. It must show
+     **Verified**. Then under **Subscribe to bot events** add
+     `message.channels` and `app_mention`. Save Changes.
+  6. **Slash Commands** -> **Create New Command**: Command `/clarus`,
+     Request URL `https://app.meetclarus.com/slack/commands`, Short
+     description `Ask the decision ledger`, Usage hint
+     `ask <question>`. Save.
+  7. If Slack shows a yellow bar asking you to reinstall the app, click
+     it and Allow again.
+  8. In Slack, in each channel Clarus should listen to or post in, type
+     `/invite @Clarus`.
+  9. Check: the Ledger view's **Connect other tools** panel should say
+     "Slack is connected". Then try `/clarus ask` in Slack.
+  Secrets live ONLY in Railway variables. If either ever appears
+  anywhere else, regenerate it in the Slack app settings and update
+  Railway. Private channels are not read (that would need the extra
+  `groups:history` scope; left out on purpose).
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):

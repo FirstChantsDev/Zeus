@@ -15,8 +15,14 @@ export type LedgerStatus = 'decided' | 'needs-approval' | 'conditional' | 'not-a
 export type LedgerProof = {
     source: 'meeting' | 'slack' | 'github' | 'outlook';
     /** 'decision' = the words that settled it; 'quote' = what was said on an
-     *  entry that is NOT decided; 'reason' = the words that explained why */
-    kind: 'decision' | 'quote' | 'reason';
+     *  entry that is NOT decided; 'reason' = the words that explained why;
+     *  'confirmation' / 'objection' = proof from outside a meeting (Phase 18 M6) */
+    kind: 'decision' | 'quote' | 'reason' | 'confirmation' | 'objection';
+    /** Outside proof: the chip text ("Slack · confirmed in #legal"), a link
+     *  to the message, and the channel it was posted in */
+    label?: string;
+    link?: string | null;
+    channel?: string | null;
     quote: string;
     who: string;
     when: string;
