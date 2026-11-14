@@ -21,6 +21,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const STATUSES = ['decided', 'needs-approval', 'conditional', 'not-agreed', 'unclear', 'superseded'];
 const NO_PROJECT = 'No project';
@@ -572,12 +573,24 @@ const list = (filters = {}) => {
     const all = readLedger().entries;
     const project = clean(filters.project);
     const status = clean(filters.status);
-    const q = clean(filters.q).toLowerCase();
-    const entries = all
+    // Search matches on the question's WORDS, not the exact phrase, and
+    // looks inside the quotes too: "launch 14th" finds "Launch moved: 14
+    // October" through its quote. Every word must appear; if nothing has
+    // them all, entries with any of the words are returned instead.
+    const words = keywords(filters.q);
+    const haystack = (e) => [e.statement, e.rationale, e.missing, e.decider, e.conditionLabel, e.project,
+        e.sourceMeeting && e.sourceMeeting.name, ...(e.proof || []).map((p) => p.quote)].join(' ').toLowerCase();
+    const scoped = all
         .filter((e) => !project || e.project === project)
-        .filter((e) => !status || e.status === status)
-        .filter((e) => !q || [e.statement, e.rationale, e.missing, e.decider, e.conditionLabel, e.project].join(' ').toLowerCase().includes(q))
-        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        .filter((e) => !status || e.status === status);
+    let matched = scoped;
+    if (words.length) {
+        const everyWord = scoped.filter((e) => words.every((w) => haystack(e).includes(w)));
+        matched = everyWord.length ? everyWord : scoped.filter((e) => words.some((w) => haystack(e).includes(w)));
+    }
+    // Best match first when searching (most of the words), newest first otherwise.
+    const hits = (e) => words.filter((w) => haystack(e).includes(w)).length;
+    const entries = matched.sort((a, b) => (words.length ? hits(b) - hits(a) : 0) || String(b.date).localeCompare(String(a.date)));
     const inProject = all.filter((e) => !project || e.project === project);
     const counts = {};
     for (const s of STATUSES) counts[s] = inProject.filter((e) => e.status === s).length;
@@ -592,8 +605,153 @@ const list = (filters = {}) => {
 
 const get = (id) => readLedger().entries.find((e) => e.id === id) || null;
 
+/**
+ * ================================================
+ * Phase 18 M5: ask the ledger. A question goes to ONE API call together
+ * with the most relevant entries (pre-filtered by project and by the
+ * question's own words, capped), and comes back as a short answer that
+ * cites entries by id. It answers ONLY from the ledger: when the ledger
+ * does not hold the answer it says so, it never guesses.
+ * ================================================
+ */
+const STOP_WORDS = new Set(('a an and are as at be by did do does for from has have how i in is it of on or our that the '
+    + 'their this to was we were what when where which who why will with you your').split(' '));
+
+/** The question's meaningful words, for the free pre-filter. */
+const keywords = (text) => [...new Set(clean(text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !STOP_WORDS.has(w)))];
+
+/** Entries most likely to hold the answer: scored by shared words, current ones first. */
+const relevantEntries = (question, project, cap) => {
+    const words = keywords(question);
+    const all = readLedger().entries.filter((e) => !project || e.project === project);
+    const scored = all.map((entry) => {
+        const text = [entry.statement, entry.rationale, entry.missing, entry.decider, entry.conditionLabel, entry.project,
+            entry.sourceMeeting && entry.sourceMeeting.name, ...(entry.proof || []).map((p) => p.quote)].join(' ').toLowerCase();
+        const hits = words.filter((w) => text.includes(w)).length;
+        return { entry, hits };
+    });
+    const matched = scored.filter((x) => x.hits > 0);
+    // Nothing shares a word with the question: fall back to the newest entries.
+    const pool = matched.length ? matched : scored;
+    return pool
+        .sort((a, b) => (b.hits - a.hits) || ((a.entry.status === 'superseded') - (b.entry.status === 'superseded')) || String(b.entry.date).localeCompare(String(a.entry.date)))
+        .slice(0, cap)
+        .map((x) => x.entry);
+};
+
+const ask = async (question, options = {}) => {
+    const asked = clean(question).slice(0, 500);
+    if (!asked) return { ok: false, status: 400, error: 'Ask a question first.' };
+    const project = clean(options.project);
+    const candidates = relevantEntries(asked, project, 20);
+    if (candidates.length === 0) {
+        return { ok: true, answered: false, answer: 'The ledger is empty, so there is nothing to answer from yet.', cited: [] };
+    }
+    if (!options.apiKey) {
+        return { ok: true, answered: false, needsKey: true, answer: 'Answering questions needs the AI key, which is not set on this server. These are the entries closest to your words.', cited: candidates.slice(0, 5) };
+    }
+    const describe = (e) => [
+        `id "${e.id}" [${e.status}] (${e.project}, ${String(e.date).slice(0, 10)}, ${e.sourceMeeting ? e.sourceMeeting.name : 'meeting'})`,
+        `  decision: ${e.statement}`,
+        e.decider ? `  agreed by: ${e.decider}` : '',
+        e.rationale ? `  reason given: ${e.rationale}` : '',
+        e.missing ? `  ${e.status === 'superseded' ? 'replaced by' : 'missing'}: ${e.missing}` : '',
+        ...(e.proof || []).slice(0, 3).map((p) => `  ${p.kind} quote, ${p.who}: "${p.quote}"`),
+    ].filter(Boolean).join('\n');
+    const system = [
+        'Punctuation rule: NEVER use an em dash ("\u2014") anywhere you write. Use a comma, full stop, or hyphen instead.',
+        'You are Clarus, an agent that keeps a company decision ledger. Someone is asking the ledger a',
+        'question. Answer ONLY from the entries below. They are the whole of what you know.',
+        '',
+        'Rules:',
+        '- Answer in 1 to 3 short plain sentences: the current decision, who agreed it, when, and the',
+        '  reason if one is on record. Prefer the CURRENT entry; if an entry is superseded, say what',
+        '  replaced it. Say plainly when something is conditional, waiting on approval, or not agreed.',
+        '- If the entries do not answer the question, set "answered" to false and say so plainly, e.g.',
+        '  "The ledger has no decision on that." NEVER guess, infer, or add outside knowledge.',
+        '- "cited" lists the ids of the entries your answer rests on, most important first, at most 4.',
+        '  Use [] when you could not answer.',
+        '',
+        'Reply with ONLY strict JSON on one line: {"answered": true|false, "answer": "...", "cited": ["<id>", ...]}',
+    ].join('\n');
+    try {
+        const parsed = await askModel(options.apiKey, system, `Question: ${asked}\n\nLedger entries:\n${candidates.map(describe).join('\n\n')}`, 500);
+        // Only entries that were actually put in front of the model can be cited.
+        const cited = (Array.isArray(parsed.cited) ? parsed.cited : [])
+            .map((id) => candidates.find((e) => e.id === id)).filter(Boolean).slice(0, 4);
+        const answered = parsed.answered === true && cited.length > 0;
+        return {
+            ok: true,
+            answered,
+            answer: clean(parsed.answer) || (answered ? '' : 'The ledger has no decision on that.'),
+            cited: answered ? cited : [],
+        };
+    } catch (error) {
+        console.error('LEDGER >>> ask failed:', error instanceof Error ? error.message : error);
+        return { ok: false, status: 502, error: 'Could not get an answer just now. Try again.' };
+    }
+};
+
+/**
+ * ================================================
+ * Phase 18 M5: the read-only API token. ONE active token for the owner,
+ * shown once when created and never again: only a salted hash is kept
+ * (ledger/api-token.json). Creating a new token replaces the old one;
+ * revoking deletes it. The salt is LEDGER_TOKEN_SALT when set, otherwise
+ * a random one stored beside the hash.
+ * ================================================
+ */
+const tokenFile = () => path.join(ledgerDir(), 'api-token.json');
+const readTokenFile = () => {
+    try { return JSON.parse(fs.readFileSync(tokenFile(), 'utf8')); } catch { return null; }
+};
+const hashToken = (token, salt) => crypto.createHash('sha256').update(`${salt}:${token}`).digest('hex');
+
+const createToken = () => {
+    const token = `clr_${crypto.randomBytes(24).toString('hex')}`;
+    const salt = process.env.LEDGER_TOKEN_SALT || crypto.randomBytes(16).toString('hex');
+    fs.mkdirSync(ledgerDir(), { recursive: true });
+    fs.writeFileSync(tokenFile(), JSON.stringify({
+        hash: hashToken(token, salt),
+        salt: process.env.LEDGER_TOKEN_SALT ? null : salt, // an env salt is never written to disk
+        hint: token.slice(-4),
+        createdAt: new Date().toISOString(),
+    }, null, 2), { mode: 0o600 });
+    console.log('LEDGER API >>> a new read-only token was created (any earlier one no longer works)');
+    return { token, hint: token.slice(-4) };
+};
+
+const tokenStatus = () => {
+    const stored = readTokenFile();
+    return stored ? { exists: true, hint: stored.hint, createdAt: stored.createdAt } : { exists: false };
+};
+
+const revokeToken = () => {
+    try { fs.unlinkSync(tokenFile()); } catch { /* already gone */ }
+    console.log('LEDGER API >>> the read-only token was revoked');
+    return { ok: true };
+};
+
+/** True only for the current token. Compared in constant time. */
+const checkToken = (presented) => {
+    const stored = readTokenFile();
+    const token = clean(presented);
+    if (!stored || !token) return false;
+    const salt = stored.salt || process.env.LEDGER_TOKEN_SALT || '';
+    const given = Buffer.from(hashToken(token, salt));
+    const expected = Buffer.from(String(stored.hash));
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+};
+
+/** Pulls the token out of an `Authorization: Bearer ...` header. */
+const bearer = (header) => {
+    const match = /^Bearer\s+(.+)$/i.exec(clean(header));
+    return match ? match[1].trim() : '';
+};
+
 module.exports = {
     STATUSES, NO_PROJECT, ledgerDir, ledgerFile, readLedger, writeLedger,
     entriesFromRecord, refineWithModel, upsert, writeFromRecord, noteOnRecord, backfill, list, get,
     detectClashes, openClashes, resolveClash, dismissClash, appendRecordEvent, draftAskDecider, checkClosure,
+    ask, relevantEntries, createToken, tokenStatus, revokeToken, checkToken, bearer,
 };

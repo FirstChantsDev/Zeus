@@ -839,6 +839,25 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Everything below is the cockpit API - access code required.
+    // Phase 18 M5: the read-only ledger API for other tools (and the MCP
+    // server). It has its OWN gate - the API token, not the access-code
+    // session - so it sits before the session check. GET only.
+    if (url === '/api/ledger' || url.startsWith('/api/ledger/')) {
+        if (req.method !== 'GET') {
+            answer(res, 405, { ok: false, error: 'The ledger API is read-only.' });
+        } else if (!ledger.checkToken(ledger.bearer(req.headers.authorization))) {
+            answer(res, 401, { ok: false, error: 'A valid ledger API token is required (Authorization: Bearer <token>).' });
+        } else if (url === '/api/ledger') {
+            const params = new URL(req.url || '/', 'http://localhost').searchParams;
+            const listed = ledger.list({ project: params.get('project') || '', status: params.get('status') || '', q: params.get('q') || '' });
+            answer(res, 200, { entries: listed.entries, projects: listed.projects, counts: listed.counts });
+        } else {
+            const entry = ledger.get(decodeURIComponent(url.slice('/api/ledger/'.length)));
+            answer(res, entry ? 200 : 404, entry || { ok: false, error: 'ledger entry not found' });
+        }
+        return;
+    }
+
     if (!isAuthed(req)) {
         answer(res, 401, { ok: false, error: 'access code required' });
         return;
@@ -1127,6 +1146,25 @@ const server = http.createServer(async (req, res) => {
     // Past-meeting history + the metrics strip (read from the records dir).
     // Phase 18 M3: the company decision ledger. Same shapes as the local
     // cockpit. The backfill fills it from the records already on disk.
+    // Phase 18 M5: ask the ledger - ONE API call, answered only from entries.
+    if (url === '/ledger/ask' && req.method === 'POST') {
+        let body = {};
+        try { body = JSON.parse(await readBody(req)); } catch { /* validated in ask() */ }
+        const result = await ledger.ask(typeof body.question === 'string' ? body.question : '', {
+            project: typeof body.project === 'string' ? body.project : '',
+            apiKey: ANTHROPIC_API_KEY,
+        });
+        answer(res, result.ok ? 200 : result.status, result);
+        return;
+    }
+    // The API token: status (GET), create (POST), revoke (DELETE). The
+    // token itself is returned ONCE, by POST, and never again.
+    if (url === '/ledger/token') {
+        answer(res, 200, req.method === 'POST' ? { ok: true, ...ledger.createToken() }
+            : req.method === 'DELETE' ? ledger.revokeToken()
+            : ledger.tokenStatus());
+        return;
+    }
     if (url === '/ledger') {
         const params = new URL(req.url || '/', 'http://localhost').searchParams;
         answer(res, 200, ledger.list({ project: params.get('project') || '', status: params.get('status') || '', q: params.get('q') || '' }));

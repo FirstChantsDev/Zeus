@@ -1,0 +1,10 @@
+{
+  "name": "clarus-ledger-mcp",
+  "version": "1.0.0",
+  "description": "Read-only MCP server for the Clarus decision ledger",
+  "type": "module",
+  "bin": { "clarus-ledger-mcp": "server.mjs" },
+  "scripts": { "start": "node server.mjs" },
+  "engines": { "node": ">=18" },
+  "private": true
+}

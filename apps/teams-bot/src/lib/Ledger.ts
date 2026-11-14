@@ -74,6 +74,13 @@ type LedgerCore = {
     noteOnRecord(recordPath: string, result: LedgerWriteResult): void;
     backfill(recordsDirectory: string, options?: { apiKey?: string }): Promise<{ records: number, entries: number, added: number, updated: number }>;
     list(filters?: { project?: string, status?: string, q?: string }): { entries: LedgerEntry[], projects: string[], counts: Record<string, number>, total: number, clashes: LedgerClash[] };
+    ask(question: string, options?: { project?: string, apiKey?: string }): Promise<
+        { ok: true, answered: boolean, answer: string, cited: LedgerEntry[], needsKey?: boolean } | { ok: false, status: number, error: string }>;
+    createToken(): { token: string, hint: string };
+    tokenStatus(): { exists: boolean, hint?: string, createdAt?: string };
+    revokeToken(): { ok: true };
+    checkToken(presented: string): boolean;
+    bearer(header: string | undefined): string;
     resolveClash(clashId: string, standsId: string, confirmedBy: string):
         { ok: true, stands: LedgerEntry, replaced: LedgerEntry, confirmedBy: string, at: string } | { ok: false, status: number, error: string };
     dismissClash(clashId: string, dismissedBy: string): { ok: true } | { ok: false, status: number, error: string };

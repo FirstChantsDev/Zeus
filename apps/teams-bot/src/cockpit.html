@@ -360,6 +360,28 @@ header{
 .led-hist{font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--t2);overflow-wrap:anywhere;}
 .led-link{background:none;border:none;padding:0;font-family:var(--body);font-weight:600;font-size:12.5px;color:var(--blue);cursor:pointer;text-align:left;}
 .led-link:hover{text-decoration:underline;}
+/* Phase 18 M5: ask the ledger, and connect other tools to it. */
+.led-ask{display:flex;gap:8px;margin-bottom:12px;}
+.led-ask input{
+  flex:1;min-width:0;background:var(--s1);border:1px solid var(--line2);border-radius:999px;
+  padding:11px 16px;font-family:var(--body);font-size:14px;color:var(--t1);outline:none;
+}
+.led-ask input:focus{border-color:var(--blue);}
+.led-ask input::placeholder{color:var(--t3);}
+.led-ask button{
+  background:var(--blue);border:none;border-radius:999px;padding:0 18px;color:#fff;
+  font-family:var(--body);font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;
+}
+.led-ask button:disabled{opacity:.55;cursor:default;}
+.led-answer{background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--r);padding:15px 16px;display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.led-answer.none{background:var(--s2);border-color:var(--line2);}
+.led-answer-q{font-weight:600;font-size:10px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;}
+.led-answer-text{font-family:var(--head);font-size:17px;line-height:1.4;letter-spacing:-.01em;color:var(--t1);overflow-wrap:anywhere;}
+.led-answer .led-entry{background:var(--s1);}
+.led-answer-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.led-connect{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;max-width:760px;display:flex;flex-direction:column;gap:9px;}
+.led-connect h4{font-weight:600;font-size:10px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:0;}
+.led-token{font-family:var(--mono);font-size:12px;background:var(--s1);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere;user-select:all;}
 /* Phase 18 M4: two decisions that do not agree - a person says which stands. */
 .clash{background:var(--red-bg);border:1px solid var(--red-bd);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;margin-bottom:12px;}
 .clash-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
@@ -1530,6 +1552,77 @@ async function clashAskDecider(clashId){
   if(r && r.ok && r.recordFile){ openLedgerRecord(r.recordFile); } // the draft waits there for approval
 }
 
+// ── Phase 18 M5: ask the ledger. One question, one answer, only from entries.
+let ledgerAnswer = null;   // { question, answered, answer, cited, error }
+let ledgerAsking = false;
+let ledgerNewToken = '';   // shown ONCE, right after it is created
+function ledgerAnswerHtml(){
+  if(ledgerAsking) return '<div class="led-answer none"><div class="led-answer-text">Checking the ledger…</div></div>';
+  if(!ledgerAnswer) return '';
+  const a = ledgerAnswer;
+  const cards = (a.cited || []).map(ledgerEntryHtml).join('');
+  return `<div class="led-answer${a.answered ? '' : ' none'}">
+    <div class="led-answer-q">${esc(a.question)}</div>
+    <div class="led-answer-text">${esc(a.error || a.answer || '')}</div>
+    ${cards ? `<div class="led-list">${cards}</div>` : ''}
+    <div class="led-answer-foot"><span class="clash-note">${a.answered ? 'Answered only from the ledger entries shown.' : (a.cited && a.cited.length ? '' : 'Clarus answers only from the ledger. It never guesses.')}</span><button class="clash-btn quiet" onclick="ledgerClearAnswer()">Clear</button></div>
+  </div>`;
+}
+function ledgerClearAnswer(){ ledgerAnswer = null; loadLedger(); }
+async function ledgerAsk(){
+  const input = document.getElementById('ledQuestion');
+  const question = (input ? input.value : '').trim();
+  if(!question || ledgerAsking) return;
+  ledgerAsking = true; ledgerAnswer = null;
+  loadLedger();
+  try{
+    const r = await fetch('/ledger/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question, project: ledgerProject }) });
+    const data = await r.json();
+    ledgerAnswer = data.ok ? { question, ...data } : { question, answered: false, error: data.error || 'Could not get an answer just now.', cited: [] };
+  }catch(e){
+    ledgerAnswer = { question, answered: false, error: 'Could not reach the server.', cited: [] };
+  }
+  ledgerAsking = false;
+  loadLedger();
+}
+// Connect other tools: a read-only API token, shown once, revocable.
+function ledgerConnectHtml(status){
+  const fresh = ledgerNewToken
+    ? `<div class="led-line"><b>Your new token.</b> Copy it now. It is shown only this once.</div>
+       <div class="led-token" id="ledTokenValue">${esc(ledgerNewToken)}</div>
+       <div class="clash-actions"><button class="clash-btn" onclick="ledgerCopyToken(this)">Copy token</button></div>`
+    : '';
+  const state = status && status.exists
+    ? `<div class="led-line">A token is active (ends in <b>${esc(status.hint || '')}</b>, created ${ledWhen(status.createdAt)}).</div>`
+    : '<div class="led-line">No token yet. Other tools cannot read the ledger.</div>';
+  return `<div class="led-connect">
+    <h4>Connect other tools</h4>
+    <div class="led-line">Claude, Copilot and other tools can check the ledger before they act, through a read-only token. They can look, never change anything.</div>
+    ${state}${fresh}
+    <div class="clash-actions">
+      <button class="clash-btn" onclick="ledgerCreateToken()">${status && status.exists ? 'Replace token' : 'Create token'}</button>
+      ${status && status.exists ? '<button class="clash-btn quiet" onclick="ledgerRevokeToken()">Revoke</button>' : ''}
+    </div>
+    <div class="clash-note">Replacing or revoking stops the old token working straight away. Setup steps for Claude Desktop are in NOTES.md.</div>
+  </div>`;
+}
+async function ledgerCreateToken(){
+  try{
+    const data = await (await fetch('/ledger/token', { method: 'POST' })).json();
+    ledgerNewToken = data.token || '';
+  }catch(e){ ledgerNewToken = ''; }
+  loadLedger();
+}
+async function ledgerRevokeToken(){
+  ledgerNewToken = '';
+  try{ await fetch('/ledger/token', { method: 'DELETE' }); }catch(e){ /* the status line below shows the truth */ }
+  loadLedger();
+}
+function ledgerCopyToken(btn){
+  const done = () => { btn.textContent = 'Copied'; };
+  try{ navigator.clipboard.writeText(ledgerNewToken).then(done).catch(() => {}); }catch(e){ /* select-all on the box still works */ }
+}
+
 async function loadLedger(){
   ledgerView = 'list';
   document.getElementById('ledTitle').textContent = 'Decision ledger';
@@ -1539,6 +1632,9 @@ async function loadLedger(){
     if(ledgerProject) qs.set('project', ledgerProject);
     if(ledgerStatus) qs.set('status', ledgerStatus);
     const data = await (await fetch('/ledger' + (qs.toString() ? '?' + qs : ''))).json();
+    let tokenStatus = null;
+    try{ tokenStatus = await (await fetch('/ledger/token')).json(); }catch(e){ /* panel shows "no token" */ }
+    const askDraft = (document.getElementById('ledQuestion') || {}).value || (ledgerAsking || ledgerAnswer ? '' : '');
     const projects = data.projects || [];
     const counts = data.counts || {};
     const projectPicker = `<select class="led-project" id="ledProject" aria-label="Project" onchange="ledgerSetProject(this.value)">
@@ -1561,8 +1657,13 @@ async function loadLedger(){
         `<div class="led-group">${esc(p)}</div><div class="led-list">${entries.filter((e) => e.project === p).map(ledgerEntryHtml).join('')}</div>`).join('');
     }
     body.innerHTML = '<div class="led-sub">One record of what was decided, across every meeting. The room decides; Clarus records it with the words that closed it.</div>'
+      + `<form class="led-ask" onsubmit="ledgerAsk();return false;"><input id="ledQuestion" maxlength="500" autocomplete="off" aria-label="Ask the ledger" placeholder="Ask the ledger, e.g. Why did we move the Atlas launch to the 14th?"><button type="submit"${ledgerAsking ? ' disabled' : ''}>Ask</button></form>`
+      + ledgerAnswerHtml()
       + (data.clashes || []).map(clashCardHtml).join('')
-      + `<div class="led-filters">${projectPicker}${chips}</div>` + listHtml;
+      + `<div class="led-filters">${projectPicker}${chips}</div>` + listHtml
+      + ledgerConnectHtml(tokenStatus);
+    const box = document.getElementById('ledQuestion');
+    if(box && askDraft) box.value = askDraft;
   }catch(e){
     body.innerHTML = '<div class="led-empty">Could not load the ledger - is the bot running?</div>';
   }

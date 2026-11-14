@@ -342,6 +342,41 @@ export class CockpitServer {
                         res.end(JSON.stringify({ ok: false, error: 'Calendar not connected - click Connect calendar on the briefing screen.' }));
                     }
                 })();
+            } else if (url === '/api/ledger' || url.startsWith('/api/ledger/')) {
+                // Phase 18 M5: the read-only API for other tools (and the MCP
+                // server). Token-protected even on localhost; GET only.
+                const send = (code: number, payload: object) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(payload)); };
+                if (req.method !== 'GET') {
+                    send(405, { ok: false, error: 'The ledger API is read-only.' });
+                } else if (!Ledger.checkToken(Ledger.bearer(req.headers.authorization))) {
+                    send(401, { ok: false, error: 'A valid ledger API token is required (Authorization: Bearer <token>).' });
+                } else if (url === '/api/ledger') {
+                    const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
+                    const listed = Ledger.list({ project: params.get('project') ?? '', status: params.get('status') ?? '', q: params.get('q') ?? '' });
+                    send(200, { entries: listed.entries, projects: listed.projects, counts: listed.counts });
+                } else {
+                    const entry = Ledger.get(decodeURIComponent(url.slice('/api/ledger/'.length)));
+                    send(entry ? 200 : 404, entry ?? { ok: false, error: 'ledger entry not found' });
+                }
+            } else if (url === '/ledger/ask' && req.method === 'POST') {
+                // Phase 18 M5: ask the ledger - ONE API call, answered only from entries.
+                void this._readJson(req).then(async (raw) => {
+                    const body = raw as { question?: unknown, project?: unknown };
+                    const result = await Ledger.ask(typeof body.question === 'string' ? body.question : '', {
+                        project: typeof body.project === 'string' ? body.project : '',
+                        apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+                    });
+                    res.writeHead(result.ok ? 200 : result.status, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify(result));
+                });
+            } else if (url === '/ledger/token') {
+                // The API token: status (GET), create (POST), revoke (DELETE).
+                // The token itself is returned ONCE, by POST, and never again.
+                const payload = req.method === 'POST' ? { ok: true, ...Ledger.createToken() }
+                    : req.method === 'DELETE' ? Ledger.revokeToken()
+                    : Ledger.tokenStatus();
+                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+                res.end(JSON.stringify(payload));
             } else if (url === '/ledger') {
                 // Phase 18 M3: the company decision ledger - filtered entries
                 // plus the filter options (projects, per-status counts).

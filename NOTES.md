@@ -231,6 +231,68 @@ goal is being ignored, and reporting everything to a private local cockpit.
     {clashId}. Hosted has no per-person login yet, so "who confirmed"
     is the meeting owner's name as shown in the cockpit, or "the owner".
 
+- **Phase 18 Milestone 5 - ask the ledger (2026-11).**
+  - *Ask box* at the top of the Ledger view. The question goes to ONE
+    API call with the most relevant entries (free pre-filter by project
+    and by the question's own words, capped at 20) and comes back as a
+    short answer citing entry ids; the cited entries render as cards with
+    their proof. It answers only from the ledger: an "answer" with no
+    entry behind it is treated as no answer, an id the model was not
+    shown is dropped, and when the ledger has nothing it says so. With
+    no API key it does not guess; it shows the closest entries instead.
+    `POST /ledger/ask` {question, project?} on both servers.
+  - *Search* (the `q` filter) now matches on words, not the exact
+    phrase, and looks inside the proof quotes: every word must appear,
+    else entries with any of the words, best match first.
+  - *Read-only API:* `GET /api/ledger` (filters `project`, `status`, `q`)
+    and `GET /api/ledger/<id>`, on both servers. Protected by ONE owner
+    token sent as `Authorization: Bearer <token>`; anything but GET is
+    refused. On the hub the API sits BEFORE the access-code check: the
+    token is its only gate.
+  - *The token:* created in the Ledger view under **Connect other
+    tools**. Shown once; only a salted SHA-256 hash is kept, in
+    `ledger/api-token.json` (inside `RECORDS_DIR/ledger` on the hub, so
+    it needs the volume like everything else). **Replace token** makes a
+    new one and the old stops working; **Revoke** deletes it. Optional
+    Railway variable `LEDGER_TOKEN_SALT`: when set, the salt is never
+    written to disk (changing it invalidates the token).
+    `GET /ledger/token` = status, `POST` = create, `DELETE` = revoke.
+  - *MCP server:* `apps/ledger-mcp/server.mjs`. Plain JavaScript with no
+    dependencies and no build step (the brief said TypeScript; this way
+    there is nothing to install), speaking MCP over stdio. Three
+    read-only tools: `search_decisions`, `get_decision`,
+    `list_open_items`. Settings: `CLARUS_URL`, `CLARUS_TOKEN`.
+
+  **How to connect Claude Desktop to the ledger**
+  1. In the cockpit open **Ledger**, scroll to **Connect other tools**,
+     press **Create token**, and copy it (it is shown only once).
+  2. Make sure Node.js 18 or newer is installed on the computer
+     (nodejs.org), and that this repo is on it.
+  3. In Claude Desktop: **Settings -> Developer -> Edit Config**. That
+     opens `claude_desktop_config.json`. Add this (keep any servers
+     already there; use the real path to the repo on your computer):
+
+     ```json
+     {
+       "mcpServers": {
+         "clarus-ledger": {
+           "command": "node",
+           "args": ["C:\\path\\to\\Zeus\\apps\\ledger-mcp\\server.mjs"],
+           "env": {
+             "CLARUS_URL": "https://app.meetclarus.com",
+             "CLARUS_TOKEN": "clr_paste-your-token-here"
+           }
+         }
+       }
+     }
+     ```
+  4. Quit Claude Desktop completely and open it again. "clarus-ledger"
+     should appear among its tools.
+  5. Ask it: "Check the Clarus ledger: why did we move the Atlas launch
+     to the 14th?"
+  The token lives in that config file on your computer. Treat it like a
+  password: if it leaks, press **Revoke** or **Replace token**.
+
 ## Demo script — run the whole thing from cold
 
 1. **Start it** (needs `ANTHROPIC_API_KEY` in `.env` at the repo root):
